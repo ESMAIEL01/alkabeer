@@ -16,8 +16,15 @@ export default function LobbyPage() {
   const [players, setPlayers] = useState([]);
   const [error, setError] = useState('');
   const [roomMode, setRoomMode] = useState('HUMAN');
+  // Role-reveal mode: 'normal' (every player knows their role) or
+  // 'blind' (عمياني — players know only their character + suspicious detail,
+  // not whether they are the mafiozo).
+  const [roleRevealMode, setRoleRevealMode] = useState(null);   // null until user picks
   const [creatorId, setCreatorId] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
+
+  // Arabic label for the chosen reveal mode (used in the active-room badge).
+  const revealLabel = roleRevealMode === 'blind' ? 'عمياني' : roleRevealMode === 'normal' ? 'عادي' : '';
 
   useEffect(() => {
     const token = getToken();
@@ -59,7 +66,12 @@ export default function LobbyPage() {
   }, [navigate]);
 
   const handleCreateRoom = (mode = 'HUMAN') => {
-    socket.emit('create_room', { mode }, (response) => {
+    if (!roleRevealMode) {
+      setError('اختار طور كشف الأدوار الأول.');
+      return;
+    }
+    setError('');
+    socket.emit('create_room', { mode, roleRevealMode }, (response) => {
       if (response && response.success) {
         setActiveRoom(response.roomId);
         setActiveRoomId(response.roomId);       // persist
@@ -163,18 +175,107 @@ export default function LobbyPage() {
       {!activeRoom ? (
         <div className="card max-w-md mx-auto text-center mt-4">
           <h1 className="cinematic-glow mb-6" style={{ fontSize: '2.5rem' }}>الساحة المظلمة</h1>
-          
+
           {error && <div className="mb-4 p-2 rounded text-main" style={{ background: 'rgba(229,9,20,0.2)', border: '1px solid var(--accent-red)' }}>{error}</div>}
-          
-          <div className="flex justify-center gap-4 mb-6">
-            <button className="btn-primary" onClick={() => handleCreateRoom('HUMAN')} style={{ fontSize: '1.2rem', padding: '1rem', flex: 1 }}>
-              مضيف (بشري) 👤
-            </button>
-            <button className="btn-primary" onClick={() => handleCreateRoom('AI')} style={{ fontSize: '1.2rem', padding: '1rem', flex: 1, background: 'linear-gradient(135deg, #1f1c2c, #928DAB)' }}>
-              الكبير الاصطناعي 🤖
-            </button>
-          </div>
-          
+
+          {/* ======================== STEP 1: REVEAL MODE ======================== */}
+          {!roleRevealMode && (
+            <div className="animate-fade-in">
+              <div className="mb-4" style={{ textAlign: 'center' }}>
+                <p className="text-muted mb-1" style={{ fontSize: '0.85rem', letterSpacing: '2px' }}>الخطوة الأولى</p>
+                <h3 className="golden-text" style={{ fontSize: '1.5rem' }}>اختار طريقة كشف الأدوار</h3>
+              </div>
+              <div className="flex flex-col gap-3 mb-2" style={{ textAlign: 'right' }}>
+                <button
+                  type="button"
+                  onClick={() => setRoleRevealMode('normal')}
+                  className="btn-secondary"
+                  style={{
+                    padding: '1.1rem 1rem',
+                    fontSize: '1rem',
+                    borderColor: 'var(--accent-gold)',
+                    textAlign: 'right',
+                  }}
+                >
+                  <div className="golden-text" style={{ fontWeight: 800, fontSize: '1.15rem', marginBottom: '0.35rem' }}>عادي</div>
+                  <div className="text-muted" style={{ fontSize: '0.9rem', lineHeight: 1.55 }}>
+                    كل لاعب يعرف شخصيته ودوره السري قبل بداية التحقيق.
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRoleRevealMode('blind')}
+                  className="btn-secondary"
+                  style={{
+                    padding: '1.1rem 1rem',
+                    fontSize: '1rem',
+                    borderColor: 'var(--accent-red)',
+                    textAlign: 'right',
+                  }}
+                >
+                  <div style={{ fontWeight: 800, fontSize: '1.15rem', marginBottom: '0.35rem', color: 'var(--accent-red)' }}>عمياني</div>
+                  <div className="text-muted" style={{ fontSize: '0.9rem', lineHeight: 1.55 }}>
+                    كل لاعب يعرف وظيفته وتفصيلته المريبة فقط، لكن لا يعرف هل هو المافيوزو أم لا.
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ======================== STEP 2: HOST TYPE ======================== */}
+          {roleRevealMode && (
+            <div className="animate-fade-in">
+              {/* Selected mode badge with "change selection" link */}
+              <div className="mb-5 p-3 rounded-lg" style={{
+                background: 'rgba(0,0,0,0.4)',
+                border: `1px solid ${roleRevealMode === 'blind' ? 'rgba(229,9,20,0.6)' : 'var(--accent-gold)'}`,
+                textAlign: 'right',
+              }}>
+                <div className="flex justify-between items-center" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div>
+                    <div className="text-muted" style={{ fontSize: '0.75rem', letterSpacing: '1.5px' }}>طور كشف الأدوار</div>
+                    <div className={roleRevealMode === 'blind' ? '' : 'golden-text'} style={{
+                      fontSize: '1.15rem',
+                      fontWeight: 800,
+                      color: roleRevealMode === 'blind' ? 'var(--accent-red)' : undefined,
+                    }}>
+                      {revealLabel}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRoleRevealMode(null)}
+                    className="btn-secondary"
+                    style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', width: 'auto' }}
+                  >
+                    تغيير الاختيار
+                  </button>
+                </div>
+              </div>
+
+              <div className="mb-4" style={{ textAlign: 'center' }}>
+                <p className="text-muted mb-1" style={{ fontSize: '0.85rem', letterSpacing: '2px' }}>الخطوة الثانية</p>
+                <h3 className="golden-text" style={{ fontSize: '1.5rem' }}>اختار نوع المضيف</h3>
+              </div>
+              <div className="flex flex-col gap-3 mb-2">
+                <button
+                  className="btn-primary"
+                  onClick={() => handleCreateRoom('HUMAN')}
+                  style={{ fontSize: '1.15rem', padding: '1.1rem' }}
+                >
+                  مضيف بشري 👤
+                </button>
+                <button
+                  className="btn-primary"
+                  onClick={() => handleCreateRoom('AI')}
+                  style={{ fontSize: '1.15rem', padding: '1.1rem', background: 'linear-gradient(135deg, #1f1c2c, #928DAB)' }}
+                >
+                  الكبير الاصطناعي 🤖
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="divider"></div>
           
           <div className="mt-4">
@@ -197,8 +298,17 @@ export default function LobbyPage() {
           {/* Room Details & Access Card */}
           <div className="card text-center" style={{ flex: '1 1 350px', maxWidth: '450px' }}>
             <h2 className="cinematic-glow mb-2" style={{ fontSize: '2rem' }}>مقر التحقيق</h2>
-            <p className="golden-text mb-6" style={{ fontSize: '2.5rem', letterSpacing: '4px' }}>{activeRoom}</p>
-            
+            <p className="golden-text mb-2" style={{ fontSize: '2.5rem', letterSpacing: '4px' }}>{activeRoom}</p>
+            {revealLabel && (
+              <p className="mb-4" style={{ fontSize: '0.95rem' }}>
+                <span className="text-muted">طور كشف الأدوار:</span>{' '}
+                <span style={{
+                  color: roleRevealMode === 'blind' ? 'var(--accent-red)' : 'var(--accent-gold)',
+                  fontWeight: 700,
+                }}>{revealLabel}</span>
+              </p>
+            )}
+
             <p className="text-muted mb-4">شارك هذا الختم العالي السرية لدعوة اللاعبين</p>
             
             <div className="qr-container bg-white p-4 rounded-xl mx-auto mb-6 flex justify-center items-center" style={{ width: 'fit-content', boxShadow: '0 0 20px rgba(255,255,255,0.1)' }}>
