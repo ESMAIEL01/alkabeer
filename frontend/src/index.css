@@ -305,6 +305,30 @@ h1, h2, h3, h4, h5, h6 {
   animation: roleCardReveal 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
+/* Final-reveal sections — staggered fade-in. Each section animates with its
+   own short delay so the cinematic reveal feels paced, not all-at-once. */
+@keyframes revealSectionIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.final-reveal-section {
+  animation: revealSectionIn 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.final-reveal-section:nth-of-type(1) { animation-delay: 0.05s; }
+.final-reveal-section:nth-of-type(2) { animation-delay: 0.15s; }
+.final-reveal-section:nth-of-type(3) { animation-delay: 0.30s; }
+.final-reveal-section:nth-of-type(4) { animation-delay: 0.45s; }
+.final-reveal-section:nth-of-type(5) { animation-delay: 0.60s; }
+.final-reveal-section:nth-of-type(6) { animation-delay: 0.75s; }
+.final-reveal-section:nth-of-type(7) { animation-delay: 0.90s; }
+.final-reveal-section:nth-of-type(8) { animation-delay: 1.05s; }
+.final-reveal-section:nth-of-type(9) { animation-delay: 1.20s; }
+
+/* Truth card — soft pulsing glow that tells the eye "this is THE answer". */
+.reveal-truth-card {
+  box-shadow: 0 0 0 1px var(--border-subtle), 0 12px 38px rgba(0,0,0,0.55), 0 0 32px rgba(229,9,20,0.15);
+}
+
 /* Respect users who asked the OS to reduce motion. Applies to every keyframe
    we use elsewhere too (fadeIn, pulseRed, roleCardReveal). */
 @media (prefers-reduced-motion: reduce) {

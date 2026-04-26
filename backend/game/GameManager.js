@@ -659,9 +659,23 @@ class GameManager {
       lobby.gameData.votes = {};
       this.broadcastFullState(lobby.id);
       this.emitVotingProgress(lobby.id);
-    } else {
-      this.broadcastFullState(lobby.id);
+      return;
     }
+    if (phase === 'FINAL_REVEAL') {
+      // Build the cinematic reveal once, deterministically, from session data.
+      // Stored on gameData so reconnecting clients can recover it.
+      try {
+        if (!lobby.gameData.finalReveal) {
+          lobby.gameData.finalReveal = this.buildFinalReveal(lobby);
+        }
+      } catch (err) {
+        console.error('[reveal] buildFinalReveal failed:', err && err.message);
+        lobby.gameData.finalReveal = this.buildSafeMinimalReveal(lobby);
+      }
+      this.broadcastFullState(lobby.id);
+      return;
+    }
+    this.broadcastFullState(lobby.id);
   }
 
   /**
@@ -840,6 +854,412 @@ class GameManager {
   }
 
   // -------------------------------------------------------------------------
+  // FINAL REVEAL — deterministic cinematic case conclusion
+  //
+  // Built once when the phase enters FINAL_REVEAL. Variable per session
+  // because every helper consumes real session data (player names,
+  // assignments, voting history, outcome, mode). No two games produce the
+  // same prose, even when the archive is identical.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Top-level builder. Returns a fully-populated finalReveal payload OR a
+   * safe minimal reveal if anything is missing.
+   */
+  buildFinalReveal(lobby) {
+    const gd = lobby && lobby.gameData;
+    if (!gd) return this.buildSafeMinimalReveal(lobby);
+
+    const archive = gd.decodedArchive || {};
+    const assignments = gd.roleAssignments || {};
+    const votingHistory = gd.votingHistory || [];
+    const allRecs = Object.values(assignments);
+
+    const mafiozoRec = allRecs.find(r => r.gameRole === 'mafiozo') || null;
+    const obviousRec = allRecs.find(r => r.gameRole === 'obvious_suspect') || null;
+    const outcome = gd.outcome || 'unknown';
+    const mode = gd.roleRevealMode || 'normal';
+
+    const ctx = {
+      archive, assignments, allRecs, votingHistory,
+      mafiozoRec, obviousRec, outcome, mode,
+      players: Array.from(lobby.players.values()),
+    };
+
+    return {
+      title: archive.title || 'القضية المختومة',
+      outcome,
+      winnerLabel: this._winnerLabel(outcome),
+      winnerTone:
+        outcome === 'investigators_win' ? 'gold'
+        : outcome === 'mafiozo_survives' ? 'red'
+        : 'neutral',
+      roleRevealMode: mode,
+      headline: this._buildOutcomeHeadline(ctx),
+      caseSummary: this._buildCaseSummary(ctx),
+      truth: this._buildTruth(ctx),
+      obviousSuspect: this._buildObviousSuspect(ctx),
+      players: this._buildPlayerCards(ctx),
+      clues: this._buildClueAnalyses(ctx),
+      votingTimeline: this._buildVotingTimeline(ctx),
+      dramaticBeats: this._buildDramaticBeats(ctx),
+      finalParagraph: this._buildFinalParagraph(ctx),
+      ctas: { newGame: 'ابدأ جلسة جديدة', backToLobby: 'ارجع للساحة' },
+    };
+  }
+
+  buildSafeMinimalReveal(lobby) {
+    const gd = lobby && lobby.gameData;
+    return {
+      title: gd?.decodedArchive?.title || 'القضية المختومة',
+      outcome: gd?.outcome || 'unknown',
+      winnerLabel: this._winnerLabel(gd?.outcome),
+      winnerTone: 'neutral',
+      roleRevealMode: gd?.roleRevealMode || 'normal',
+      headline: { title: 'انتهت الجلسة', subtitle: 'الأرشيف اتفك على الحاضرين.' },
+      caseSummary: { title: gd?.decodedArchive?.title || 'القضية', story: gd?.decodedArchive?.story || '', reconstruction: '', closingLine: 'الجلسة وقفت بدري.' },
+      truth: null, obviousSuspect: null, players: [], clues: [], votingTimeline: [],
+      dramaticBeats: [], finalParagraph: 'الجلسة وقفت قبل ما يكتمل المشهد.',
+      ctas: { newGame: 'ابدأ جلسة جديدة', backToLobby: 'ارجع للساحة' },
+    };
+  }
+
+  _winnerLabel(outcome) {
+    if (outcome === 'investigators_win') return 'انتصر التحقيق';
+    if (outcome === 'mafiozo_survives')  return 'المافيوزو نجا';
+    return 'انتهت الجلسة';
+  }
+
+  _roleLabelArabic(role) {
+    if (role === 'mafiozo')         return 'المافيوزو';
+    if (role === 'obvious_suspect') return 'المشتبه الواضح';
+    if (role === 'innocent')        return 'بريء';
+    return null;
+  }
+
+  // ----- HEADLINE ----------------------------------------------------------
+  _buildOutcomeHeadline(ctx) {
+    const { outcome, votingHistory, mafiozoRec, obviousRec, mode } = ctx;
+    const elimRound = mafiozoRec
+      ? votingHistory.find(v => v.eliminatedId === mafiozoRec.playerId)?.round
+      : null;
+
+    if (outcome === 'investigators_win') {
+      if (elimRound === 1) return {
+        title: 'كشف مبكر — الحقيقة طلعت من الجولة الأولى',
+        subtitle: 'الساحة قرأت الخيوط قبل ما تتلخبط، والمافيوزو ما لقاش وقت يدافع.',
+      };
+      if (elimRound === 2) return {
+        title: 'لحظة الحسم — الجولة التانية فضحت الكبير',
+        subtitle: 'الدليل الأول لخبط الصورة، لكن الدليل التاني فتح عين الساحة.',
+      };
+      if (elimRound === 3) return {
+        title: 'في آخر لحظة — التحقيق لحق المافيوزو',
+        subtitle: 'الانعطافة قلبت الموازين، والساحة قبضت في النهاية.',
+      };
+      return {
+        title: 'كشف المافيوزو — قضية مغلقة',
+        subtitle: 'الأرشيف اتفك. الحقيقة طلعت.',
+      };
+    }
+
+    if (outcome === 'mafiozo_survives') {
+      const obviousElim = obviousRec
+        ? votingHistory.find(v => v.eliminatedId === obviousRec.playerId)
+        : null;
+      if (obviousElim) return {
+        title: 'المافيوزو نجا — والمشتبه الواضح دفع التمن',
+        subtitle: 'التضليل اشتغل بالظبط زي ما كان مخطط له. الساحة اختارت الواجهة، وفاتت اللي ورا.',
+      };
+      const mafiozoNeverTargeted = mafiozoRec
+        && !votingHistory.some(v => v.tally && v.tally[mafiozoRec.playerId]);
+      if (mafiozoNeverTargeted) return {
+        title: 'اختفاء كامل — المافيوزو ما ظهرش في أي تصويت',
+        subtitle: 'الساحة شافت كل حد إلا اللي قدامها. اللعبة كسبتها بالصمت.',
+      };
+      if (mode === 'blind') return {
+        title: 'في طور عمياني، الحقيقة فضلت متدارية',
+        subtitle: 'حتى صاحب السر ماكانش يعرف. الساحة كانت قريبة، لكن مفيش حد ماسك الخيط كامل.',
+      };
+      return {
+        title: 'المافيوزو نجا — الحقيقة فضلت متدارية',
+        subtitle: 'الساحة كانت قريبة، لكن الخيط الصح ما اتمسكش لحد الجرس الأخير.',
+      };
+    }
+
+    return { title: 'انتهت الجلسة', subtitle: 'الأرشيف اتفك على الحاضرين.' };
+  }
+
+  // ----- CASE SUMMARY ------------------------------------------------------
+  _buildCaseSummary(ctx) {
+    return {
+      title: ctx.archive.title || 'القضية المختومة',
+      story: ctx.archive.story || '',
+      reconstruction: this._buildReconstruction(ctx),
+      closingLine: this._buildCaseClosingLine(ctx),
+    };
+  }
+
+  _buildReconstruction(ctx) {
+    const { mafiozoRec, obviousRec, outcome, archive } = ctx;
+    if (!mafiozoRec) return archive.story || '';
+
+    const charRef = `${mafiozoRec.storyCharacterName} (${mafiozoRec.storyCharacterRole})`;
+    const playerRef = mafiozoRec.username;
+
+    const p1 = `وراء كل تفصيلة في القضية كان فيه إيد واحدة بتحركها. ${playerRef} اللي كان بيلعب دور ${charRef} هو اللي رسم الموقف من البداية.`;
+
+    let p2;
+    if (obviousRec) {
+      const obviousChar = `${obviousRec.storyCharacterName} (${obviousRec.storyCharacterRole})`;
+      p2 = `أما ${obviousRec.username} اللي كان شخصيته ${obviousChar}، فالمكان والتوقيت خلاه يبان أكتر مشتبه فيه. كل تفصيلة عنه كانت بترسم ظله أكبر من الحقيقة.`;
+    } else {
+      p2 = `ما كانش فيه مشتبه واضح يلفت الانتباه عنه. ${playerRef} اضطر يخبي نفسه في تفاصيل صغيرة بدل ما يستخبى ورا واجهة.`;
+    }
+
+    let p3;
+    if (outcome === 'investigators_win') {
+      p3 = `بس الساحة كانت بتقرا الخيوط الصح في الوقت الصح. الكشف ما تأخرش.`;
+    } else if (outcome === 'mafiozo_survives') {
+      p3 = `الساحة شافت الواجهة، لكن الحقيقة فضلت متدارية تحت طبقة من الشك.`;
+    } else {
+      p3 = `الجلسة وقفت قبل ما يكتمل المشهد، لكن الأرشيف فضل ساكن.`;
+    }
+
+    return [p1, p2, p3].join('\n\n');
+  }
+
+  _buildCaseClosingLine(ctx) {
+    if (ctx.outcome === 'investigators_win') return 'القضية مغلقة. الحق رجع لأصحابه.';
+    if (ctx.outcome === 'mafiozo_survives')  return 'القضية فاضلة مفتوحة في الورق، لكن مقفولة في الأرشيف.';
+    return 'انتهت الجلسة.';
+  }
+
+  // ----- TRUTH (mafiozo reveal) -------------------------------------------
+  _buildTruth(ctx) {
+    const { mafiozoRec, votingHistory, mode } = ctx;
+    if (!mafiozoRec) return null;
+
+    const elimRound = votingHistory.find(v => v.eliminatedId === mafiozoRec.playerId)?.round;
+    let explanation;
+
+    if (elimRound) {
+      explanation = `${mafiozoRec.username} كان مخبي نفسه ورا شخصية ${mafiozoRec.storyCharacterName}. الساحة لاحظت تفصيلة "${mafiozoRec.suspiciousDetail}" بس في الجولة ${elimRound} الخيط ربط نفسه بنفسه.`;
+    } else {
+      const closeRound = votingHistory.find(v =>
+        v.tally && v.tally[mafiozoRec.playerId] && v.eliminatedId !== mafiozoRec.playerId
+      );
+      if (closeRound) {
+        explanation = `${mafiozoRec.username} كان قريب من الفضيحة في الجولة ${closeRound.round}، لكن الساحة ما اتأكدتش من تفصيلة "${mafiozoRec.suspiciousDetail}" في الوقت المناسب.`;
+      } else {
+        explanation = `${mafiozoRec.username} نجح يخبي تفصيلة "${mafiozoRec.suspiciousDetail}" تحت طبقات من الشك. ولا في جولة وحدة الصوت اتجه ناحيته بشكل حقيقي.`;
+      }
+    }
+
+    if (mode === 'blind') {
+      explanation += ` الأخطر إن اللعبة كانت "عمياني"، يعني ${mafiozoRec.username} نفسه ماكانش يعرف إنه المافيوزو وقت اللعب. الحقيقة اتكشفت دلوقتي الأول مرة.`;
+    }
+
+    return {
+      mafiozoPlayerId: mafiozoRec.playerId,
+      mafiozoUsername: mafiozoRec.username,
+      mafiozoCharacterName: mafiozoRec.storyCharacterName,
+      mafiozoStoryRole: mafiozoRec.storyCharacterRole,
+      mafiozoSuspiciousDetail: mafiozoRec.suspiciousDetail,
+      mafiozoExplanation: explanation,
+    };
+  }
+
+  // ----- OBVIOUS SUSPECT --------------------------------------------------
+  _buildObviousSuspect(ctx) {
+    const { obviousRec, votingHistory } = ctx;
+    if (!obviousRec) return null;
+
+    const elimRound = votingHistory.find(v => v.eliminatedId === obviousRec.playerId)?.round;
+    let explanation;
+    if (elimRound) {
+      explanation = `${obviousRec.username} طلع من اللعبة في الجولة ${elimRound}، والساحة كانت متأكدة إنها مسكت المافيوزو. لكن تفصيلة "${obviousRec.suspiciousDetail}" كانت غطاء، مش حقيقة.`;
+    } else {
+      explanation = `${obviousRec.username} عاش في ضوء الشبهة طول الجلسة. تفصيلة "${obviousRec.suspiciousDetail}" خلت كل اتهام يلمسه أول، لكن في الحقيقة كان بريء بالكامل.`;
+    }
+
+    return {
+      playerId: obviousRec.playerId,
+      username: obviousRec.username,
+      characterName: obviousRec.storyCharacterName,
+      storyRole: obviousRec.storyCharacterRole,
+      suspiciousDetail: obviousRec.suspiciousDetail,
+      explanation,
+    };
+  }
+
+  // ----- PLAYER ROSTER ----------------------------------------------------
+  _buildPlayerCards(ctx) {
+    return ctx.allRecs.map(rec => {
+      const elimRound = ctx.votingHistory.find(v => v.eliminatedId === rec.playerId)?.round || null;
+      return {
+        playerId: rec.playerId,
+        username: rec.username,
+        characterName: rec.storyCharacterName,
+        storyRole: rec.storyCharacterRole,
+        suspiciousDetail: rec.suspiciousDetail,
+        gameRole: rec.gameRole,
+        roleLabelArabic: this._roleLabelArabic(rec.gameRole),
+        status: rec.isAlive ? 'survived' : 'eliminated',
+        eliminatedRound: elimRound,
+        survived: !!rec.isAlive,
+      };
+    });
+  }
+
+  // ----- CLUE ANALYSES ----------------------------------------------------
+  _buildClueAnalyses(ctx) {
+    const { archive, mafiozoRec, obviousRec, votingHistory } = ctx;
+    const clues = Array.isArray(archive.clues) ? archive.clues : [];
+    return clues.map((text, i) => {
+      const type      = i === 0 ? 'red_herring' : i === 1 ? 'web' : i === 2 ? 'twist' : 'extra';
+      const typeLabel = i === 0 ? 'تمويه'        : i === 1 ? 'ربط' : i === 2 ? 'انعطافة'  : 'حاسم';
+
+      let surfaceMeaning, realMeaning;
+
+      if (i === 0) {
+        surfaceMeaning = obviousRec
+          ? `بدا إن الدليل بيشاور على ${obviousRec.username}. كل التفاصيل خلت اللاعبين يجمعوا حول شخصيته.`
+          : `بدا إن الدليل بيلمح للي عنده تفاصيل غريبة، والساحة لقت نفسها بتنط بين أسامي.`;
+        realMeaning = mafiozoRec
+          ? `لكن الدليل كان مصمم عشان يبعد الشك عن المافيوزو الحقيقي. اللي كان عند ${mafiozoRec.username} من شبهات فضل خفيف وما لفت نظر حد.`
+          : `الدليل كان مصمم عشان يبعد الشك عن المافيوزو الحقيقي.`;
+      } else if (i === 1) {
+        surfaceMeaning = `بدا إن الدليل بيوصل بين أكتر من شخصية، والكل بقا فيه احتمال يبقى متورط.`;
+        realMeaning = mafiozoRec
+          ? `الحقيقة إن الدليل كان شبكة متشابكة، أحد خيوطها كان تفصيلة ${mafiozoRec.username} المريبة، لكنه ما كانش الخيط الواضح.`
+          : `الحقيقة إن الدليل كان شبكة، فيها كل التفاصيل الصغيرة بتلتقي في نقطة واحدة.`;
+      } else {
+        // Twist — vary by whether it triggered the right elimination.
+        const round = votingHistory.find(v => v.round === (i + 1));
+        const caughtMaf = round && round.eliminatedId === mafiozoRec?.playerId;
+        if (caughtMaf) {
+          surfaceMeaning = `الدليل كان قلبة كاملة. تفصيلة صغيرة في تصرف ${mafiozoRec?.username || 'حد منكم'} غيّرت تفسير كل حاجة.`;
+          realMeaning = `هنا الساحة قراها صح، وكشفت الحقيقة في الجولة الأخيرة.`;
+        } else if (mafiozoRec) {
+          surfaceMeaning = `الدليل كان قلبة، بس مش كل اللاعبين قروها صح.`;
+          realMeaning = `كان الخيط اللي يكشف ${mafiozoRec.username}، لكن التصويت اتجه ناحية تانية، والمافيوزو نجا.`;
+        } else {
+          surfaceMeaning = `الدليل كان قلبة في القراءة، لكن السياق ضاع وسط الشك.`;
+          realMeaning = `الانعطافة الحقيقية فضلت في الأرشيف.`;
+        }
+      }
+
+      return { index: i, text, surfaceMeaning, realMeaning, type, typeLabel };
+    });
+  }
+
+  // ----- VOTING TIMELINE --------------------------------------------------
+  _buildVotingTimeline(ctx) {
+    const { votingHistory, obviousRec } = ctx;
+    return votingHistory.map(round => {
+      const elimUsername = round.eliminatedUsername;
+      let summary;
+
+      if (round.reason === 'majority' && round.wasMafiozo) {
+        summary = `الساحة قرأت الخيط صح في الجولة ${round.round} وقبضت على ${elimUsername} اللي طلع المافيوزو.`;
+      } else if (round.reason === 'majority' && !round.wasMafiozo) {
+        summary = `${elimUsername} خرج بأغلبية، لكنه كان بريء. الكشف لسه بعيد.`;
+        if (obviousRec && round.eliminatedId === obviousRec.playerId) {
+          summary += ` التضليل اشتغل بالظبط: المشتبه الواضح اتقبل قبل ما الساحة تشوف الخيط الحقيقي.`;
+        }
+      } else if (round.reason === 'tie') {
+        summary = `الجولة ${round.round} انتهت بتعادل. محدش خرج، والشك فضل موزع.`;
+      } else if (round.reason === 'no-vote') {
+        summary = `الجولة ${round.round} عدّت بدون تصويت حاسم. الجو كان مشوش.`;
+      } else if (round.reason === 'all-skip') {
+        summary = `كل الساحة امتنعت عن التصويت في الجولة ${round.round}. مفيش حد كان متأكد.`;
+      } else {
+        summary = `الجولة ${round.round} انتهت من غير حسم.`;
+      }
+
+      if (round.closedBy === 'all_voted') {
+        summary += ` (كل اللاعبين صوتوا قبل ما الوقت يخلص.)`;
+      } else if (round.closedBy === 'host') {
+        summary += ` (الكبير قفل التصويت بدري.)`;
+      }
+
+      return {
+        round: round.round,
+        votes: round.votes,
+        tally: round.tally,
+        eliminatedId: round.eliminatedId,
+        eliminatedUsername: round.eliminatedUsername,
+        wasMafiozo: round.wasMafiozo,
+        reason: round.reason,
+        closedBy: round.closedBy,
+        summary,
+      };
+    });
+  }
+
+  // ----- DRAMATIC BEATS (variable bullet lines) ---------------------------
+  _buildDramaticBeats(ctx) {
+    const beats = [];
+    const { votingHistory, mafiozoRec, obviousRec, mode, outcome } = ctx;
+
+    if (votingHistory.length > 0) {
+      const firstElim = votingHistory[0]?.eliminatedUsername;
+      if (firstElim) beats.push(`أول صوت طلع ${firstElim} من الساحة.`);
+    }
+
+    if (obviousRec) {
+      const obvElim = votingHistory.find(v => v.eliminatedId === obviousRec.playerId);
+      if (obvElim) beats.push(`الجولة ${obvElim.round} شهدت سقوط المشتبه الواضح. ${obviousRec.username} كان فعلًا بريء.`);
+    }
+
+    const ties = votingHistory.filter(v => v.reason === 'tie').length;
+    if (ties > 0) beats.push(`في ${ties} جولة من الجلسة، الساحة وقعت في تعادل. التردد كان أحد أسلحة المافيوزو.`);
+
+    const noVotes = votingHistory.filter(v => v.reason === 'no-vote' || v.reason === 'all-skip').length;
+    if (noVotes > 0) beats.push(`${noVotes} جولة عدت من غير تصويت حاسم. الساحة كانت مترددة.`);
+
+    if (mode === 'blind') {
+      beats.push(`في طور عمياني، حتى صاحب السر ماكانش يعرف. كل لاعب كان شايف نص الصورة بس.`);
+    }
+
+    if (outcome === 'mafiozo_survives' && mafiozoRec) {
+      const everReceivedVote = votingHistory.some(v => v.tally && v.tally[mafiozoRec.playerId]);
+      if (!everReceivedVote) {
+        beats.push(`الأخطر إن ${mafiozoRec.username} ما اتصوّتش عليه في ولا جولة. اختفاؤه كان مثالي.`);
+      }
+    }
+
+    if (outcome === 'investigators_win' && mafiozoRec) {
+      const round = votingHistory.find(v => v.eliminatedId === mafiozoRec.playerId);
+      if (round && round.closedBy === 'all_voted') {
+        beats.push(`القرار في الجولة الحاسمة كان جماعي. كل الساحة شافت الخيط في نفس اللحظة.`);
+      }
+    }
+
+    return beats;
+  }
+
+  // ----- FINAL PARAGRAPH --------------------------------------------------
+  _buildFinalParagraph(ctx) {
+    const { outcome, mode, mafiozoRec, votingHistory } = ctx;
+
+    if (outcome === 'investigators_win') {
+      const round = mafiozoRec ? votingHistory.find(v => v.eliminatedId === mafiozoRec.playerId)?.round : null;
+      const where = round ? `في الجولة ${round}` : 'في النهاية';
+      return `${where}، الساحة قدرت تكسر صمت المافيوزو وتقرا الخيط الصح. التحقيق كان قريب على الحقيقة من بدري، والصبر دفع تمنه. القضية اتقفلت، والأرشيف اتفك على عدالة.`;
+    }
+    if (outcome === 'mafiozo_survives') {
+      const baseLine = `الأرشيف يقول: ${mafiozoRec?.username || 'حد منكم'} كان المافيوزو الحقيقي، وكسب اللعبة بهدوء.`;
+      if (mode === 'blind') {
+        return `${baseLine} في طور عمياني، الحقيقة كانت متدارية حتى عن أصحابها. مفيش أحد كان ماسك الخيط كامل، والمافيوزو نفسه كان معجب من النتيجة. الجلسة بتكشف دلوقتي الأول مرة كل التفاصيل اللي ما اتقالتش.`;
+      }
+      return `${baseLine} الساحة كانت قريبة من الحقيقة، لكن الخيط الصح ما اتمسكش في الوقت المناسب. النتيجة دلوقتي مكتوبة، والمافيوزو نام مرتاح.`;
+    }
+    return `الجلسة وقفت قبل ما يكتمل المشهد، لكن الأرشيف فضل ساكن. الكبير سلّم المفاتيح للحاضرين.`;
+  }
+
+  // -------------------------------------------------------------------------
   // Broadcast (public, sanitised)
   // -------------------------------------------------------------------------
 
@@ -864,6 +1284,10 @@ class GameManager {
       eliminatedIds: gd?.eliminatedIds || [],
       lastVoteResult: gd?.lastVoteResult || null,
       outcome: gd?.outcome || null,
+      // The full cinematic reveal payload — INCLUDED ONLY DURING FINAL_REVEAL.
+      // Before that, finalReveal is undefined here, so hidden roles never
+      // leak into the broadcast prematurely.
+      finalReveal: gd?.phase === 'FINAL_REVEAL' ? (gd.finalReveal || null) : undefined,
       players: Array.from(lobby.players.values()).map(p => ({
         id: p.id,
         username: p.username,

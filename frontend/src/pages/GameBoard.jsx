@@ -3,6 +3,253 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { socket, setActiveRoomId, getActiveRoomId } from '../services/socket';
 import { getStoredUser } from '../services/api';
 
+// =============================================================================
+// FinalRevealView — cinematic case conclusion
+//
+// Renders the deterministic payload built by the backend's buildFinalReveal().
+// All copy is dynamic per session: real player names, assigned characters,
+// suspicious details, actual voting history, real eliminations, real outcome.
+// No hard-coded "Player X won" lines.
+// =============================================================================
+function FinalRevealView({ data, fallbackOutcome, onNewGame, onBackToLobby }) {
+  // Recovery if the backend hasn't emitted the reveal yet (rare race / refresh).
+  if (!data) {
+    return (
+      <div className="animate-fade-in text-center w-full final-reveal-section">
+        <div className="pulse-animation" style={{ fontSize: '4rem', marginBottom: '1rem' }}>📜</div>
+        <h2 className="cinematic-glow mb-2">جاري فك الأرشيف...</h2>
+        <p className="text-muted mb-6">
+          {fallbackOutcome === 'investigators_win'
+            ? 'انتصر التحقيق. الكشف الكامل جاي بعد لحظة.'
+            : fallbackOutcome === 'mafiozo_survives'
+            ? 'المافيوزو نجا. الحقيقة هتتكشف دلوقتي.'
+            : 'الجلسة انتهت. الأرشيف بيتفك.'}
+        </p>
+        <button className="btn-secondary" onClick={onBackToLobby} style={{ maxWidth: '260px', margin: '0 auto' }}>
+          ارجع للساحة
+        </button>
+      </div>
+    );
+  }
+
+  const tone = data.winnerTone || 'neutral';
+  const accent = tone === 'gold' ? 'var(--accent-gold)' : tone === 'red' ? 'var(--accent-red)' : 'var(--text-main)';
+  const accentBg = tone === 'gold' ? 'rgba(212,175,55,0.12)' : tone === 'red' ? 'rgba(229,9,20,0.12)' : 'rgba(255,255,255,0.04)';
+
+  return (
+    <div className="animate-fade-in" style={{ width: '100%' }}>
+      {/* HERO ---------------------------------------------------------- */}
+      <section className="final-reveal-section text-center" style={{ marginBottom: '2rem' }}>
+        <div className="text-muted" style={{ fontSize: '0.85rem', letterSpacing: '3px' }}>
+          {data.winnerLabel}
+        </div>
+        <h1 className="cinematic-glow" style={{ fontSize: '2.6rem', color: accent, margin: '0.4rem 0 1rem' }}>
+          {data.headline?.title || data.title}
+        </h1>
+        {data.headline?.subtitle && (
+          <p className="text-muted" style={{ fontSize: '1.1rem', maxWidth: '720px', margin: '0 auto', lineHeight: 1.7 }}>
+            {data.headline.subtitle}
+          </p>
+        )}
+      </section>
+
+      {/* CASE RECONSTRUCTION ------------------------------------------- */}
+      <section className="card final-reveal-section" style={{ padding: '1.5rem', marginBottom: '1.25rem', textAlign: 'right' }}>
+        <div className="text-muted" style={{ fontSize: '0.8rem', letterSpacing: '2px' }}>القضية</div>
+        <h2 className="golden-text" style={{ fontSize: '1.6rem', margin: '0.25rem 0 1rem' }}>
+          {data.caseSummary?.title || data.title}
+        </h2>
+        {data.caseSummary?.story && (
+          <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.85, marginBottom: '1rem' }}>{data.caseSummary.story}</p>
+        )}
+        {data.caseSummary?.reconstruction && (
+          <div style={{ borderInlineStart: '3px solid var(--accent-red)', paddingInlineStart: '1rem', whiteSpace: 'pre-wrap', lineHeight: 1.85, color: '#e0e0e0' }}>
+            {data.caseSummary.reconstruction}
+          </div>
+        )}
+        {data.caseSummary?.closingLine && (
+          <p className="golden-text" style={{ marginTop: '1rem', fontStyle: 'italic' }}>{data.caseSummary.closingLine}</p>
+        )}
+      </section>
+
+      {/* TRUTH (mafiozo reveal) --------------------------------------- */}
+      {data.truth && (
+        <section className="card final-reveal-section reveal-truth-card" style={{
+          padding: '1.5rem', marginBottom: '1.25rem', textAlign: 'right',
+          background: accentBg, borderColor: accent,
+        }}>
+          <div className="text-muted" style={{ fontSize: '0.8rem', letterSpacing: '2px' }}>المافيوزو الحقيقي</div>
+          <h3 style={{ fontSize: '1.8rem', color: accent, margin: '0.25rem 0 0.5rem', fontWeight: 800 }}>
+            {data.truth.mafiozoUsername}
+          </h3>
+          <p style={{ fontSize: '1.05rem', marginBottom: '0.6rem' }}>
+            🎭 شخصية <strong>{data.truth.mafiozoCharacterName}</strong> — <span className="text-muted">{data.truth.mafiozoStoryRole}</span>
+          </p>
+          <div className="text-muted mb-2" style={{ fontSize: '0.85rem', letterSpacing: '1.5px' }}>التفصيلة المريبة</div>
+          <p style={{ fontStyle: 'italic', marginBottom: '0.85rem' }}>!!{data.truth.mafiozoSuspiciousDetail}!!</p>
+          <p style={{ lineHeight: 1.85 }}>{data.truth.mafiozoExplanation}</p>
+        </section>
+      )}
+
+      {/* OBVIOUS SUSPECT ---------------------------------------------- */}
+      {data.obviousSuspect && (
+        <section className="card final-reveal-section" style={{ padding: '1.5rem', marginBottom: '1.25rem', textAlign: 'right' }}>
+          <div className="text-muted" style={{ fontSize: '0.8rem', letterSpacing: '2px' }}>المشتبه الواضح</div>
+          <h3 className="golden-text" style={{ fontSize: '1.4rem', margin: '0.25rem 0 0.5rem' }}>
+            {data.obviousSuspect.username}
+          </h3>
+          <p style={{ fontSize: '1rem', marginBottom: '0.6rem' }}>
+            🎭 {data.obviousSuspect.characterName} — <span className="text-muted">{data.obviousSuspect.storyRole}</span>
+          </p>
+          <p className="text-muted" style={{ fontStyle: 'italic', marginBottom: '0.6rem' }}>!!{data.obviousSuspect.suspiciousDetail}!!</p>
+          <p style={{ lineHeight: 1.8 }}>{data.obviousSuspect.explanation}</p>
+        </section>
+      )}
+
+      {/* PLAYER ROSTER ------------------------------------------------ */}
+      {Array.isArray(data.players) && data.players.length > 0 && (
+        <section className="final-reveal-section" style={{ marginBottom: '1.25rem' }}>
+          <h3 className="golden-text mb-2" style={{ fontSize: '1.3rem', textAlign: 'right' }}>اللاعبين والشخصيات</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.8rem' }}>
+            {data.players.map(p => (
+              <div key={p.playerId} className="card" style={{
+                padding: '0.85rem',
+                textAlign: 'right',
+                borderColor: p.gameRole === 'mafiozo' ? 'var(--accent-red)' : p.gameRole === 'obvious_suspect' ? 'var(--accent-gold)' : 'var(--border-subtle)',
+                background: p.gameRole === 'mafiozo' ? 'rgba(229,9,20,0.1)' : p.gameRole === 'obvious_suspect' ? 'rgba(212,175,55,0.08)' : 'rgba(0,0,0,0.4)',
+              }}>
+                <div className="golden-text" style={{ fontSize: '1rem', fontWeight: 700 }}>{p.username}</div>
+                <div style={{ fontSize: '0.95rem', marginTop: '0.3rem' }}>
+                  🎭 {p.characterName} <span className="text-muted">— {p.storyRole}</span>
+                </div>
+                <div className="text-muted" style={{ fontSize: '0.78rem', fontStyle: 'italic', marginTop: '0.4rem' }}>
+                  !!{p.suspiciousDetail}!!
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.6rem', fontSize: '0.85rem' }}>
+                  <span style={{
+                    color: p.gameRole === 'mafiozo' ? 'var(--accent-red)' : p.gameRole === 'obvious_suspect' ? 'var(--accent-gold)' : 'var(--text-muted)',
+                    fontWeight: 700,
+                  }}>
+                    {p.roleLabelArabic || '—'}
+                  </span>
+                  <span className="text-muted">
+                    {p.survived
+                      ? '✓ نجا'
+                      : `✕ خرج في الجولة ${p.eliminatedRound || '?'}`}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* CLUE ANALYSIS ------------------------------------------------ */}
+      {Array.isArray(data.clues) && data.clues.length > 0 && (
+        <section className="final-reveal-section" style={{ marginBottom: '1.25rem' }}>
+          <h3 className="golden-text mb-2" style={{ fontSize: '1.3rem', textAlign: 'right' }}>قراءة الأدلة</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.85rem' }}>
+            {data.clues.map(c => (
+              <div key={c.index} className="card" style={{ padding: '1rem', textAlign: 'right' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <span className="golden-text" style={{ fontWeight: 700 }}>الدليل {c.index + 1}</span>
+                  <span className="text-muted" style={{ fontSize: '0.8rem', letterSpacing: '1.5px' }}>{c.typeLabel}</span>
+                </div>
+                <p className="cinematic-glow" style={{ fontSize: '1rem', marginBottom: '0.8rem', lineHeight: 1.7 }}>"{c.text}"</p>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <div className="text-muted" style={{ fontSize: '0.78rem', letterSpacing: '1.5px' }}>اللي شافتوه الساحة</div>
+                  <p style={{ fontSize: '0.92rem', lineHeight: 1.7 }}>{c.surfaceMeaning}</p>
+                </div>
+                <div>
+                  <div className="text-muted" style={{ fontSize: '0.78rem', letterSpacing: '1.5px' }}>الحقيقة</div>
+                  <p style={{ fontSize: '0.92rem', lineHeight: 1.7, color: '#e8e8e8' }}>{c.realMeaning}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* VOTING TIMELINE ---------------------------------------------- */}
+      {Array.isArray(data.votingTimeline) && data.votingTimeline.length > 0 && (
+        <section className="final-reveal-section" style={{ marginBottom: '1.25rem' }}>
+          <h3 className="golden-text mb-2" style={{ fontSize: '1.3rem', textAlign: 'right' }}>سجل التصويت</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
+            {data.votingTimeline.map(r => (
+              <div key={r.round} className="card" style={{
+                padding: '0.85rem 1rem',
+                textAlign: 'right',
+                borderInlineStart: `4px solid ${r.wasMafiozo ? 'var(--accent-gold)' : r.eliminatedId ? 'var(--accent-red)' : 'var(--border-subtle)'}`,
+              }}>
+                <div className="golden-text" style={{ fontSize: '0.95rem', fontWeight: 700 }}>الجولة {r.round}</div>
+                <p style={{ fontSize: '0.95rem', lineHeight: 1.7, marginTop: '0.35rem' }}>{r.summary}</p>
+                {r.tally && Object.keys(r.tally).length > 0 && (
+                  <div className="text-muted" style={{ fontSize: '0.78rem', marginTop: '0.4rem' }}>
+                    {Object.entries(r.tally)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([k, v]) => `${k === 'skip' ? 'امتناع' : k} (${v})`)
+                      .join(' · ')}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* DRAMATIC BEATS ----------------------------------------------- */}
+      {Array.isArray(data.dramaticBeats) && data.dramaticBeats.length > 0 && (
+        <section className="final-reveal-section" style={{ marginBottom: '1.25rem' }}>
+          <h3 className="golden-text mb-2" style={{ fontSize: '1.3rem', textAlign: 'right' }}>لحظات حاسمة</h3>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            {data.dramaticBeats.map((beat, i) => (
+              <li key={i} className="card" style={{ padding: '0.6rem 0.9rem', textAlign: 'right', fontSize: '0.95rem', lineHeight: 1.7 }}>
+                <span className="golden-text" style={{ marginInlineEnd: '0.4rem' }}>◆</span>{beat}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* BLIND-MODE CODA ---------------------------------------------- */}
+      {data.roleRevealMode === 'blind' && (
+        <section className="card final-reveal-section" style={{
+          padding: '1.25rem', marginBottom: '1.25rem', textAlign: 'right',
+          background: 'rgba(229,9,20,0.08)', borderColor: 'rgba(229,9,20,0.4)',
+        }}>
+          <div className="text-muted" style={{ fontSize: '0.8rem', letterSpacing: '2px' }}>طور عمياني</div>
+          <p style={{ fontSize: '1rem', lineHeight: 1.85, margin: '0.4rem 0 0' }}>
+            اللعبة كانت عمياني، والحقيقة كانت متدارية حتى عن أصحابها. كل لاعب كان شايف تفصيلته المريبة، لكن محدش كان ماسك الصورة كاملة.
+          </p>
+        </section>
+      )}
+
+      {/* FINAL PARAGRAPH ---------------------------------------------- */}
+      {data.finalParagraph && (
+        <section className="card final-reveal-section" style={{
+          padding: '1.5rem', marginBottom: '1.5rem', textAlign: 'right',
+          background: 'rgba(0,0,0,0.5)',
+          borderColor: accent,
+        }}>
+          <p className="cinematic-glow" style={{ fontSize: '1.1rem', lineHeight: 2, margin: 0 }}>
+            {data.finalParagraph}
+          </p>
+        </section>
+      )}
+
+      {/* CTAS --------------------------------------------------------- */}
+      <div className="text-center" style={{ display: 'flex', gap: '0.8rem', justifyContent: 'center', flexWrap: 'wrap', marginTop: '0.5rem' }}>
+        <button className="btn-primary" onClick={onNewGame} style={{ minWidth: '220px' }}>
+          {data.ctas?.newGame || 'ابدأ جلسة جديدة'} 🎬
+        </button>
+        <button className="btn-secondary" onClick={onBackToLobby} style={{ minWidth: '180px' }}>
+          {data.ctas?.backToLobby || 'ارجع للساحة'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * GameBoard — the live arena. Survives:
  *   - direct navigation (/game/:roomId from a deep link)
@@ -43,6 +290,7 @@ export default function GameBoard() {
   const [totalClues, setTotalClues] = useState(3);
   const [hostError, setHostError] = useState('');     // Arabic error from rejected host action
   const [sessionEnded, setSessionEnded] = useState(false);
+  const [finalReveal, setFinalReveal] = useState(null);
 
   // Reset per-round transient state when we enter a new VOTING round.
   useEffect(() => {
@@ -84,6 +332,7 @@ export default function GameBoard() {
       if (Array.isArray(data.eliminatedIds)) setEliminatedIds(data.eliminatedIds);
       if (data.lastVoteResult) setVoteResult(data.lastVoteResult);
       if (data.outcome !== undefined) setOutcome(data.outcome);
+      if (data.finalReveal !== undefined) setFinalReveal(data.finalReveal || null);
       setAmIHost(data.hostId === user?.id);
     };
     const onTimer = (time) => setTimer(time);
@@ -345,6 +594,20 @@ export default function GameBoard() {
     );
   }
 
+  // ----- FINAL_REVEAL / POST_GAME (full-width cinematic reveal) -----------
+  if (gameState === 'FINAL_REVEAL' || gameState === 'POST_GAME') {
+    return (
+      <div className="container mt-2 animate-fade-in" style={{ maxWidth: '1100px' }}>
+        <FinalRevealView
+          data={finalReveal}
+          fallbackOutcome={outcome}
+          onNewGame={() => { setFinalReveal(null); navigate('/lobby'); }}
+          onBackToLobby={() => navigate('/lobby')}
+        />
+      </div>
+    );
+  }
+
   // ----- main arena (CLUE_REVEAL / VOTING / POST_GAME / legacy ARCHIVE_LOCKED)
   return (
     <div className="container mt-2 animate-fade-in" style={{ maxWidth: '1400px' }}>
@@ -523,28 +786,6 @@ export default function GameBoard() {
             );
           })()}
 
-          {(gameState === 'POST_GAME' || gameState === 'FINAL_REVEAL') && (
-            <div className="animate-fade-in text-center w-full">
-              {/* Commit 4 will replace this with the cinematic crime reconstruction. */}
-              <h1 className="cinematic-glow mb-3" style={{ fontSize: '2.5rem' }}>
-                {outcome === 'investigators_win'
-                  ? 'انتصر التحقيق!'
-                  : outcome === 'mafiozo_survives'
-                  ? 'المافيوزو نجا...'
-                  : 'انتهت التحقيقات'}
-              </h1>
-              <p className="text-muted mb-6">{
-                outcome === 'investigators_win'
-                  ? 'القبض على المافيوزو قبل ما يكمل خطته. المحققين كسبوا.'
-                  : outcome === 'mafiozo_survives'
-                  ? 'الأرشيف اتفك. الحقيقة هتظهر بعد ثواني.'
-                  : 'انتهت الجلسة.'
-              }</p>
-              <button className="btn-primary" onClick={() => navigate('/lobby')} style={{ maxWidth: '300px', margin: '0 auto' }}>
-                ارجع للساحة
-              </button>
-            </div>
-          )}
         </div>
 
         <div className="flex flex-col gap-6" style={{ flex: '1 1 30%', minWidth: '350px' }}>
