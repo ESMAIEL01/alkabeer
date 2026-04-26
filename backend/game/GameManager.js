@@ -185,7 +185,15 @@ class GameManager {
         const { roomId } = data || {};
         const lobby = this.lobbies.get(roomId);
         if (lobby && this.isAuthorizedHost(socket, lobby)) {
-          this.io.to(roomId).emit('game_started', { id: roomId });
+          // Broadcast to OTHER sockets in the room. The sender (host) is
+          // already navigating manually — to /host-dashboard for HUMAN mode
+          // (where they craft the archive) or to /game/<roomId> for AI mode
+          // (where they finalized seconds ago). If we echoed `game_started`
+          // back to the host, the LobbyPage listener would race the manual
+          // navigate() and bounce a HUMAN host away from /host-dashboard
+          // before they can write the archive — visible only on localhost
+          // because the round-trip is sub-millisecond there.
+          socket.to(roomId).emit('game_started', { id: roomId });
         }
       });
 
