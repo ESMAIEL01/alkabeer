@@ -75,30 +75,58 @@ class GameManager {
                 }
             });
 
-            // For Human host finalizing custom architecture
-            socket.on('finalize_archive', (data) => {
-                const { archive, raw, clues } = data;
-                const roomId = socket.currentRoom;
-                if(!roomId) return;
-                
-                const lobby = this.lobbies.get(roomId);
-                if(lobby && (lobby.hostId === socket.userId || (lobby.mode === 'AI' && lobby.creatorId === socket.userId))) {
-                    lobby.state = 'IN_GAME';
-                    lobby.gameData = {
-                        archiveBase64: archive,
-                        rawScenario: raw,
-                        clues: clues || ["دليل 1...", "دليل 2...", "دليل 3..."],
-                        clueIndex: 0,
-                        phase: 'ARCHIVE_LOCKED',
-                        timer: 15, // give 15s lock time before clue 1
-                        interval: null,
-                        isPaused: false,
-                        votes: {}
-                    };
-                    
-                    this.broadcastFullState(roomId);
-                    this.startRoomTimer(roomId);
+            // For Human host finalizing custom architecture.
+            // The optional `ack` callback (Socket.IO acknowledgement) lets the
+            // client wait for confirmation before navigating to /game/:roomId.
+            //
+            // Old clients that emit without a callback keep working.
+            socket.on('finalize_archive', (data, ack) => {
+                const safeAck = typeof ack === 'function' ? ack : () => {};
+                const { archive, raw, clues, roomId: bodyRoomId } = data || {};
+                // Prefer the room id explicitly sent by the client. Fall back
+                // to the legacy server-side socket.currentRoom for old clients.
+                const roomId = bodyRoomId || socket.currentRoom;
+
+                if (!roomId) {
+                    return safeAck({ success: false, error: 'الغرفة غير محددة. ابدأ من الساحة من جديد.' });
                 }
+                const lobby = this.lobbies.get(roomId);
+                if (!lobby) {
+                    return safeAck({ success: false, error: 'الغرفة مش موجودة. ممكن تكون اتقفلت.' });
+                }
+                const isAuthorized =
+                    lobby.hostId === socket.userId ||
+                    (lobby.mode === 'AI' && lobby.creatorId === socket.userId);
+                if (!isAuthorized) {
+                    return safeAck({ success: false, error: 'مش مسموح لك تختم الأرشيف للغرفة دي.' });
+                }
+                if (!archive || !raw) {
+                    return safeAck({ success: false, error: 'الأرشيف ناقص. ولّد السيناريو الأول.' });
+                }
+
+                lobby.state = 'IN_GAME';
+                lobby.gameData = {
+                    archiveBase64: archive,
+                    rawScenario: raw,
+                    clues: Array.isArray(clues) && clues.length === 3
+                        ? clues
+                        : ['دليل 1...', 'دليل 2...', 'دليل 3...'],
+                    clueIndex: 0,
+                    phase: 'ARCHIVE_LOCKED',
+                    timer: 15,
+                    interval: null,
+                    isPaused: false,
+                    votes: {},
+                };
+
+                // Make sure socket.currentRoom is bound so subsequent events
+                // (host_control, force_phase, etc.) resolve the room.
+                socket.currentRoom = roomId;
+
+                this.broadcastFullState(roomId);
+                this.startRoomTimer(roomId);
+
+                return safeAck({ success: true, roomId, phase: 'ARCHIVE_LOCKED' });
             });
             
             // For voting

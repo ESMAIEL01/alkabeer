@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
-import { socket, connectSocket } from '../services/socket';
+import { socket, connectSocket, setActiveRoomId, clearActiveRoomId, emitWithAck } from '../services/socket';
 import { api, getToken, getStoredUser, clearSession } from '../services/api';
 
 export default function LobbyPage() {
@@ -28,16 +28,24 @@ export default function LobbyPage() {
     }
     setUser(u);
     connectSocket(token, u);
+    // Wipe any stale active-room from a previous session — entering the
+    // lobby is the only place where it's safe to forget the room.
+    clearActiveRoomId();
 
     socket.on('room_update', (data) => {
       setActiveRoom(data.id);
+      setActiveRoomId(data.id);                 // persist for HostDashboard / GameBoard
       setPlayers(data.players);
       setRoomMode(data.mode);
       setCreatorId(data.creatorId);
     });
 
     socket.on('game_started', (data) => {
-      navigate(`/game/${data?.id || activeRoom}`);
+      const roomId = data?.id || activeRoom;
+      if (roomId) {
+        setActiveRoomId(roomId);
+        navigate(`/game/${roomId}`);
+      }
     });
 
     if (roomIdFromUrl && !activeRoom) {
@@ -52,8 +60,9 @@ export default function LobbyPage() {
 
   const handleCreateRoom = (mode = 'HUMAN') => {
     socket.emit('create_room', { mode }, (response) => {
-      if (response.success) {
+      if (response && response.success) {
         setActiveRoom(response.roomId);
+        setActiveRoomId(response.roomId);       // persist
         window.history.replaceState(null, '', '/lobby');
       } else {
         setError('فشل في إنشاء الغرفة السريّة.');
@@ -64,19 +73,25 @@ export default function LobbyPage() {
   const handleJoinRoom = (code) => {
     const joinCode = code || roomCode;
     if (!joinCode) return;
-    
+
     socket.emit('join_room', { roomId: joinCode }, (response) => {
-      if (response.success) {
+      if (response && response.success) {
         setActiveRoom(response.roomId);
+        setActiveRoomId(response.roomId);       // persist
       } else {
-        setError(response.message || 'الغرفة غير موجودة أو تم قفلها.');
+        setError((response && response.message) || 'الغرفة غير موجودة أو تم قفلها.');
       }
     });
   };
 
   const handleStartGame = async () => {
     if (roomMode === 'AI') {
+      if (!activeRoom) {
+        setError('الغرفة مش جاهزة لسه. دقيقة وحاول تاني.');
+        return;
+      }
       setAiLoading(true);
+      setError('');
       try {
         const data = await api.post('/api/scenarios/ai-generate', {
           idea: 'جريمة عشوائية مشوقة',
@@ -84,22 +99,45 @@ export default function LobbyPage() {
           mood: 'مكس',
           difficulty: 'متوسط',
         });
-        // Backend now seals the archive itself (UTF-8 safe Base64).
-        socket.emit('finalize_archive', {
+        if (!data || !data.archive_b64 || !data.scenario) {
+          throw new Error('الأرشيف رجع ناقص. حاول تاني.');
+        }
+        if (data.source === 'fallback' && data.note) {
+          // Soft warning: fallback scenario is still playable.
+          console.warn('[ai] fallback scenario:', data.note);
+        }
+
+        // Server-confirmed finalize. Navigate only after success.
+        const ack = await emitWithAck('finalize_archive', {
+          roomId: activeRoom,
           archive: data.archive_b64,
           raw: data.scenario,
           clues: data.clues,
-        });
-        socket.emit('start_game_setup', { roomId: activeRoom });
-        if (data.source === 'fallback' && data.note) {
-          setError(data.note);
+        }, 8_000);
+
+        if (!ack || !ack.success) {
+          throw new Error((ack && ack.error) || 'تعذّر ختم الأرشيف.');
         }
-      } catch(err) {
+
+        setActiveRoomId(ack.roomId || activeRoom);
+        // Notify other players the game is starting (best-effort, server will
+        // also emit full_state_update which everyone in the room receives).
+        socket.emit('start_game_setup', { roomId: ack.roomId || activeRoom });
+        navigate(`/game/${ack.roomId || activeRoom}`);
+      } catch (err) {
         setError(err.message || 'فشل في الذكاء الاصطناعي');
       } finally {
         setAiLoading(false);
       }
     } else {
+      // Human host: persist room id and route to the dashboard for manual
+      // archive crafting. Navigation to /game/:roomId happens from there
+      // after the host clicks "ختم الأرشيف وبدء اللعبة".
+      if (!activeRoom) {
+        setError('الغرفة مش جاهزة لسه.');
+        return;
+      }
+      setActiveRoomId(activeRoom);
       socket.emit('start_game_setup', { roomId: activeRoom });
       navigate('/host-dashboard');
     }
