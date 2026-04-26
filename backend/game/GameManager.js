@@ -312,30 +312,179 @@ class GameManager {
         }
       });
 
-      socket.on('host_control', (data) => {
+      // Host-controlled phase actions. Named, phase-aware, and ALWAYS gated
+      // server-side. Old clients that emit without an ack still work; the new
+      // frontend uses the ack to surface success / Arabic error.
+      socket.on('host_control', (data, ack) => {
+        const safeAck = typeof ack === 'function' ? ack : () => {};
         const { action, roomId } = data || {};
         const lobby = this.lobbies.get(roomId);
-        if (lobby && this.isAuthorizedHost(socket, lobby) && lobby.gameData) {
-          if (action === 'pause')        lobby.gameData.isPaused = true;
-          else if (action === 'resume')  lobby.gameData.isPaused = false;
-          else if (action === 'extend')  lobby.gameData.timer += 30;
-          else if (action === 'skip')    lobby.gameData.timer = 0;
+        if (!lobby) {
+          return safeAck({ success: false, error: 'الغرفة مش موجودة.' });
+        }
+        if (!this.isAuthorizedHost(socket, lobby)) {
+          // Tell THIS client only — don't broadcast the rejection.
+          socket.emit('host_action_rejected', {
+            action,
+            reason: 'not_host',
+            message: 'مش مسموح بالعملية دي إلا للمضيف.',
+          });
+          return safeAck({ success: false, error: 'مش مسموح بالعملية دي إلا للمضيف.' });
+        }
 
-          this.io.to(roomId).emit('timer_update', lobby.gameData.timer);
+        // `end_session` doesn't need active gameData.
+        if (action === 'end_session') {
+          this.stopRoomTimer(lobby);
+          this.io.to(roomId).emit('session_ended', { reason: 'host_ended' });
+          this.lobbies.delete(roomId);
+          return safeAck({ success: true });
+        }
+
+        if (!lobby.gameData) {
+          return safeAck({ success: false, error: 'اللعبة لسه ما بدتش.' });
+        }
+        const phase = lobby.gameData.phase;
+
+        switch (action) {
+          // -- timer-only actions, valid in any active phase ----------------
+          case 'pause':
+            lobby.gameData.isPaused = true;
+            this.io.to(roomId).emit('timer_update', lobby.gameData.timer);
+            return safeAck({ success: true, phase });
+
+          case 'resume':
+            lobby.gameData.isPaused = false;
+            this.io.to(roomId).emit('timer_update', lobby.gameData.timer);
+            return safeAck({ success: true, phase });
+
+          case 'extend_timer':
+          case 'extend': // legacy alias
+            lobby.gameData.timer += 30;
+            this.io.to(roomId).emit('timer_update', lobby.gameData.timer);
+            return safeAck({ success: true, phase });
+
+          // -- phase advancement actions, each phase-checked ----------------
+          case 'start_first_clue':
+            if (phase === 'ROLE_REVEAL' || phase === 'PUBLIC_CHARACTER_OVERVIEW') {
+              this.stopRoomTimer(lobby);
+              this.enterPhase(lobby, 'CLUE_REVEAL', 45);
+              this.startRoomTimer(roomId);
+              return safeAck({ success: true, phase: 'CLUE_REVEAL' });
+            }
+            return safeAck({ success: false, error: 'ما ينفعش تبدأ الدليل دلوقتي.' });
+
+          case 'skip_public_overview':
+            if (phase === 'PUBLIC_CHARACTER_OVERVIEW') {
+              this.stopRoomTimer(lobby);
+              this.enterPhase(lobby, 'CLUE_REVEAL', 45);
+              this.startRoomTimer(roomId);
+              return safeAck({ success: true, phase: 'CLUE_REVEAL' });
+            }
+            return safeAck({ success: false, error: 'مش في طور الاستعراض دلوقتي.' });
+
+          case 'start_voting_now':
+          case 'end_discussion_now':
+            if (phase === 'CLUE_REVEAL') {
+              this.stopRoomTimer(lobby);
+              this.enterPhase(lobby, 'VOTING', 30);
+              this.startRoomTimer(roomId);
+              return safeAck({ success: true, phase: 'VOTING' });
+            }
+            return safeAck({ success: false, error: 'مش في طور المناقشة دلوقتي.' });
+
+          case 'close_voting_now':
+            if (phase === 'VOTING') {
+              this.closeVoting(roomId, 'host');
+              return safeAck({ success: true });
+            }
+            return safeAck({ success: false, error: 'مفيش تصويت مفتوح حاليًا.' });
+
+          case 'continue_next_round':
+          case 'reveal_next_clue': {
+            if (phase !== 'VOTE_RESULT' || lobby.gameData.outcome) {
+              return safeAck({ success: false, error: 'مش الوقت المناسب لتقديم دليل جديد.' });
+            }
+            this.stopRoomTimer(lobby);
+            lobby.gameData.clueIndex += 1;
+            if (lobby.gameData.clueIndex >= lobby.gameData.clues.length) {
+              // Should normally have been ended by closeVoting; safety net.
+              lobby.gameData.outcome = lobby.gameData.outcome || 'mafiozo_survives';
+              this.enterPhase(lobby, 'FINAL_REVEAL', 0);
+              return safeAck({ success: true, phase: 'FINAL_REVEAL' });
+            }
+            this.enterPhase(lobby, 'CLUE_REVEAL', 45);
+            this.startRoomTimer(roomId);
+            return safeAck({ success: true, phase: 'CLUE_REVEAL' });
+          }
+
+          case 'trigger_final_reveal': {
+            if (phase === 'FINAL_REVEAL') {
+              return safeAck({ success: false, error: 'الكشف النهائي شغّال بالفعل.' });
+            }
+            // Decide outcome from current state. If mafiozo was eliminated,
+            // investigators win. Otherwise, mafiozo survives.
+            const mafiozoRec = Object.values(lobby.gameData.roleAssignments || {})
+              .find(r => r.gameRole === 'mafiozo');
+            lobby.gameData.outcome = (mafiozoRec && !mafiozoRec.isAlive)
+              ? 'investigators_win'
+              : 'mafiozo_survives';
+            this.stopRoomTimer(lobby);
+            this.enterPhase(lobby, 'FINAL_REVEAL', 0);
+            return safeAck({ success: true, phase: 'FINAL_REVEAL' });
+          }
+
+          // -- legacy aliases kept so old clients keep working --------------
+          case 'skip':
+            // Old "skip" used to zero the timer. Map to safe phase advance
+            // depending on current phase.
+            if (phase === 'CLUE_REVEAL') {
+              this.stopRoomTimer(lobby);
+              this.enterPhase(lobby, 'VOTING', 30);
+              this.startRoomTimer(roomId);
+              return safeAck({ success: true, phase: 'VOTING' });
+            }
+            if (phase === 'VOTING') {
+              this.closeVoting(roomId, 'host');
+              return safeAck({ success: true });
+            }
+            // Fall through: treat as a small timer nudge.
+            lobby.gameData.timer = Math.max(0, lobby.gameData.timer - 5);
+            this.io.to(roomId).emit('timer_update', lobby.gameData.timer);
+            return safeAck({ success: true, phase });
+
+          default:
+            return safeAck({ success: false, error: 'العملية مش معروفة.' });
         }
       });
 
+      // Legacy `force_phase` is kept for backwards-compat with deployed clients
+      // but routes through the same named-action handler so the safety rules
+      // (auth, phase validity, timer cleanup, no double transitions) all apply.
       socket.on('force_phase', (data) => {
         const { phase, roomId } = data || {};
         const lobby = this.lobbies.get(roomId);
-        if (lobby && this.isAuthorizedHost(socket, lobby) && lobby.gameData) {
-          lobby.gameData.phase = phase;
-          lobby.gameData.timer = 60;
-          if (phase === 'CLUE_REVEAL' && lobby.gameData.clueIndex < 2) {
-            lobby.gameData.clueIndex++;
-          }
-          this.broadcastFullState(roomId);
+        if (!lobby || !this.isAuthorizedHost(socket, lobby) || !lobby.gameData) return;
+        const cur = lobby.gameData.phase;
+        // Map legacy intent to a safe named action.
+        if (phase === 'VOTING' && cur === 'CLUE_REVEAL') {
+          this.stopRoomTimer(lobby);
+          this.enterPhase(lobby, 'VOTING', 30);
+          this.startRoomTimer(roomId);
+          return;
         }
+        if (phase === 'CLUE_REVEAL' && cur === 'VOTE_RESULT' && !lobby.gameData.outcome) {
+          this.stopRoomTimer(lobby);
+          lobby.gameData.clueIndex += 1;
+          if (lobby.gameData.clueIndex >= lobby.gameData.clues.length) {
+            lobby.gameData.outcome = lobby.gameData.outcome || 'mafiozo_survives';
+            this.enterPhase(lobby, 'FINAL_REVEAL', 0);
+          } else {
+            this.enterPhase(lobby, 'CLUE_REVEAL', 45);
+            this.startRoomTimer(roomId);
+          }
+          return;
+        }
+        // Anything else: ignore. We refuse to allow arbitrary phase jumps now.
       });
     });
   }

@@ -41,6 +41,8 @@ export default function GameBoard() {
   const [outcome, setOutcome] = useState(null);
   const [clueIndex, setClueIndex] = useState(0);
   const [totalClues, setTotalClues] = useState(3);
+  const [hostError, setHostError] = useState('');     // Arabic error from rejected host action
+  const [sessionEnded, setSessionEnded] = useState(false);
 
   // Reset per-round transient state when we enter a new VOTING round.
   useEffect(() => {
@@ -103,6 +105,11 @@ export default function GameBoard() {
     };
     const onVoteResult = (data) => setVoteResult(data || null);
     const onYourRoleCard = (card) => setRoleCard(card || null);
+    const onHostActionRejected = (data) => {
+      setHostError((data && data.message) || 'العملية رفضت.');
+      setTimeout(() => setHostError(''), 3500);
+    };
+    const onSessionEnded = () => setSessionEnded(true);
 
     socket.on('full_state_update', onFullState);
     socket.on('timer_update', onTimer);
@@ -114,6 +121,8 @@ export default function GameBoard() {
     socket.on('voting_progress', onVotingProgress);
     socket.on('vote_result', onVoteResult);
     socket.on('your_role_card', onYourRoleCard);
+    socket.on('host_action_rejected', onHostActionRejected);
+    socket.on('session_ended', onSessionEnded);
 
     const recoveryTimer = setTimeout(() => {
       if (!stateReceivedRef.current) setGameState('NOT_FOUND');
@@ -131,13 +140,42 @@ export default function GameBoard() {
       socket.off('voting_progress', onVotingProgress);
       socket.off('vote_result', onVoteResult);
       socket.off('your_role_card', onYourRoleCard);
+      socket.off('host_action_rejected', onHostActionRejected);
+      socket.off('session_ended', onSessionEnded);
     };
   }, [roomId, user?.id]);
 
-  const handleHostAction = (action) => socket.emit('host_control', { action, roomId });
+  // Named host action — server may ack with `{ success: false, error: '<arabic>' }`.
+  const handleHostAction = (action) => {
+    setHostError('');
+    socket.emit('host_control', { action, roomId }, (resp) => {
+      if (resp && resp.success === false && resp.error) {
+        setHostError(resp.error);
+        setTimeout(() => setHostError(''), 3500);
+      }
+    });
+  };
+  const confirmEndSession = () => {
+    if (window.confirm('متأكد إنك عايز تنهي الجلسة دلوقتي؟')) {
+      handleHostAction('end_session');
+    }
+  };
   const handleVote = (targetId) => socket.emit('submit_vote', { roomId, targetId });
 
   // ----- recovery / loading ----------------------------------------------
+  if (sessionEnded) {
+    return (
+      <div className="container animate-fade-in" style={{ alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <div className="card text-center max-w-md mx-auto" style={{ padding: '2.5rem' }}>
+          <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🚪</div>
+          <h2 className="cinematic-glow mb-3">المضيف أنهى الجلسة</h2>
+          <p className="text-muted mb-6">يلا نبدأ غرفة جديدة؟</p>
+          <button className="btn-primary" onClick={() => navigate('/lobby')}>ارجع للساحة</button>
+        </div>
+      </div>
+    );
+  }
+
   if (gameState === 'NOT_FOUND') {
     return (
       <div className="container animate-fade-in" style={{ alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
@@ -200,6 +238,17 @@ export default function GameBoard() {
             <p className="text-muted text-center mt-4" style={{ fontSize: '0.85rem' }}>
               المرحلة الجاية: عرض عام للشخصيات على كل اللاعبين، وبعدها أول دليل.
             </p>
+            <div className="flex justify-center gap-3 mt-4" style={{ flexWrap: 'wrap' }}>
+              <button className="btn-primary" onClick={() => handleHostAction('start_first_clue')} style={{ width: 'auto', flex: '1 1 200px' }}>
+                ابدأ الجولة الأولى ⏭️
+              </button>
+              <button className="btn-secondary" onClick={confirmEndSession} style={{ width: 'auto', flex: '0 1 140px' }}>
+                إنهاء الجلسة
+              </button>
+            </div>
+            {hostError && (
+              <div className="mt-3 p-2 rounded text-center" style={{ background: 'rgba(229,9,20,0.18)', border: '1px solid var(--accent-red)' }}>⚠️ {hostError}</div>
+            )}
           </div>
         ) : !roleCard ? (
           // ---- Player view, card not yet received -----------------------
@@ -282,6 +331,16 @@ export default function GameBoard() {
             </div>
           ))}
         </div>
+        {amIHost && (
+          <div className="text-center mt-5">
+            <button className="btn-primary" onClick={() => handleHostAction('skip_public_overview')} style={{ maxWidth: '320px', margin: '0 auto' }}>
+              ابدأ الدليل الأول دلوقتي ⏭️
+            </button>
+            {hostError && (
+              <div className="mt-3 p-2 rounded mx-auto" style={{ background: 'rgba(229,9,20,0.18)', border: '1px solid var(--accent-red)', maxWidth: '420px' }}>⚠️ {hostError}</div>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -491,14 +550,48 @@ export default function GameBoard() {
         <div className="flex flex-col gap-6" style={{ flex: '1 1 30%', minWidth: '350px' }}>
           {amIHost && (
             <div className="card p-4" style={{ background: 'rgba(20, 0, 0, 0.4)', border: '1px solid rgba(229, 9, 20, 0.3)' }}>
-              <h4 className="golden-text mb-4"><span>🕹️</span> لوحة تحكم الكبير (المضيف فقط)</h4>
-              <div className="grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.8rem' }}>
-                <button className="btn-secondary" onClick={() => handleHostAction('pause')}>إيقاف ⏸️</button>
-                <button className="btn-secondary" onClick={() => handleHostAction('resume')}>استكمال ▶️</button>
-                <button className="btn-secondary" onClick={() => handleHostAction('extend')}>+30 ثانية ⏳</button>
-                <button className="btn-secondary" onClick={() => handleHostAction('skip')}>انهاء النقاش ⏭️</button>
-                <button className="btn-secondary" onClick={() => socket.emit('force_phase', { phase: 'CLUE_REVEAL', roomId })} style={{ gridColumn: 'span 2' }}>فرض الدليل</button>
-                <button className="btn-primary" onClick={() => socket.emit('force_phase', { phase: 'VOTING', roomId })} style={{ gridColumn: 'span 2' }}>فرض التصويت</button>
+              <h4 className="golden-text mb-3"><span>🕹️</span> لوحة تحكم الكبير</h4>
+
+              {hostError && (
+                <div className="mb-3 p-2 rounded text-center" style={{ background: 'rgba(229,9,20,0.18)', border: '1px solid var(--accent-red)', fontSize: '0.9rem' }}>
+                  ⚠️ {hostError}
+                </div>
+              )}
+
+              {/* Always-available timer controls (active phases only) */}
+              {(gameState === 'CLUE_REVEAL' || gameState === 'VOTING' || gameState === 'VOTE_RESULT' || gameState === 'PUBLIC_CHARACTER_OVERVIEW' || gameState === 'ROLE_REVEAL') && (
+                <div className="grid mb-3" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                  <button className="btn-secondary" onClick={() => handleHostAction('pause')}>إيقاف ⏸️</button>
+                  <button className="btn-secondary" onClick={() => handleHostAction('resume')}>استكمال ▶️</button>
+                  <button className="btn-secondary" onClick={() => handleHostAction('extend_timer')} style={{ gridColumn: 'span 2' }}>+30 ثانية ⏳</button>
+                </div>
+              )}
+
+              {/* Phase-aware advance actions */}
+              {gameState === 'CLUE_REVEAL' && (
+                <button className="btn-primary" onClick={() => handleHostAction('start_voting_now')}>
+                  ابدأ التصويت دلوقتي 🔔
+                </button>
+              )}
+              {gameState === 'VOTING' && (
+                <button className="btn-primary" onClick={() => handleHostAction('close_voting_now')}>
+                  اقفل التصويت دلوقتي 🛑
+                </button>
+              )}
+              {gameState === 'VOTE_RESULT' && !outcome && (
+                <button className="btn-primary" onClick={() => handleHostAction('continue_next_round')}>
+                  الجولة الجاية ⏭️
+                </button>
+              )}
+
+              {/* Emergency / session controls (always available to host) */}
+              <div className="mt-3 grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+                <button className="btn-secondary" onClick={() => handleHostAction('trigger_final_reveal')} style={{ borderColor: 'rgba(212,175,55,0.5)' }}>
+                  اعرض الكشف النهائي 🎬
+                </button>
+                <button className="btn-secondary" onClick={confirmEndSession} style={{ borderColor: 'var(--accent-red)', color: 'var(--accent-red)' }}>
+                  إنهاء الجلسة 🚪
+                </button>
               </div>
             </div>
           )}
