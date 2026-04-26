@@ -44,18 +44,22 @@ function withTimeout(promise, ms, label) {
  * Call Gemini and return raw text. Caller parses.
  *
  * @param {object} opts
- * @param {string} opts.modelName     - Model id (e.g. "gemini-2.5-pro")
- * @param {string} opts.userPrompt    - The user message
- * @param {boolean} opts.json         - Request JSON-only response
- * @param {number} opts.temperature   - Sampling temp (default 0.85)
+ * @param {string} opts.modelName        - Model id (e.g. "gemini-2.5-pro")
+ * @param {string} opts.userPrompt       - The user message
+ * @param {boolean} [opts.json]          - Request JSON-only response
+ * @param {number} [opts.temperature]    - Sampling temp (default 0.85)
+ * @param {number} [opts.maxOutputTokens] - Per-call ceiling. For 2.5 thinking
+ *   models this covers BOTH internal reasoning AND visible output — set
+ *   generously for archive calls to avoid finishReason: MAX_TOKENS.
  */
-async function callGemini({ modelName, userPrompt, json = false, temperature = 0.85 }) {
+async function callGemini({ modelName, userPrompt, json = false, temperature = 0.85, maxOutputTokens }) {
+  const cap = Number.isFinite(maxOutputTokens) && maxOutputTokens > 0 ? maxOutputTokens : 2048;
   const model = client().getGenerativeModel({
     model: modelName,
     systemInstruction: systemInstruction(),
     generationConfig: {
       temperature,
-      maxOutputTokens: 2048,
+      maxOutputTokens: cap,
       ...(json ? { responseMimeType: 'application/json' } : {}),
     },
     // Loosen safety filters for the crime-mystery genre. Still blocks the

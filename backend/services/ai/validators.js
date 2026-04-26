@@ -35,20 +35,66 @@ function safeJsonParse(text) {
   }
 }
 
+// Strings that some models emit as placeholder filler. Reject them.
+const PLACEHOLDER_HINTS = [
+  'todo', 'tbd', 'placeholder', 'lorem', 'ipsum',
+  '...', '…', 'xxx', '???',
+];
+
+function looksLikePlaceholder(s) {
+  if (typeof s !== 'string') return false;
+  const trimmed = s.trim().toLowerCase();
+  if (!trimmed) return true;
+  for (const hint of PLACEHOLDER_HINTS) {
+    if (trimmed === hint || trimmed.startsWith(hint + ' ') || trimmed.endsWith(' ' + hint)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /**
- * Validate a sealed-archive object. Returns null if valid,
- * else a short reason string suitable for warn-level logs.
+ * Validate a sealed-archive object. Returns null if valid, else a short reason
+ * string useful for warn-level logs. Reasons include indices where applicable.
+ *
+ * Never logs the raw archive content — only the field/index that failed.
  */
 function validateArchive(a) {
   if (!a || typeof a !== 'object') return 'not an object';
-  if (typeof a.story !== 'string' || a.story.length < 60) return 'story too short';
+
+  // story
+  if (typeof a.story !== 'string') return 'missing story';
+  if (a.story.trim().length < 60) return 'story too short';
+  if (!ARABIC_SCRIPT_RE.test(a.story)) return 'non-Arabic story';
+
+  // mafiozo / obvious_suspect
   if (typeof a.mafiozo !== 'string' || !a.mafiozo.trim()) return 'missing mafiozo';
+  if (looksLikePlaceholder(a.mafiozo)) return 'mafiozo is placeholder text';
   if (typeof a.obvious_suspect !== 'string' || !a.obvious_suspect.trim()) return 'missing obvious_suspect';
-  if (!Array.isArray(a.clues) || a.clues.length !== 3) return 'clues must be exactly 3';
-  for (const c of a.clues) if (typeof c !== 'string' || !c.trim()) return 'empty clue';
-  if (!Array.isArray(a.characters) || a.characters.length < 2) return 'need at least 2 characters';
-  // Arabic-content guard — at least the story must be predominantly Arabic.
-  if (!ARABIC_SCRIPT_RE.test(a.story)) return 'story is not Arabic';
+  if (looksLikePlaceholder(a.obvious_suspect)) return 'obvious_suspect is placeholder text';
+
+  // clues — must be exactly 3, each a non-empty Arabic string, no placeholders
+  if (!Array.isArray(a.clues)) return 'clues is not an array';
+  if (a.clues.length !== 3) return `expected exactly 3 clues, got ${a.clues.length}`;
+  for (let i = 0; i < a.clues.length; i++) {
+    const c = a.clues[i];
+    if (c === null || c === undefined) return `null clue at index ${i}`;
+    if (typeof c !== 'string') return `non-string clue at index ${i}`;
+    if (!c.trim()) return `empty clue at index ${i}`;
+    if (looksLikePlaceholder(c)) return `placeholder clue at index ${i}`;
+    if (!ARABIC_SCRIPT_RE.test(c)) return `non-Arabic clue at index ${i}`;
+  }
+
+  // characters — at least 2, each must have a name+role
+  if (!Array.isArray(a.characters)) return 'characters is not an array';
+  if (a.characters.length < 2) return `need at least 2 characters, got ${a.characters.length}`;
+  for (let i = 0; i < a.characters.length; i++) {
+    const ch = a.characters[i];
+    if (!ch || typeof ch !== 'object') return `invalid character at index ${i}`;
+    if (typeof ch.name !== 'string' || !ch.name.trim()) return `missing name on character ${i}`;
+    if (typeof ch.role !== 'string' || !ch.role.trim()) return `missing role on character ${i}`;
+  }
+
   return null;
 }
 

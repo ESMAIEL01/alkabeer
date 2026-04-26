@@ -42,22 +42,26 @@ function withTimeout(promise, ms, label) {
  * @param {string} opts.userPrompt    - User message
  * @param {boolean} [opts.json]       - Hint the model to emit JSON only (string-level only)
  * @param {number} [opts.temperature] - Sampling temp
+ * @param {number} [opts.maxTokens]   - Per-call output ceiling. Default 2048
+ *   to keep callers safe; archive calls should pass a larger value (~6000)
+ *   because Arabic JSON is token-dense.
  * @param {string} [opts.modelName]   - Override the configured fallback model
  * @returns {Promise<string>} raw assistant text
  */
-async function callOpenRouter({ userPrompt, json = false, temperature = 0.85, modelName } = {}) {
+async function callOpenRouter({ userPrompt, json = false, temperature = 0.85, maxTokens, modelName } = {}) {
   if (!isConfigured()) {
     throw new Error('OpenRouter is not configured');
   }
 
   const model = modelName || config.openrouter.fallbackModel;
+  const cap = Number.isFinite(maxTokens) && maxTokens > 0 ? maxTokens : 2048;
   const baseUrl = (config.openrouter.baseUrl || 'https://openrouter.ai/api/v1').replace(/\/+$/, '');
   const url = `${baseUrl}/chat/completions`;
 
   const body = {
     model,
     temperature,
-    max_tokens: 2048,
+    max_tokens: cap,
     messages: [
       { role: 'system', content: systemContent() },
       // For JSON tasks we bias the system message; OpenRouter has no
@@ -112,7 +116,17 @@ async function callOpenRouter({ userPrompt, json = false, temperature = 0.85, mo
     throw new Error('OpenRouter returned non-JSON body');
   }
 
-  const content = data?.choices?.[0]?.message?.content;
+  const choice = data?.choices?.[0];
+  const content = choice?.message?.content;
+  // OpenAI-compat finish_reason: 'stop' (clean), 'length' (hit max_tokens),
+  // 'content_filter' (refused), 'tool_calls' (n/a here).
+  // 'length' means the response is truncated — passing it to a JSON parser
+  // would either fail or produce a partially-valid object that misses required
+  // fields. Surface this clearly so the caller can fall through.
+  const finishReason = choice?.finish_reason;
+  if (finishReason && finishReason !== 'stop') {
+    throw new Error(`OpenRouter stopped with finish_reason=${finishReason}`);
+  }
   if (typeof content !== 'string' || !content.trim()) {
     throw new Error('OpenRouter returned empty content');
   }

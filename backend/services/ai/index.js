@@ -1,21 +1,27 @@
 /**
  * Public AI surface used by the route layer.
  *
- * Provider chain (per call):
- *   1. Gemini   (primary)        — config.gemini.apiKey present
- *   2. OpenRouter (fallback)     — config.openrouter.enabled
- *   3. Built-in scenario/line    — always available
+ * Provider chain for archive generation:
+ *   1. Gemini  (primary)     — config.gemini.archiveModel          (e.g. gemini-2.5-pro)
+ *   2. Gemini  (internal fb) — config.gemini.archiveFallbackModel  (e.g. gemini-2.5-flash)
+ *   3. OpenRouter (external) — config.openrouter.enabled
+ *   4. Built-in scenario     — always available
+ *
+ * Provider chain for narration:
+ *   1. Gemini Flash (primary) — config.gemini.narrationModel
+ *   2. OpenRouter             — config.openrouter.enabled
+ *   3. Built-in static line
  *
  * Public functions:
- *   generateSealedArchive(input) → { source, archive, note? }
- *   narrate({ phase, context })  → { source, line }
+ *   generateSealedArchive(input) → { source, model?, archive, note? }
+ *   narrate({ phase, context })  → { source, model?, line }
  *
  * Both are guaranteed not to throw.
  */
 const config = require('../../config/env');
 const { callGemini } = require('./geminiClient');
 const { callOpenRouter, isConfigured: openrouterConfigured } = require('./openrouterClient');
-const { archivePrompt, narrationPrompt } = require('./prompts');
+const { archivePrompt, archivePromptStrict, narrationPrompt } = require('./prompts');
 const { safeJsonParse, validateArchive, validateNarration } = require('./validators');
 
 // ---------------------------------------------------------------------------
@@ -50,24 +56,36 @@ const FALLBACK_NARRATION = '...الكبير ساكت دلوقتي';
 // success, or null on failure. They never throw.
 // ---------------------------------------------------------------------------
 
-async function tryGeminiArchive(input) {
+/**
+ * Try a Gemini archive call against a specific model. Returns the parsed
+ * archive on success, or null on any failure (network, quota, rate limit,
+ * invalid JSON, validation rejection). Never throws.
+ *
+ * @param {object} input          - archive input (idea, players, mood, difficulty)
+ * @param {string} modelName      - the Gemini model to use for THIS attempt
+ * @param {object} [opts]
+ * @param {boolean} [opts.strict] - use the compact strict prompt (Flash fallback)
+ */
+async function tryGeminiArchive(input, modelName, { strict = false } = {}) {
   if (!config.gemini.apiKey) return null;
+  if (!modelName) return null;
   try {
     const raw = await callGemini({
-      modelName: config.gemini.archiveModel,
-      userPrompt: archivePrompt(input),
+      modelName,
+      userPrompt: strict ? archivePromptStrict(input) : archivePrompt(input),
       json: true,
-      temperature: 0.9,
+      temperature: strict ? 0.85 : 0.9,
+      maxOutputTokens: config.gemini.archiveMaxOutputTokens,
     });
     const parsed = safeJsonParse(raw);
     const err = validateArchive(parsed);
     if (err) {
-      console.warn(`[ai] gemini archive invalid (${err})`);
+      console.warn(`[ai] gemini(${modelName}) archive invalid (${err})`);
       return null;
     }
     return parsed;
   } catch (err) {
-    console.warn('[ai] gemini archive failed:', err.message);
+    console.warn(`[ai] gemini(${modelName}) archive failed:`, err.message);
     return null;
   }
 }
@@ -76,9 +94,10 @@ async function tryOpenRouterArchive(input) {
   if (!openrouterConfigured()) return null;
   try {
     const raw = await callOpenRouter({
-      userPrompt: archivePrompt(input),
+      userPrompt: archivePromptStrict(input),
       json: true,
-      temperature: 0.85,
+      temperature: 0.8,
+      maxTokens: config.openrouter.archiveMaxTokens,
     });
     const parsed = safeJsonParse(raw);
     const err = validateArchive(parsed);
@@ -95,21 +114,23 @@ async function tryOpenRouterArchive(input) {
 
 async function tryGeminiNarration(prompt, forbiddenTerms) {
   if (!config.gemini.apiKey) return null;
+  const modelName = config.gemini.narrationModel;
   try {
     const raw = await callGemini({
-      modelName: config.gemini.narrationModel,
+      modelName,
       userPrompt: prompt,
       json: false,
       temperature: 0.95,
+      maxOutputTokens: config.gemini.narrationMaxOutputTokens,
     });
     const cleaned = validateNarration(raw, { forbiddenTerms });
     if (!cleaned) {
-      console.warn('[ai] gemini narration rejected by validator');
+      console.warn(`[ai] gemini(${modelName}) narration rejected by validator`);
       return null;
     }
     return cleaned;
   } catch (err) {
-    console.warn('[ai] gemini narration failed:', err.message);
+    console.warn(`[ai] gemini(${modelName}) narration failed:`, err.message);
     return null;
   }
 }
@@ -121,6 +142,7 @@ async function tryOpenRouterNarration(prompt, forbiddenTerms) {
       userPrompt: prompt,
       json: false,
       temperature: 0.9,
+      maxTokens: config.openrouter.narrationMaxTokens,
     });
     const cleaned = validateNarration(raw, { forbiddenTerms });
     if (!cleaned) {
@@ -140,16 +162,43 @@ async function tryOpenRouterNarration(prompt, forbiddenTerms) {
 
 /**
  * Build a sealed archive. Always returns:
- *   { source: 'gemini' | 'openrouter' | 'fallback', archive, note? }
+ *   { source: 'gemini' | 'openrouter' | 'fallback', model?, archive, note? }
  * Never throws.
+ *
+ * Provider chain:
+ *   1. Gemini archive model (default gemini-2.5-pro)
+ *   2. Gemini archive fallback model (default gemini-2.5-flash) — only if
+ *      different from the primary model. This gracefully absorbs Pro quota
+ *      exhaustion (HTTP 429) without leaving the Gemini family.
+ *   3. OpenRouter (if AI_FALLBACK_PROVIDER=openrouter and key configured)
+ *   4. Built-in fallback scenario.
  */
 async function generateSealedArchive(input = {}) {
-  const fromGemini = await tryGeminiArchive(input);
-  if (fromGemini) return { source: 'gemini', archive: fromGemini };
+  // Rung 1: primary Gemini model with the full Architect prompt.
+  const primaryModel = config.gemini.archiveModel;
+  const fromPrimary = await tryGeminiArchive(input, primaryModel);
+  if (fromPrimary) return { source: 'gemini', model: primaryModel, archive: fromPrimary };
 
+  // Rung 2: internal Gemini fallback model — uses the STRICT compact prompt
+  // because Flash-class thinking models burn budget on the verbose prompt.
+  // Skip if identical to primary.
+  const fbModel = config.gemini.archiveFallbackModel;
+  if (fbModel && fbModel !== primaryModel) {
+    const fromFallback = await tryGeminiArchive(input, fbModel, { strict: true });
+    if (fromFallback) return { source: 'gemini', model: fbModel, archive: fromFallback };
+  }
+
+  // Rung 3: OpenRouter (external secondary fallback)
   const fromOpenRouter = await tryOpenRouterArchive(input);
-  if (fromOpenRouter) return { source: 'openrouter', archive: fromOpenRouter };
+  if (fromOpenRouter) {
+    return {
+      source: 'openrouter',
+      model: config.openrouter.fallbackModel,
+      archive: fromOpenRouter,
+    };
+  }
 
+  // Rung 4: built-in static scenario
   return { source: 'fallback', archive: FALLBACK_ARCHIVE, note: FALLBACK_NOTE_AR };
 }
 
@@ -167,10 +216,10 @@ async function narrate({ phase, context, forbiddenTerms } = {}) {
   const prompt = narrationPrompt({ phase, context });
 
   const fromGemini = await tryGeminiNarration(prompt, forbiddenTerms);
-  if (fromGemini) return { source: 'gemini', line: fromGemini };
+  if (fromGemini) return { source: 'gemini', model: config.gemini.narrationModel, line: fromGemini };
 
   const fromOpenRouter = await tryOpenRouterNarration(prompt, forbiddenTerms);
-  if (fromOpenRouter) return { source: 'openrouter', line: fromOpenRouter };
+  if (fromOpenRouter) return { source: 'openrouter', model: config.openrouter.fallbackModel, line: fromOpenRouter };
 
   return { source: 'fallback', line: FALLBACK_NARRATION };
 }

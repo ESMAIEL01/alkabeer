@@ -45,8 +45,19 @@ const config = Object.freeze({
   gemini: {
     apiKey: process.env.GEMINI_API_KEY || '',
     archiveModel: process.env.GEMINI_ARCHIVE_MODEL || 'gemini-2.5-pro',
+    // Internal Gemini fallback used when the primary archive model returns
+    // a quota/rate-limit/availability error. Stays inside the "gemini" source
+    // so callers can distinguish a Gemini-Flash success from an OpenRouter
+    // fallback. Set to the same value as archiveModel to disable.
+    archiveFallbackModel: process.env.GEMINI_ARCHIVE_FALLBACK_MODEL || 'gemini-2.5-flash',
     narrationModel: process.env.GEMINI_NARRATION_MODEL || 'gemini-2.5-flash',
     timeoutMs: parseInt(process.env.GEMINI_TIMEOUT_MS || '30000', 10),
+    // Output-token ceilings. For Gemini 2.5 thinking models this budget covers
+    // BOTH the hidden reasoning tokens AND the visible response — so an
+    // archive call needs headroom (~8K) to finish the JSON without hitting
+    // MAX_TOKENS. Narration is short and 1K is plenty.
+    archiveMaxOutputTokens: parseInt(process.env.GEMINI_ARCHIVE_MAX_OUTPUT_TOKENS || '8192', 10),
+    narrationMaxOutputTokens: parseInt(process.env.GEMINI_NARRATION_MAX_OUTPUT_TOKENS || '1024', 10),
   },
   // OpenRouter is an OPTIONAL secondary AI fallback. Never required at boot.
   // Enabled only when AI_FALLBACK_PROVIDER=openrouter AND a key is present.
@@ -55,6 +66,11 @@ const config = Object.freeze({
     baseUrl: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
     fallbackModel: process.env.OPENROUTER_FALLBACK_MODEL || 'nvidia/nemotron-3-super-120b-a12b:free',
     timeoutMs: parseInt(process.env.OPENROUTER_TIMEOUT_MS || '30000', 10),
+    // Output-token ceilings. Nemotron has no hidden thinking budget so all
+    // tokens are visible output. A full Arabic JSON archive can need ~5K
+    // because Arabic letters cost more tokens than Latin.
+    archiveMaxTokens: parseInt(process.env.OPENROUTER_ARCHIVE_MAX_TOKENS || '6000', 10),
+    narrationMaxTokens: parseInt(process.env.OPENROUTER_NARRATION_MAX_TOKENS || '800', 10),
     enabled:
       ((process.env.AI_FALLBACK_PROVIDER || '').toLowerCase() === 'openrouter') &&
       !!process.env.OPENROUTER_API_KEY,
@@ -70,7 +86,7 @@ const config = Object.freeze({
 if (!isTest) {
   console.log(`🔧 Environment: ${config.nodeEnv}`);
   console.log(`🔧 Frontend origin: ${config.frontendUrl}`);
-  console.log(`🔧 AI archive model: ${config.gemini.archiveModel}`);
+  console.log(`🔧 AI archive model: ${config.gemini.archiveModel} (fallback: ${config.gemini.archiveFallbackModel})`);
   if (!config.gemini.apiKey) {
     console.warn('⚠️  GEMINI_API_KEY is not set — AI features will fall back to a built-in scenario.');
   }

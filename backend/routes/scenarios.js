@@ -31,11 +31,12 @@ function toBase64(text) {
 }
 
 function shapeArchiveResponse(result) {
-  const { source, archive, note } = result;
+  const { source, model, archive, note } = result;
   const story = archive.story || '';
   return {
     success: true,
-    source,                                  // 'gemini' | 'fallback'
+    source,                                  // 'gemini' | 'openrouter' | 'fallback'
+    ...(model ? { model } : {}),             // e.g. 'gemini-2.5-pro' or 'gemini-2.5-flash'
     scenario: story,                         // legacy field (matches old API)
     title: archive.title || null,
     mafiozo: archive.mafiozo,
@@ -116,7 +117,12 @@ router.post('/narrate', async (req, res, next) => {
       context: context || '',
       forbiddenTerms: Array.isArray(forbiddenTerms) ? forbiddenTerms : [],
     });
-    return res.json({ success: true, source: result.source, line: result.line });
+    return res.json({
+      success: true,
+      source: result.source,
+      ...(result.model ? { model: result.model } : {}),
+      line: result.line,
+    });
   } catch (err) {
     return next(err);
   }

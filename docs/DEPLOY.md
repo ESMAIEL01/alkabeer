@@ -146,17 +146,49 @@ Now set secrets (these become `process.env.*` inside the container):
 flyctl secrets set \
   DATABASE_URL='postgresql://neondb_owner:<PASSWORD>@ep-XXXXX-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require' \
   GEMINI_API_KEY='<YOUR_GEMINI_KEY>' \
+  GEMINI_ARCHIVE_MODEL='gemini-2.5-pro' \
+  GEMINI_ARCHIVE_FALLBACK_MODEL='gemini-2.5-flash' \
+  GEMINI_NARRATION_MODEL='gemini-2.5-flash' \
+  GEMINI_ARCHIVE_MAX_OUTPUT_TOKENS='8192' \
+  GEMINI_NARRATION_MAX_OUTPUT_TOKENS='1024' \
   JWT_SECRET='<YOUR_64_CHAR_HEX_SECRET>' \
   FRONTEND_URL='https://alkabeer-prod.vercel.app'
 ```
 
+> **Why 8192 for archive max-output?** Gemini 2.5 Pro and Flash are *thinking*
+> models — `maxOutputTokens` covers both internal reasoning AND the visible
+> response. With only 2048, Flash can burn the entire budget thinking and
+> never reach the JSON, returning `finishReason=MAX_TOKENS`. 8K leaves enough
+> headroom for both. Lower it again if you need to tighten cost.
+
+### AI provider chain
+
+The backend tries providers in this fixed order. Each rung is independently
+optional; the game stays playable even when every external rung fails.
+
+```
+1. Gemini archive model           (default gemini-2.5-pro)        — primary
+2. Gemini archive fallback model  (default gemini-2.5-flash)      — internal fb
+3. OpenRouter free model          (default nvidia/nemotron…:free) — external fb
+4. Built-in static scenario                                       — always works
+```
+
+The internal Gemini Pro → Flash hop is the cheapest safety net: if your free-
+tier Pro quota hits 429 or returns "limit 0", Flash usually still has budget,
+and the result still reads as `source: gemini`. Disable it by setting
+`GEMINI_ARCHIVE_FALLBACK_MODEL` equal to `GEMINI_ARCHIVE_MODEL`.
+
+To control which model is used on each rung, set the corresponding env var
+listed below. The same chain applies to `ai-generate-three` (one chain per
+scenario, run in parallel).
+
 ### Optional: OpenRouter fallback secrets
 
-OpenRouter is a **secondary** AI fallback. Gemini stays primary. If you skip
-this block the game still works — the provider chain becomes
-`Gemini → built-in scenario`. Adding OpenRouter inserts an extra rung between
-Gemini and the built-in fallback, which helps when Gemini briefly refuses a
-mystery prompt or hits a quota.
+OpenRouter is a **secondary** AI fallback (rung 3 above). Gemini stays primary.
+If you skip this block the game still works — the provider chain becomes
+`Gemini Pro → Gemini Flash → built-in scenario`. Adding OpenRouter inserts an
+extra rung between Gemini and the built-in fallback, useful when both Gemini
+models hit a content filter or are unavailable.
 
 **Honest caveats** before you wire it:
 
@@ -174,8 +206,16 @@ flyctl secrets set \
   OPENROUTER_BASE_URL='https://openrouter.ai/api/v1' \
   OPENROUTER_FALLBACK_MODEL='nvidia/nemotron-3-super-120b-a12b:free' \
   OPENROUTER_TIMEOUT_MS='30000' \
+  OPENROUTER_ARCHIVE_MAX_TOKENS='6000' \
+  OPENROUTER_NARRATION_MAX_TOKENS='800' \
   AI_FALLBACK_PROVIDER='openrouter'
 ```
+
+> **Why 6000 for OpenRouter archive max-tokens?** Arabic text costs ~3 tokens
+> per letter on most tokenizers, and the JSON archive structure adds overhead.
+> 2048 is too tight — Nemotron occasionally truncates mid-array, leaving an
+> empty third clue that fails validation. 6000 fits a complete archive
+> comfortably while staying inside the free model's per-request limit.
 
 > Set `AI_FALLBACK_PROVIDER` to anything other than `openrouter` (or leave it
 > empty) to disable the fallback at runtime without removing the key.
@@ -284,7 +324,11 @@ Never commit `.env`. The repo's `.gitignore` already excludes it, but always run
 | Frontend shows "تعذّر الاتصال بالخادم" | `curl https://alkabeer-prod.fly.dev/api/status` — if it fails, `flyctl logs` for the cause. Most common: `FRONTEND_URL` doesn't match the Vercel domain → CORS rejects. |
 | `db: down` in /api/status | Neon password rotated and `DATABASE_URL` is stale, or Neon is auto-suspended (wait 2s and retry). |
 | AI always returns "fallback" source | Gemini failed AND (OpenRouter unconfigured OR also failed). `flyctl logs \| grep '\[ai\]'` shows which provider rejected. Common causes: missing/expired `GEMINI_API_KEY`, quota exhausted, or `AI_FALLBACK_PROVIDER` not set to `openrouter`. |
-| AI returns "openrouter" source unexpectedly | Gemini is rejecting your prompts (often a content filter or quota). Check `flyctl logs \| grep '\[ai\] gemini'` for the reason. The game still works — this is the fallback chain doing its job. |
+| AI returns "openrouter" source unexpectedly | Both Gemini models (Pro and Flash) failed. Often a content filter or quota. Check `flyctl logs \| grep '\[ai\] gemini'` for the reason. The game still works — this is the fallback chain doing its job. |
+| API response shows `model: "gemini-2.5-flash"` instead of pro | Your Gemini Pro quota is exhausted or rate-limited. Flash absorbed the request — totally normal on the free tier. To check: `flyctl logs \| grep "gemini(gemini-2.5-pro)"` shows the Pro failure reason. Restore Pro by upgrading the API project's billing or waiting for the daily quota to reset. |
+| Logs show `Gemini stopped early: MAX_TOKENS` | The archive token budget is too tight for the model's thinking. Raise `GEMINI_ARCHIVE_MAX_OUTPUT_TOKENS` (default 8192). For 2.5-series, try 12288 if 8192 is still hitting the wall. |
+| Logs show `archive invalid (empty clue at index N)` | Provider returned a JSON structure with a blank clue. Common on undertrained free models. The chain falls through to the next rung automatically. If repeated only on OpenRouter, raise `OPENROUTER_ARCHIVE_MAX_TOKENS` to 8000 or set `AI_FALLBACK_PROVIDER=` to bypass it. |
+| Logs show `OpenRouter stopped with finish_reason=length` | Truncated output. Raise `OPENROUTER_ARCHIVE_MAX_TOKENS` (default 6000). |
 | 429 errors during testing | Rate limiter triggered — wait 60s or temporarily raise `AI_RATE_MAX` / `AUTH_RATE_MAX` in Fly secrets. |
 | Vercel deploy succeeded but app talks to localhost:5000 | `VITE_API_URL` was missing during the build. Set it in Vercel → Settings → Env Vars and **redeploy**. |
 | Socket.IO won't upgrade to WebSocket | This is fine — it'll fall back to polling. To force WS: `flyctl logs` should show `transport=websocket`. |
