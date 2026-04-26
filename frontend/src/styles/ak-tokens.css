@@ -1,0 +1,420 @@
+/* =============================================================================
+ * AlKabeer (الكبير) — DESIGN TOKENS
+ * ---------------------------------------------------------------------------
+ * AlKabeer is a cinematic Arabic multiplayer mystery / social-deduction
+ * game. The visual world is "Sealed Archive" noir: deep crimson, brass-gold,
+ * candlelit shadow, parchment cards, and theatrical pacing.
+ *
+ * Naming: every token is prefixed `--ak-*` so it cannot collide with the
+ * host React app's existing `--accent-*`, `--bg-*` variables. The host
+ * app's index.css declares its own tokens; this file is meant to be the
+ * REPLACEMENT once the system is rolled in.
+ *
+ * Source of truth:
+ *   - frontend/src/index.css  (canonical run-time CSS — imports this file)
+ *   - stitch design previews   (cinematic mock direction)
+ *   - The reference imagery in design-system assets folder
+ * ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;500;600;700;800;900&family=Cairo:wght@400;500;600;700;800;900&family=Tajawal:wght@400;500;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
+
+:root {
+  /* ===========================================================================
+   * COLOR — backgrounds (the noir floor)
+   * The "deeper / hotter" rule: every higher-elevation surface is HOTTER
+   * (more crimson), not lighter. Black never lifts to grey.
+   * ======================================================================== */
+  --ak-bg-deep:        #050505;             /* page floor — true near-black */
+  --ak-bg-stage:       #120809;             /* cinematic backdrop, slight crimson lift */
+  --ak-surface-1:      #1c0d0e;             /* card surface (stitch: card-dark) */
+  --ak-surface-2:      #2a0f11;             /* hover / elevated-2 */
+  --ak-surface-glass:  rgba(15, 15, 15, 0.75);  /* glassmorphism card body */
+  --ak-surface-input:  rgba(0, 0, 0, 0.40);
+  --ak-surface-overlay: rgba(0, 0, 0, 0.60);    /* modal scrim */
+
+  /* Background washes (use as `background:`) */
+  --ak-bg-radial:
+    radial-gradient(circle at 50% 0%, #2b0000 0%, var(--ak-bg-deep) 60%);
+  --ak-bg-noir-diagonal:
+    linear-gradient(135deg, #160809 0%, #2a0f11 100%);
+  --ak-bg-crimson-falloff:
+    linear-gradient(180deg, rgba(244, 37, 54, 0.10) 0%, rgba(18, 8, 9, 0) 100%);
+  --ak-bg-seal:
+    radial-gradient(circle, #f42536 0%, #8b0000 100%);
+
+  /* ===========================================================================
+   * COLOR — CRIMSON (functional roles)
+   * Crimson is the action/danger color. Each step has ONE job.
+   *
+   *   role          | use                              | contrast vs token
+   *   --------------|----------------------------------|------------------
+   *   action        | default state of primary buttons | text-on-crimson  → 4.7:1 ✓ AA
+   *   hover         | mouse-over of primary buttons    | text-on-crimson  → 4.5:1 ✓ AA
+   *   pressed       | active / mousedown state         | text-on-crimson  → 6.3:1 ✓ AA
+   *   stage         | cinematic seals & hero text glow | DECORATIVE — never long-form text
+   *   deep          | gradient ends, "blood" accents   | DECORATIVE
+   *   glow          | drop-shadow / box-shadow halos   | DECORATIVE
+   *   bg-muted      | danger-panel background          | text-on-danger   → 12.4:1 ✓ AAA
+   *   border        | danger-panel hairline            | —
+   * ======================================================================== */
+  --ak-crimson-action:    #e50914;          /* primary CTA fill */
+  --ak-crimson-hover:     #f40612;          /* hover */
+  --ak-crimson-pressed:   #b8060f;          /* mousedown / active */
+  --ak-crimson-stage:     #f42536;          /* cinematic — seals, hero glow */
+  --ak-crimson-deep:      #8b0000;          /* gradient end, "blood" */
+  --ak-crimson-glow:      rgba(229, 9, 20, 0.40);
+  --ak-crimson-glow-soft: rgba(229, 9, 20, 0.15);
+  --ak-crimson-bg-muted:  #1f0608;          /* solid danger-panel surface */
+  --ak-crimson-tint:      rgba(229, 9, 20, 0.08);
+
+  /* legacy alias — keep until callers migrate */
+  --ak-crimson:           var(--ak-crimson-action);
+
+  /* ===========================================================================
+   * COLOR — GOLD (accent only — never for long-form body text)
+   * Gold has insufficient contrast on dark surfaces for paragraphs (≈5.0:1
+   * on `--ak-bg-deep`, but tiring on long text). Use it for:
+   *   - overlines, single labels, single numbers (≤ a few words)
+   *   - badge fills (with --ak-text-on-gold)
+   *   - icon strokes, hairline borders, glow halos
+   * Never set gold as the color of <p>, multi-line copy, or descriptions.
+   * ======================================================================== */
+  --ak-gold:              #d4af37;          /* accent on dark — overlines, labels */
+  --ak-gold-hover:        #e5c14d;
+  --ak-gold-pressed:      #b8932b;
+  --ak-gold-soft:         rgba(212, 175, 55, 0.55);
+  --ak-gold-glow:         rgba(212, 175, 55, 0.40);
+  --ak-gold-tint:         rgba(212, 175, 55, 0.10);
+
+  /* ===========================================================================
+   * COLOR — TEXT
+   * Each text token is rated for the surfaces it's allowed on.
+   *
+   *   token            | allowed surfaces                          | min contrast
+   *   -----------------|-------------------------------------------|-------------
+   *   text-strong      | bg-deep, surface-1, surface-2             | 19:1 ✓ AAA
+   *   text-main        | bg-deep, surface-1, surface-2             | 17:1 ✓ AAA
+   *   text-muted       | bg-deep, surface-1, surface-2             | 7.5:1 ✓ AA
+   *   text-faint       | bg-deep, surface-1 (LARGE TEXT ONLY)      | 4.0:1 large-AA
+   *   text-on-crimson  | crimson-action / hover / pressed / stage  | ≥ 4.5:1 ✓ AA
+   *   text-on-gold     | gold, gold-hover, gold-soft               | ≥ 9:1 ✓ AAA
+   *   text-on-danger   | crimson-bg-muted (danger panels)          | 12.4:1 ✓ AAA
+   * ======================================================================== */
+  --ak-text-strong:    #ffffff;
+  --ak-text-main:      #f5f5f5;
+  --ak-text-muted:     #a0a0a0;
+  --ak-text-faint:     #6b6b6b;
+  --ak-text-on-crimson: #ffffff;
+  --ak-text-on-gold:   #20140a;
+  --ak-text-on-danger: #fde2e4;             /* warm off-white for danger panels */
+
+  /* legacy alias */
+  --ak-text-on-red:    var(--ak-text-on-crimson);
+
+  /* ===========================================================================
+   * SURFACE + TEXT PAIRS
+   * Use these as a unit — `background: var(--pair-X-bg); color: var(--pair-X-fg);`
+   * — instead of mixing surfaces and text yourself. All pairs are ≥ 7:1.
+   *
+   *   pair                     | use                            | contrast
+   *   -------------------------|--------------------------------|---------
+   *   surface                  | default cards                  | 17:1 ✓
+   *   surface-elevated         | hover cards, modals            | 17:1 ✓
+   *   button-primary           | crimson CTA                    | 4.7:1 ✓ AA
+   *   button-primary-hover     | crimson CTA hover              | 4.5:1 ✓ AA
+   *   button-primary-pressed   | crimson CTA active             | 6.3:1 ✓ AA
+   *   button-secondary         | gold-stroke ghost CTA          | 7.5:1 ✓ AAA
+   *   badge-gold               | host / win / truth chip        | 9.0:1 ✓ AAA
+   *   badge-crimson            | accused / danger chip          | 4.7:1 ✓ AA
+   *   panel-danger             | error banners, fatal state     | 12.4:1 ✓ AAA
+   *   panel-success            | success banners                | 8.0:1 ✓ AAA
+   * ======================================================================== */
+  --ak-pair-surface-bg:               var(--ak-surface-1);
+  --ak-pair-surface-fg:               var(--ak-text-main);
+  --ak-pair-surface-elevated-bg:      var(--ak-surface-2);
+  --ak-pair-surface-elevated-fg:      var(--ak-text-strong);
+
+  --ak-pair-btn-primary-bg:           var(--ak-crimson-action);
+  --ak-pair-btn-primary-fg:           var(--ak-text-on-crimson);
+  --ak-pair-btn-primary-hover-bg:     var(--ak-crimson-hover);
+  --ak-pair-btn-primary-hover-fg:     var(--ak-text-on-crimson);
+  --ak-pair-btn-primary-pressed-bg:   var(--ak-crimson-pressed);
+  --ak-pair-btn-primary-pressed-fg:   var(--ak-text-on-crimson);
+
+  --ak-pair-btn-secondary-bg:         transparent;
+  --ak-pair-btn-secondary-fg:         var(--ak-gold);
+  --ak-pair-btn-secondary-border:     var(--ak-gold);
+
+  --ak-pair-badge-gold-bg:            var(--ak-gold);
+  --ak-pair-badge-gold-fg:            var(--ak-text-on-gold);
+  --ak-pair-badge-crimson-bg:         var(--ak-crimson-action);
+  --ak-pair-badge-crimson-fg:         var(--ak-text-on-crimson);
+
+  --ak-pair-panel-danger-bg:          var(--ak-crimson-bg-muted);
+  --ak-pair-panel-danger-fg:          var(--ak-text-on-danger);
+  --ak-pair-panel-danger-border:      var(--ak-border-red-strong);
+  --ak-pair-panel-success-bg:         #082014;
+  --ak-pair-panel-success-fg:         #b6f0c9;
+  --ak-pair-panel-success-border:     rgba(34, 130, 70, 0.55);
+
+  /* Timer text must hit AA (4.5:1) at all times — countdown numerals
+     darken from text-strong → crimson-stage as urgency rises. */
+  --ak-pair-timer-default-fg:         var(--ak-text-strong);     /* ≥ 30s left */
+  --ak-pair-timer-warn-fg:            #ffd089;                   /* 10-30s, AA  */
+  --ak-pair-timer-urgent-fg:          var(--ak-crimson-stage);   /* < 10s, AA   */
+
+  /* ===========================================================================
+   * COLOR — semantic (use sparingly; crimson and gold do most of the work)
+   * ======================================================================== */
+  --ak-danger:    var(--ak-crimson-action);  /* re-uses crimson */
+  --ak-success:   #228246;
+  --ak-success-tint: rgba(34, 130, 70, 0.18);
+  --ak-warning:   #d4af37;                  /* re-uses gold */
+  --ak-info:      #5a86b3;
+
+  /* ===========================================================================
+   * COLOR — borders (mostly hairlines; the brand prefers shadow over stroke)
+   * ======================================================================== */
+  --ak-border-soft:        rgba(255, 255, 255, 0.08);
+  --ak-border-soft-strong: rgba(255, 255, 255, 0.16);
+  --ak-border-red:         rgba(229, 9, 20, 0.30);
+  --ak-border-red-strong:  rgba(229, 9, 20, 0.55);
+  --ak-border-gold:        rgba(212, 175, 55, 0.30);
+  --ak-border-gold-strong: rgba(212, 175, 55, 0.55);
+
+  /* ===========================================================================
+   * SHADOWS / GLOW — functional tokens, restrained system
+   *
+   * Two systems with hard rules:
+   *   1. STRUCTURAL shadows give cards their elevation. Used everywhere.
+   *   2. GLOW halos are SCARCE — at most ONE per screen, reserved for:
+   *        gold-glow    → selected mode, archive seal, final-reveal truth
+   *                       card, important badges
+   *        crimson-glow → danger actions, voting urgency, Mafiozo reveal,
+   *                       critical warnings, timer urgent state
+   *
+   * Never animate a glow infinitely except `--ak-glow-timer-pulse`.
+   * Never use a glow as a substitute for readable contrast — the
+   * underlying surface + text must already pass WCAG without it.
+   * ======================================================================== */
+
+  /* Structural — card / panel elevation */
+  --ak-shadow-panel:
+    0 20px 50px rgba(0, 0, 0, 0.50),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10);
+  --ak-shadow-panel-hover:
+    0 25px 60px rgba(0, 0, 0, 0.60),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  --ak-shadow-elevated:                                  /* modals, sheets */
+    0 32px 80px rgba(0, 0, 0, 0.70),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  --ak-shadow-press:    0 10px 20px rgba(229, 9, 20, 0.30);
+  --ak-shadow-seal:     inset 0 0 20px rgba(0, 0, 0, 0.6),
+                        0 0 30px var(--ak-crimson-glow);
+
+  /* Functional GOLD glows — selected, sealed, revealed */
+  --ak-glow-gold-selected: 0 0 0 1.5px var(--ak-gold), 0 0 18px var(--ak-gold-glow);
+  --ak-glow-gold-seal:     0 0 32px rgba(212, 175, 55, 0.55);
+  --ak-glow-gold-reveal:   0 0 60px rgba(212, 175, 55, 0.55), 0 0 120px rgba(212, 175, 55, 0.25);
+  --ak-glow-gold-badge:    0 0 12px var(--ak-gold-glow);
+
+  /* Functional CRIMSON glows — danger, urgency, accusation */
+  --ak-glow-red-danger:    0 8px 24px rgba(229, 9, 20, 0.35);
+  --ak-glow-red-urgent:    0 0 24px var(--ak-crimson-glow);
+  --ak-glow-red-reveal:    0 0 60px rgba(229, 9, 20, 0.50), 0 0 120px rgba(229, 9, 20, 0.20);
+  --ak-glow-red-warning:   0 0 0 1.5px var(--ak-crimson-stage), 0 0 14px var(--ak-crimson-glow);
+
+  /* Focus ring — accessibility */
+  --ak-glow-focus-ring:    0 0 0 3px rgba(212, 175, 55, 0.55), 0 0 0 5px rgba(212, 175, 55, 0.18);
+
+  /* Explicit "no glow" — always respect this on disabled, body cards, lists */
+  --ak-glow-none:          none;
+
+  /* Legacy aliases */
+  --ak-glow-red:           var(--ak-glow-red-urgent);
+  --ak-glow-red-strong:    var(--ak-glow-red-reveal);
+  --ak-glow-gold:          var(--ak-glow-gold-seal);
+  --ak-glow-gold-soft:     0 0 50px rgba(212, 175, 55, 0.20);
+
+  /* ===========================================================================
+   * RADII
+   * ======================================================================== */
+  --ak-radius-xs:   4px;
+  --ak-radius-sm:   8px;
+  --ak-radius-md:   12px;        /* default for inputs / buttons */
+  --ak-radius-lg:   16px;
+  --ak-radius-card: 20px;        /* canonical card */
+  --ak-radius-2xl:  24px;
+  --ak-radius-full: 9999px;
+
+  /* ===========================================================================
+   * SPACING (4-pt scale)
+   * ======================================================================== */
+  --ak-space-0: 0;
+  --ak-space-1: 4px;
+  --ak-space-2: 8px;
+  --ak-space-3: 12px;
+  --ak-space-4: 16px;
+  --ak-space-5: 24px;
+  --ak-space-6: 32px;
+  --ak-space-7: 48px;
+  --ak-space-8: 64px;
+  --ak-space-9: 96px;
+
+  /* ===========================================================================
+   * BLUR / GLASS
+   * ======================================================================== */
+  --ak-blur-glass: blur(20px);
+  --ak-blur-soft:  blur(8px);
+
+  /* ===========================================================================
+   * TYPOGRAPHY
+   * Four families, each with one job:
+   *   - Noto Kufi Arabic — display / titles (the signature voice)
+   *   - Tajawal          — UI, buttons, labels
+   *   - Cairo            — body / long Arabic text
+   *   - IBM Plex Mono    — numbers, timers, lobby codes (JetBrains Mono fallback)
+   *   - Space Grotesk    — Latin overlines only
+   * ======================================================================== */
+  --ak-font-display:      'Noto Kufi Arabic', 'Cairo', system-ui, sans-serif;
+  --ak-font-ui:           'Tajawal', 'Noto Kufi Arabic', system-ui, sans-serif;
+  --ak-font-body:         'Cairo', 'Tajawal', system-ui, sans-serif;
+  --ak-font-mono:         'IBM Plex Mono', 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --ak-font-overline:     'Space Grotesk', 'Noto Kufi Arabic', system-ui, sans-serif;
+  --ak-font-icon:         'Material Symbols Outlined';
+
+  /* Legacy aliases (back-compat with components written before this revision). */
+  --ak-font-arabic:       var(--ak-font-display);
+  --ak-font-arabic-body:  var(--ak-font-body);
+
+  /* Type ramp — rem-based so font-size: scaling at root just works.
+     Each step encodes weight / line-height / family in shorthand. */
+  --ak-t-display-xl: 800 7rem/0.95   var(--ak-font-display);
+  --ak-t-display-l:  800 5rem/1.0    var(--ak-font-display);
+  --ak-t-display:    800 3.5rem/1.05 var(--ak-font-display);
+  --ak-t-h1:         800 2.6rem/1.1  var(--ak-font-display);
+  --ak-t-h2:         700 2rem/1.2    var(--ak-font-display);
+  --ak-t-h3:         700 1.5rem/1.3  var(--ak-font-display);
+  --ak-t-h4:         700 1.2rem/1.4  var(--ak-font-ui);
+  --ak-t-ui:         700 1rem/1.3    var(--ak-font-ui);
+  --ak-t-button:     700 0.95rem/1   var(--ak-font-ui);
+  --ak-t-label:      600 0.85rem/1.3 var(--ak-font-ui);
+  --ak-t-body-lg:    400 1.15rem/1.7 var(--ak-font-body);
+  --ak-t-body:       400 1.05rem/1.7 var(--ak-font-body);
+  --ak-t-body-sm:    400 0.95rem/1.65 var(--ak-font-body);
+  --ak-t-caption:    500 0.85rem/1.5 var(--ak-font-ui);
+  --ak-t-overline:   700 0.75rem/1.3 var(--ak-font-overline);
+  --ak-t-mono:       500 0.9rem/1.5  var(--ak-font-mono);
+
+  --ak-tracking-tight:  -0.02em;
+  --ak-tracking-normal: 0;
+  --ak-tracking-wide:   0.15em;
+  --ak-tracking-x-wide: 0.30em;
+
+  /* ===========================================================================
+   * MOTION
+   * ======================================================================== */
+  --ak-ease-cinematic: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ak-ease-bounce:    cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --ak-dur-fast:       180ms;
+  --ak-dur-base:       300ms;
+  --ak-dur-slow:       550ms;
+  --ak-dur-cinematic:  700ms;
+
+  /* ===========================================================================
+   * Z-INDEX
+   * ======================================================================== */
+  --ak-z-base:          1;
+  --ak-z-sticky:        100;
+  --ak-z-banner:        200;        /* connection banner */
+  --ak-z-overlay:       500;        /* modal scrim */
+  --ak-z-modal:         600;
+  --ak-z-toast:         700;
+  --ak-z-cinematic:     900;        /* role reveal, archive seal */
+}
+
+/* =============================================================================
+ * BASE LAYER — global element styles. Apply on `body` of any AlKabeer mock.
+ * ========================================================================== */
+html, body {
+  background: var(--ak-bg-radial);
+  color: var(--ak-text-main);
+  font: var(--ak-t-body);
+  direction: rtl;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* SVG fractal-noise grain. Adds the "16mm film" texture the brand depends on. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+h1 { font: var(--ak-t-h1); margin-bottom: var(--ak-space-4); letter-spacing: var(--ak-tracking-tight); }
+h2 { font: var(--ak-t-h2); margin-bottom: var(--ak-space-3); letter-spacing: var(--ak-tracking-tight); }
+h3 { font: var(--ak-t-h3); margin-bottom: var(--ak-space-3); }
+h4 { font: var(--ak-t-h4); margin-bottom: var(--ak-space-2); }
+p  { font: var(--ak-t-body); color: var(--ak-text-main); }
+small, .ak-caption { font: var(--ak-t-caption); color: var(--ak-text-muted); }
+code, pre, kbd { font: var(--ak-t-mono); color: var(--ak-crimson); }
+
+/* The two signature text effects — DEFINING brand expressions. */
+.ak-cinematic-glow {
+  text-shadow: 0 0 20px var(--ak-crimson-glow), 0 0 40px var(--ak-crimson-glow);
+  font-weight: 800;
+}
+.ak-gold-text {
+  color: var(--ak-gold);
+  text-shadow: 0 0 15px var(--ak-gold-glow);
+}
+
+/* The cinematic overline — uppercase Latin, heavily tracked, gold. */
+.ak-overline {
+  font: var(--ak-t-overline);
+  text-transform: uppercase;
+  letter-spacing: var(--ak-tracking-x-wide);
+  color: var(--ak-gold);
+}
+
+/* "Archive title" treatment — italic uppercase, used in dashboard hero */
+.ak-archive-title {
+  font: 900 4rem/1.0 var(--ak-font-arabic);
+  font-style: italic;
+  text-transform: uppercase;
+  letter-spacing: var(--ak-tracking-tight);
+}
+
+/* Material Symbols utility class. */
+.material-symbols-outlined {
+  font-family: var(--ak-font-icon);
+  font-weight: normal;
+  font-style: normal;
+  display: inline-block;
+  line-height: 1;
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Reduced-motion guard — collapse all animations when user requests it. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

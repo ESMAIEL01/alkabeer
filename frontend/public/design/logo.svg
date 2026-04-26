@@ -1,0 +1,18 @@
+<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" fill="none">
+  
+  <path d="M60 6 L106 32 L106 88 L60 114 L14 88 L14 32 Z" stroke="#d4af37" stroke-width="1.5" fill="#0a0303"></path>
+  <path d="M60 14 L99 36 L99 84 L60 106 L21 84 L21 36 Z" stroke="#d4af37" stroke-width="0.8" opacity="0.6" fill="none"></path>
+  
+  <circle cx="60" cy="60" r="26" fill="#e50914" opacity="0.85"></circle>
+  <circle cx="60" cy="60" r="26" stroke="#d4af37" stroke-width="1.5" fill="none"></circle>
+  <circle cx="60" cy="60" r="20" stroke="#d4af37" stroke-width="0.6" opacity="0.5" fill="none"></circle>
+  
+  <text x="60" y="74" text-anchor="middle" font-family="Cairo, serif" font-size="36" font-weight="900" fill="#fff5d6" stroke="#d4af37" stroke-width="0.5">ك</text>
+  
+  <circle cx="60" cy="6" r="1.6" fill="#d4af37"></circle>
+  <circle cx="106" cy="32" r="1.6" fill="#d4af37"></circle>
+  <circle cx="106" cy="88" r="1.6" fill="#d4af37"></circle>
+  <circle cx="60" cy="114" r="1.6" fill="#d4af37"></circle>
+  <circle cx="14" cy="88" r="1.6" fill="#d4af37"></circle>
+  <circle cx="14" cy="32" r="1.6" fill="#d4af37"></circle>
+</svg>

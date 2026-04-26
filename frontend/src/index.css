@@ -1,18 +1,29 @@
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&display=swap');
+/* =============================================================================
+ * AlKabeer — runtime CSS
+ * ---------------------------------------------------------------------------
+ * Token authority: ./styles/ak-tokens.css (the canonical Mafiozo Design
+ * System file). Everything below ALIASES the legacy --accent-*, --bg-*,
+ * --font-arabic etc. names to the new --ak-* tokens so existing class names
+ * and inline styles keep rendering correctly while the page-level redesign
+ * is done in Commits 6c + 6d.
+ * ========================================================================== */
+@import './styles/ak-tokens.css';
 
 :root {
-  --bg-deep: #050505;
-  --bg-card: rgba(15, 15, 15, 0.75);
-  --accent-red: #e50914;
-  --accent-red-hover: #f40612;
-  --accent-red-glow: rgba(229, 9, 20, 0.4);
-  --accent-gold: #d4af37;
-  --accent-gold-glow: rgba(212, 175, 55, 0.4);
-  --text-main: #f5f5f5;
-  --text-muted: #a0a0a0;
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --font-arabic: 'Cairo', 'Tajawal', sans-serif;
-  --glass-blur: blur(20px);
+  /* Legacy ALIASES — every old name maps to its ak-* equivalent. Removing
+     this block would break the existing pages until 6c/6d are merged. */
+  --bg-deep:           var(--ak-bg-deep);
+  --bg-card:           var(--ak-surface-glass);
+  --accent-red:        var(--ak-crimson-action);
+  --accent-red-hover:  var(--ak-crimson-hover);
+  --accent-red-glow:   var(--ak-crimson-glow);
+  --accent-gold:       var(--ak-gold);
+  --accent-gold-glow:  var(--ak-gold-glow);
+  --text-main:         var(--ak-text-main);
+  --text-muted:        var(--ak-text-muted);
+  --border-subtle:     var(--ak-border-soft);
+  --font-arabic:       var(--ak-font-display);
+  --glass-blur:        var(--ak-blur-glass);
 }
 
 * {
@@ -21,27 +32,14 @@
   padding: 0;
 }
 
+/* Body and grain are already provided by ak-tokens.css. We only re-declare
+   the bits Vite/React need that are not in the token file. */
 body {
-  background: radial-gradient(circle at 50% 0%, #2b0000 0%, var(--bg-deep) 60%);
-  color: var(--text-main);
-  font-family: var(--font-arabic);
-  direction: rtl;
-  min-height: 100vh;
+  font-family: var(--ak-font-body);
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
   line-height: 1.6;
-}
-
-/* Background Animated Overlay */
-body::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; width: 100%; height: 100%;
-  background-image: url('data:image/svg+xml,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)"/%3E%3C/svg%3E');
-  opacity: 0.03;
-  pointer-events: none;
-  z-index: -1;
 }
 
 #root {
@@ -287,6 +285,106 @@ h1, h2, h3, h4, h5, h6 {
   background: linear-gradient(90deg, transparent, var(--border-subtle), transparent);
   margin: 2rem 0;
 }
+
+/* =============================================================================
+ * MAFIOZO DESIGN SYSTEM — base components
+ * Used by <AkButton>, <AkCard>, <AkOverline>, <AkBrandMark>, <PhasePill>
+ * (frontend/src/components/*). All values flow from --ak-* tokens.
+ * ========================================================================== */
+
+/* ----- Buttons ------------------------------------------------------------ */
+.ak-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ak-space-2);
+  padding: 0.85rem 1.25rem;
+  border-radius: var(--ak-radius-md);
+  border: 1px solid transparent;
+  font: var(--ak-t-button);
+  cursor: pointer;
+  transition: transform var(--ak-dur-fast) var(--ak-ease-cinematic),
+              box-shadow var(--ak-dur-base) var(--ak-ease-cinematic),
+              background var(--ak-dur-fast) var(--ak-ease-cinematic);
+  text-decoration: none;
+  min-height: 44px; /* WCAG touch target */
+}
+.ak-btn:focus-visible { outline: none; box-shadow: var(--ak-glow-focus-ring); }
+.ak-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.ak-btn .material-symbols-outlined { font-size: 1.15rem; line-height: 1; }
+
+.ak-btn-primary {
+  background: var(--ak-pair-btn-primary-bg);
+  color: var(--ak-pair-btn-primary-fg);
+  box-shadow: var(--ak-shadow-press);
+}
+.ak-btn-primary:not(:disabled):hover {
+  background: var(--ak-pair-btn-primary-hover-bg);
+  transform: translateY(-1px);
+  box-shadow: var(--ak-glow-red-danger);
+}
+.ak-btn-primary:not(:disabled):active {
+  background: var(--ak-pair-btn-primary-pressed-bg);
+  transform: translateY(0);
+}
+
+.ak-btn-gold {
+  background: var(--ak-gold);
+  color: var(--ak-text-on-gold);
+  border-color: var(--ak-gold);
+  box-shadow: var(--ak-glow-gold-badge);
+}
+.ak-btn-gold:not(:disabled):hover {
+  background: var(--ak-gold-hover);
+  transform: translateY(-1px);
+}
+.ak-btn-gold:not(:disabled):active {
+  background: var(--ak-gold-pressed);
+  transform: translateY(0);
+}
+
+.ak-btn-ghost {
+  background: var(--ak-pair-btn-secondary-bg);
+  color: var(--ak-pair-btn-secondary-fg);
+  border-color: var(--ak-pair-btn-secondary-border);
+}
+.ak-btn-ghost:not(:disabled):hover {
+  background: var(--ak-gold-tint);
+  border-color: var(--ak-gold-hover);
+}
+
+/* ----- Cards -------------------------------------------------------------- */
+.ak-card {
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-5);
+  border: 1px solid var(--ak-border-soft);
+  box-shadow: var(--ak-shadow-panel);
+  transition: box-shadow var(--ak-dur-base) var(--ak-ease-cinematic),
+              transform var(--ak-dur-fast) var(--ak-ease-cinematic);
+}
+.ak-card-surface     { background: var(--ak-pair-surface-bg);          color: var(--ak-pair-surface-fg); }
+.ak-card-elevated    { background: var(--ak-pair-surface-elevated-bg); color: var(--ak-pair-surface-elevated-fg); box-shadow: var(--ak-shadow-elevated); }
+.ak-card-danger      { background: var(--ak-pair-panel-danger-bg);     color: var(--ak-pair-panel-danger-fg); border-color: var(--ak-pair-panel-danger-border); }
+.ak-card-success     { background: var(--ak-pair-panel-success-bg);    color: var(--ak-pair-panel-success-fg); border-color: var(--ak-pair-panel-success-border); }
+
+.ak-card-glow-gold     { box-shadow: var(--ak-shadow-panel), var(--ak-glow-gold-seal); }
+.ak-card-glow-crimson  { box-shadow: var(--ak-shadow-panel), var(--ak-glow-red-urgent); }
+
+/* ----- Overline ----------------------------------------------------------- */
+/* The token file already declares .ak-overline; this block layouts it. */
+.ak-overline {
+  display: inline-block;
+  text-align: left;
+  direction: ltr;          /* LTR Latin label inside RTL content */
+}
+
+/* ----- Brand mark --------------------------------------------------------- */
+.ak-brandmark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ak-space-2);
+}
+.ak-brandmark img { display: block; }
 
 /* Role-card reveal — applied to ROLE_REVEAL screen card */
 @keyframes roleCardReveal {

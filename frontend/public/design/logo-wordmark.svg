@@ -1,0 +1,9 @@
+<svg viewBox="0 0 360 120" xmlns="http://www.w3.org/2000/svg" fill="none">
+  
+  <text x="180" y="50" text-anchor="middle" font-family="&#39;Space Grotesk&#39;, sans-serif" font-size="34" font-weight="800" fill="#f5f5f5" letter-spacing="6">ALKABEER</text>
+  
+  <line x1="60" y1="62" x2="300" y2="62" stroke="#e50914" stroke-width="1"></line>
+  <line x1="100" y1="62" x2="260" y2="62" stroke="#d4af37" stroke-width="0.5"></line>
+  
+  <text x="180" y="100" text-anchor="middle" font-family="Cairo, serif" font-size="38" font-weight="800" fill="#d4af37" direction="rtl">الكبير</text>
+</svg>
