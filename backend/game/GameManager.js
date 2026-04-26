@@ -238,6 +238,10 @@ class GameManager {
           roleRevealMode: lobby.roleRevealMode,
           roleAssignments,                          // server-only — NEVER broadcast
           publicCharacterCards,                     // safe to broadcast
+          votingHistory: [],                        // [{ round, votes, eliminatedId, wasMafiozo, reason }]
+          eliminatedIds: [],                        // ordered list of eliminated player ids
+          outcome: null,                            // 'investigators_win' | 'mafiozo_survives' | null
+          lastVoteResult: null,                     // last computed vote_result payload (for refresh)
         };
 
         socket.currentRoom = roomId;
@@ -267,9 +271,44 @@ class GameManager {
       socket.on('submit_vote', (data) => {
         const { roomId, targetId } = data || {};
         const lobby = this.lobbies.get(roomId);
-        if (lobby && lobby.gameData && lobby.gameData.phase === 'VOTING') {
-          lobby.gameData.votes[socket.userId] = targetId;
-          socket.emit('vote_registered', { userId: socket.userId, targetId });
+        if (!lobby || !lobby.gameData) return;
+        if (lobby.gameData.phase !== 'VOTING') return;
+
+        const voter = lobby.players.get(socket.userId);
+        if (!voter) return;
+
+        // --- eligibility (server-enforced; UI hides controls but cannot be trusted)
+        if (voter.isHost) {
+          return socket.emit('vote_rejected', { reason: 'host_cannot_vote', message: 'المضيف ما بيصوّتش.' });
+        }
+        if (!voter.isAlive) {
+          return socket.emit('vote_rejected', { reason: 'eliminated', message: 'إنت خرجت من اللعبة، مش هتقدر تصوّت.' });
+        }
+
+        // --- target validation
+        if (targetId !== 'skip') {
+          const target = lobby.players.get(targetId);
+          if (!target) {
+            return socket.emit('vote_rejected', { reason: 'unknown_target', message: 'اللاعب اللي اخترته مش موجود.' });
+          }
+          if (target.isHost) {
+            return socket.emit('vote_rejected', { reason: 'cannot_vote_host', message: 'مش ممكن تصوّت على المضيف.' });
+          }
+          if (!target.isAlive) {
+            return socket.emit('vote_rejected', { reason: 'target_eliminated', message: 'الشخص ده خرج من اللعبة بالفعل.' });
+          }
+        }
+
+        // Vote change is allowed before close — just overwrite.
+        lobby.gameData.votes[socket.userId] = targetId;
+        socket.emit('vote_registered', { userId: socket.userId, targetId });
+        this.emitVotingProgress(roomId);
+
+        // Early close: if every eligible voter has cast a vote, end immediately.
+        const eligible = this.eligibleVoters(lobby);
+        const votedCount = eligible.filter(p => lobby.gameData.votes[p.id] !== undefined).length;
+        if (eligible.length > 0 && votedCount >= eligible.length) {
+          this.closeVoting(roomId, 'all_voted');
         }
       });
 
@@ -447,39 +486,207 @@ class GameManager {
     }, 1000);
   }
 
-  handlePhaseEnd(roomId) {
+  /**
+   * Stop the per-second timer cleanly. Used when voting closes early or the
+   * game ends. Idempotent.
+   */
+  stopRoomTimer(lobby) {
+    if (lobby && lobby.gameData && lobby.gameData.interval) {
+      clearInterval(lobby.gameData.interval);
+      lobby.gameData.interval = null;
+    }
+  }
+
+  /**
+   * Set the next phase + duration in one place. Always broadcasts.
+   * If a fresh timer is needed, the caller restarts it via startRoomTimer.
+   */
+  enterPhase(lobby, phase, durationSeconds) {
+    if (!lobby || !lobby.gameData) return;
+    lobby.gameData.phase = phase;
+    lobby.gameData.timer = durationSeconds;
+    if (phase === 'VOTING') {
+      // Always start a voting round CLEAN — votes reset, fresh progress emit.
+      lobby.gameData.votes = {};
+      this.broadcastFullState(lobby.id);
+      this.emitVotingProgress(lobby.id);
+    } else {
+      this.broadcastFullState(lobby.id);
+    }
+  }
+
+  /**
+   * Eligible voters for the current round: non-host AND alive.
+   */
+  eligibleVoters(lobby) {
+    if (!lobby) return [];
+    return [...lobby.players.values()].filter(p => !p.isHost && p.isAlive);
+  }
+
+  /**
+   * Emit lightweight voting progress: { voted, total }. No identities.
+   */
+  emitVotingProgress(roomId) {
     const lobby = this.lobbies.get(roomId);
     if (!lobby || !lobby.gameData) return;
-    let shouldContinue = true;
+    const eligible = this.eligibleVoters(lobby);
+    const votes = lobby.gameData.votes || {};
+    const voted = eligible.filter(p => votes[p.id] !== undefined).length;
+    this.io.to(roomId).emit('voting_progress', { voted, total: eligible.length });
+  }
 
-    const cur = lobby.gameData.phase;
-    if (cur === 'ROLE_REVEAL') {
-      lobby.gameData.phase = 'PUBLIC_CHARACTER_OVERVIEW';
-      lobby.gameData.timer = 10;
-    } else if (cur === 'PUBLIC_CHARACTER_OVERVIEW') {
-      lobby.gameData.phase = 'CLUE_REVEAL';
-      lobby.gameData.timer = 45;
-    } else if (cur === 'CLUE_REVEAL') {
-      lobby.gameData.phase = 'VOTING';
-      lobby.gameData.timer = 30;
-    } else if (cur === 'VOTING') {
-      // Per-round voting + elimination land in Commit 2. For now: same legacy
-      // behavior — clear votes and either advance clues or end.
-      if (lobby.gameData.clueIndex < 2) {
-        lobby.gameData.clueIndex++;
-        lobby.gameData.phase = 'CLUE_REVEAL';
-        lobby.gameData.timer = 45;
-        lobby.gameData.votes = {};
+  /**
+   * Tally votes from the current VOTING round, decide elimination,
+   * push to votingHistory, then transition to VOTE_RESULT.
+   *
+   * @param {string} roomId
+   * @param {'all_voted'|'timer'} reason
+   */
+  closeVoting(roomId, reason = 'timer') {
+    const lobby = this.lobbies.get(roomId);
+    if (!lobby || !lobby.gameData) return;
+    if (lobby.gameData.phase !== 'VOTING') return; // already closed
+
+    this.stopRoomTimer(lobby);
+
+    const eligible = this.eligibleVoters(lobby);
+    const votes = lobby.gameData.votes || {};
+
+    // Tally — only count votes from currently-eligible voters.
+    const tally = {}; // targetId → count
+    for (const v of eligible) {
+      const t = votes[v.id];
+      if (t === undefined) continue; // didn't vote
+      tally[t] = (tally[t] || 0) + 1;
+    }
+
+    // Determine outcome.
+    let eliminatedId = null;
+    let outcomeReason = 'tie';      // 'majority' | 'tie' | 'no-vote' | 'all-skip'
+    let wasMafiozo = false;
+
+    const totalVotesCast = Object.values(tally).reduce((a, b) => a + b, 0);
+    if (totalVotesCast === 0) {
+      outcomeReason = 'no-vote';
+    } else {
+      // Exclude 'skip' from elimination candidates.
+      const playerEntries = Object.entries(tally).filter(([k]) => k !== 'skip');
+      if (playerEntries.length === 0) {
+        outcomeReason = 'all-skip';
       } else {
-        lobby.gameData.phase = 'POST_GAME';
-        lobby.gameData.timer = 0;
-        shouldContinue = false;
+        const max = Math.max(...playerEntries.map(([, c]) => c));
+        const topTargets = playerEntries.filter(([, c]) => c === max).map(([k]) => k);
+        if (topTargets.length === 1) {
+          eliminatedId = topTargets[0];
+          outcomeReason = 'majority';
+          // Mark the eliminated player as out-of-game.
+          const elim = lobby.players.get(eliminatedId);
+          if (elim) {
+            elim.isAlive = false;
+            // Mirror to the role record for downstream reads.
+            const roleRec = lobby.gameData.roleAssignments[eliminatedId];
+            if (roleRec) roleRec.isAlive = false;
+            wasMafiozo = !!(roleRec && roleRec.gameRole === 'mafiozo');
+            lobby.gameData.eliminatedIds.push(eliminatedId);
+          }
+        } else {
+          outcomeReason = 'tie';
+        }
       }
     }
 
-    this.broadcastFullState(roomId);
-    if (!shouldContinue && lobby.gameData.interval) {
-      clearInterval(lobby.gameData.interval);
+    // Push to history — used by Commit 4's final reveal.
+    const round = (lobby.gameData.clueIndex || 0) + 1;
+    lobby.gameData.votingHistory.push({
+      round,
+      votes: { ...votes },          // shallow copy of {voterId: targetId}
+      tally: { ...tally },
+      eliminatedId,
+      eliminatedUsername: eliminatedId ? lobby.players.get(eliminatedId)?.username : null,
+      wasMafiozo,
+      reason: outcomeReason,
+      closedBy: reason,
+    });
+
+    // Build the broadcast-safe vote_result payload. NEVER includes mafiozo
+    // identity beyond the boolean wasMafiozo on the eliminated player.
+    const voteResult = {
+      round,
+      eliminatedId,
+      eliminatedUsername: eliminatedId ? lobby.players.get(eliminatedId)?.username : null,
+      wasMafiozo,
+      reason: outcomeReason,
+      tally: { ...tally },
+      eligibleCount: eligible.length,
+      votedCount: eligible.filter(p => votes[p.id] !== undefined).length,
+    };
+    lobby.gameData.lastVoteResult = voteResult;
+
+    this.io.to(roomId).emit('vote_result', voteResult);
+
+    // Decide what comes next.
+    const lastClueReached = lobby.gameData.clueIndex >= lobby.gameData.clues.length - 1;
+    if (wasMafiozo) {
+      // Investigators win — reveal screen handles the cinematic ending.
+      lobby.gameData.outcome = 'investigators_win';
+      this.enterPhase(lobby, 'VOTE_RESULT', 8);
+      this.startRoomTimer(roomId);
+      return;
+    }
+
+    if (lastClueReached) {
+      // Last round ended without catching the mafiozo → mafiozo survives.
+      lobby.gameData.outcome = 'mafiozo_survives';
+      this.enterPhase(lobby, 'VOTE_RESULT', 8);
+      this.startRoomTimer(roomId);
+      return;
+    }
+
+    // Game continues — show vote result briefly, then next clue.
+    this.enterPhase(lobby, 'VOTE_RESULT', 8);
+    this.startRoomTimer(roomId);
+  }
+
+  handlePhaseEnd(roomId) {
+    const lobby = this.lobbies.get(roomId);
+    if (!lobby || !lobby.gameData) return;
+    const cur = lobby.gameData.phase;
+
+    if (cur === 'ROLE_REVEAL') {
+      this.enterPhase(lobby, 'PUBLIC_CHARACTER_OVERVIEW', 10);
+      return;
+    }
+    if (cur === 'PUBLIC_CHARACTER_OVERVIEW') {
+      this.enterPhase(lobby, 'CLUE_REVEAL', 45);
+      return;
+    }
+    if (cur === 'CLUE_REVEAL') {
+      this.enterPhase(lobby, 'VOTING', 30);
+      return;
+    }
+    if (cur === 'VOTING') {
+      // Timer ran out. Close voting using current votes.
+      this.closeVoting(roomId, 'timer');
+      return;
+    }
+    if (cur === 'VOTE_RESULT') {
+      // Decide where to go after the result screen.
+      if (lobby.gameData.outcome) {
+        // Game over — go to the cinematic reveal phase.
+        // Commit 4 will fully render this; for now POST_GAME falls back to
+        // the legacy single-line ending in the frontend.
+        this.enterPhase(lobby, 'FINAL_REVEAL', 0);
+        this.stopRoomTimer(lobby);
+      } else {
+        // Continue to next clue.
+        lobby.gameData.clueIndex++;
+        this.enterPhase(lobby, 'CLUE_REVEAL', 45);
+      }
+      return;
+    }
+    if (cur === 'FINAL_REVEAL' || cur === 'POST_GAME') {
+      this.stopRoomTimer(lobby);
+      return;
     }
   }
 
@@ -500,9 +707,14 @@ class GameManager {
       timer: gd?.timer || 0,
       archive: gd?.archiveBase64 || '',
       currentClue: gd?.clues?.[gd.clueIndex] || '',
+      clueIndex: gd?.clueIndex ?? 0,
+      totalClues: gd?.clues?.length || 0,
       hostId: lobby.hostId,
       roleRevealMode: lobby.roleRevealMode || 'normal',
       publicCharacterCards: gd?.publicCharacterCards || [],
+      eliminatedIds: gd?.eliminatedIds || [],
+      lastVoteResult: gd?.lastVoteResult || null,
+      outcome: gd?.outcome || null,
       players: Array.from(lobby.players.values()).map(p => ({
         id: p.id,
         username: p.username,

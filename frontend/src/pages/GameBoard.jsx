@@ -34,10 +34,21 @@ export default function GameBoard() {
   const [myVote, setMyVote] = useState(null);
   const [user] = useState(getStoredUser());
   const stateReceivedRef = useRef(false);
+  const [votingProgress, setVotingProgress] = useState({ voted: 0, total: 0 });
+  const [voteResult, setVoteResult] = useState(null);
+  const [voteError, setVoteError] = useState('');
+  const [eliminatedIds, setEliminatedIds] = useState([]);
+  const [outcome, setOutcome] = useState(null);
+  const [clueIndex, setClueIndex] = useState(0);
+  const [totalClues, setTotalClues] = useState(3);
 
-  // Reset selected vote whenever we ENTER a new VOTING round.
+  // Reset per-round transient state when we enter a new VOTING round.
   useEffect(() => {
-    if (gameState === 'VOTING') setMyVote(null);
+    if (gameState === 'VOTING') {
+      setMyVote(null);
+      setVoteError('');
+      setVoteResult(null);
+    }
   }, [gameState]);
 
   useEffect(() => {
@@ -66,6 +77,11 @@ export default function GameBoard() {
       setTimer(data.timer ?? 0);
       if (data.archive) setArchiveBase64(data.archive);
       if (data.currentClue) setCurrentClue(data.currentClue);
+      if (typeof data.clueIndex === 'number') setClueIndex(data.clueIndex);
+      if (typeof data.totalClues === 'number' && data.totalClues > 0) setTotalClues(data.totalClues);
+      if (Array.isArray(data.eliminatedIds)) setEliminatedIds(data.eliminatedIds);
+      if (data.lastVoteResult) setVoteResult(data.lastVoteResult);
+      if (data.outcome !== undefined) setOutcome(data.outcome);
       setAmIHost(data.hostId === user?.id);
     };
     const onTimer = (time) => setTimer(time);
@@ -75,6 +91,17 @@ export default function GameBoard() {
     const onVoteRegistered = (data) => {
       if (data && data.userId === user?.id) setMyVote(data.targetId);
     };
+    const onVoteRejected = (data) => {
+      setVoteError((data && data.message) || 'تعذّر تسجيل الصوت.');
+      // Auto-clear after a few seconds so the next attempt isn't shadowed.
+      setTimeout(() => setVoteError(''), 3500);
+    };
+    const onVotingProgress = (data) => {
+      if (data && typeof data.voted === 'number' && typeof data.total === 'number') {
+        setVotingProgress(data);
+      }
+    };
+    const onVoteResult = (data) => setVoteResult(data || null);
     const onYourRoleCard = (card) => setRoleCard(card || null);
 
     socket.on('full_state_update', onFullState);
@@ -83,6 +110,9 @@ export default function GameBoard() {
     socket.on('archive_sealed', onArchiveSealed);
     socket.on('clue_revealed', onClueRevealed);
     socket.on('vote_registered', onVoteRegistered);
+    socket.on('vote_rejected', onVoteRejected);
+    socket.on('voting_progress', onVotingProgress);
+    socket.on('vote_result', onVoteResult);
     socket.on('your_role_card', onYourRoleCard);
 
     const recoveryTimer = setTimeout(() => {
@@ -97,6 +127,9 @@ export default function GameBoard() {
       socket.off('archive_sealed', onArchiveSealed);
       socket.off('clue_revealed', onClueRevealed);
       socket.off('vote_registered', onVoteRegistered);
+      socket.off('vote_rejected', onVoteRejected);
+      socket.off('voting_progress', onVotingProgress);
+      socket.off('vote_result', onVoteResult);
       socket.off('your_role_card', onYourRoleCard);
     };
   }, [roomId, user?.id]);
@@ -299,28 +332,158 @@ export default function GameBoard() {
             </div>
           )}
 
-          {gameState === 'VOTING' && (
-            <div className="animate-fade-in text-center w-full">
-              <div className="mb-4 pulse-animation" style={{ fontSize: '4rem' }}>⚠️</div>
-              <h1 className="cinematic-glow mb-4" style={{ fontSize: '3rem' }}>حان وقت الحُكم</h1>
-              <p className="text-muted mb-8" style={{ fontSize: '1.2rem' }}>من هو المافيوزو؟ الأرشيف لا يرحم والمشنقة لا تفرق.</p>
-              <div className="flex justify-center flex-wrap gap-4 mx-auto" style={{ maxWidth: '80%' }}>
-                {players.filter(p => !p.isHost).map(p => (
-                  <button key={p.id} className="btn-secondary" style={{ width: '45%', fontSize: '1.2rem', padding: '1.5rem', background: myVote === p.id ? 'var(--accent-red)' : '' }} onClick={() => handleVote(p.id)}>
-                    {p.username} {myVote === p.id && '✅'}
-                  </button>
-                ))}
-                <button className="btn-secondary" style={{ width: '45%', fontSize: '1.2rem', padding: '1.5rem', background: myVote === 'skip' ? '#555' : '' }} onClick={() => handleVote('skip')}>
-                  امتناع عن التصويت {myVote === 'skip' && '✅'}
-                </button>
-              </div>
-            </div>
-          )}
+          {gameState === 'VOTING' && (() => {
+            const me = players.find(p => p.id === user?.id);
+            const iAmEliminated = me ? !me.isAlive : false;
+            const canVote = !amIHost && !iAmEliminated;
+            const aliveNonHost = players.filter(p => !p.isHost && p.isAlive);
+            return (
+              <div className="animate-fade-in text-center w-full">
+                <div className="mb-3 pulse-animation" style={{ fontSize: '3.5rem' }}>⚠️</div>
+                <h1 className="cinematic-glow mb-2" style={{ fontSize: '2.6rem' }}>حان وقت الحُكم</h1>
+                <p className="text-muted mb-2" style={{ fontSize: '1.05rem' }}>
+                  جولة {Math.min(clueIndex + 1, totalClues)} من {totalClues} — مين المشتبه فيه النوبة دي؟
+                </p>
+                <p className="golden-text mb-6" style={{ fontSize: '1rem' }}>
+                  صوّت {votingProgress.voted} من {votingProgress.total}
+                </p>
 
-          {gameState === 'POST_GAME' && (
+                {voteError && (
+                  <div className="mb-4 mx-auto p-2 rounded text-main" style={{ background: 'rgba(229,9,20,0.18)', border: '1px solid var(--accent-red)', maxWidth: '480px' }}>
+                    ⚠️ {voteError}
+                  </div>
+                )}
+
+                {amIHost && (
+                  <div className="mb-4 mx-auto p-3 rounded text-muted" style={{ background: 'rgba(0,0,0,0.5)', border: '1px dashed var(--border-subtle)', maxWidth: '480px' }}>
+                    🎩 المضيف لا يصوّت. تابع تقدّم اللاعبين.
+                  </div>
+                )}
+                {iAmEliminated && (
+                  <div className="mb-4 mx-auto p-3 rounded text-muted" style={{ background: 'rgba(229,9,20,0.1)', border: '1px solid rgba(229,9,20,0.3)', maxWidth: '480px' }}>
+                    💀 خرجت من التحقيق، مش هتقدر تصوّت في الجولة دي.
+                  </div>
+                )}
+
+                <div className="flex justify-center flex-wrap gap-4 mx-auto" style={{ maxWidth: '80%' }}>
+                  {aliveNonHost.map(p => (
+                    <button
+                      key={p.id}
+                      className="btn-secondary"
+                      disabled={!canVote || p.id === user?.id /* can vote self if rules allow; keep enabled */}
+                      style={{
+                        width: '45%',
+                        fontSize: '1.2rem',
+                        padding: '1.5rem',
+                        background: myVote === p.id ? 'var(--accent-red)' : '',
+                        opacity: canVote ? 1 : 0.55,
+                        cursor: canVote ? 'pointer' : 'not-allowed',
+                      }}
+                      onClick={() => canVote && handleVote(p.id)}
+                    >
+                      {p.username} {myVote === p.id && '✅'}
+                    </button>
+                  ))}
+                  <button
+                    className="btn-secondary"
+                    disabled={!canVote}
+                    style={{
+                      width: '45%',
+                      fontSize: '1.2rem',
+                      padding: '1.5rem',
+                      background: myVote === 'skip' ? '#555' : '',
+                      opacity: canVote ? 1 : 0.55,
+                      cursor: canVote ? 'pointer' : 'not-allowed',
+                    }}
+                    onClick={() => canVote && handleVote('skip')}
+                  >
+                    امتناع عن التصويت {myVote === 'skip' && '✅'}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {gameState === 'VOTE_RESULT' && voteResult && (() => {
+            const elim = voteResult.eliminatedUsername;
+            const titleText =
+              voteResult.reason === 'majority'
+                ? (voteResult.wasMafiozo ? 'اتقبض على المافيوزو!' : `${elim} خرج من اللعبة`)
+                : voteResult.reason === 'tie'
+                ? 'تعادل في التصويت — محدش خرج'
+                : voteResult.reason === 'no-vote'
+                ? 'محدش صوّت — الجولة عدّت'
+                : voteResult.reason === 'all-skip'
+                ? 'الكل امتنع عن التصويت'
+                : '...';
+            const subText =
+              voteResult.reason === 'majority'
+                ? (voteResult.wasMafiozo
+                    ? 'الأرشيف هيتفك دلوقتي. الحقيقة كلها جاية.'
+                    : 'الجولة الجاية هتبدأ بدليل جديد.')
+                : 'الجولة الجاية هتبدأ بدليل جديد.';
+            const accent = voteResult.reason === 'majority' && voteResult.wasMafiozo
+              ? 'var(--accent-gold)'
+              : voteResult.reason === 'majority'
+                ? 'var(--accent-red)'
+                : 'var(--text-muted)';
+            return (
+              <div className="animate-fade-in text-center w-full">
+                <div className="mb-3" style={{ fontSize: '4rem', filter: `drop-shadow(0 0 22px ${accent})` }}>
+                  {voteResult.wasMafiozo ? '🎯' : voteResult.eliminatedUsername ? '⚖️' : '🤐'}
+                </div>
+                <h1 className="cinematic-glow mb-3" style={{ fontSize: '2.4rem', color: accent }}>{titleText}</h1>
+                <p className="text-muted mb-4" style={{ fontSize: '1.05rem' }}>{subText}</p>
+                <div className="mx-auto p-3 rounded-lg" style={{
+                  background: 'rgba(0,0,0,0.45)',
+                  border: '1px solid var(--border-subtle)',
+                  maxWidth: '520px',
+                  textAlign: 'right',
+                }}>
+                  <div className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '0.4rem' }}>
+                    صوّت {voteResult.votedCount} من {voteResult.eligibleCount} — جولة {voteResult.round} من {totalClues}
+                  </div>
+                  {voteResult.tally && Object.keys(voteResult.tally).length > 0 && (
+                    <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                      {Object.entries(voteResult.tally)
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([targetId, count]) => {
+                          const targetPlayer = players.find(p => String(p.id) === String(targetId));
+                          const label = targetId === 'skip' ? 'امتناع' : (targetPlayer?.username || targetId);
+                          return (
+                            <li key={targetId} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0' }}>
+                              <span>{label}</span>
+                              <span className="golden-text">{count} صوت</span>
+                            </li>
+                          );
+                        })}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {(gameState === 'POST_GAME' || gameState === 'FINAL_REVEAL') && (
             <div className="animate-fade-in text-center w-full">
-              <h1 className="cinematic-glow mb-4">انتهت التحقيقات</h1>
-              <button className="btn-primary" onClick={() => navigate('/report')} style={{ maxWidth: '300px', margin: '0 auto' }}>الاطلاع على التقرير النهائي</button>
+              {/* Commit 4 will replace this with the cinematic crime reconstruction. */}
+              <h1 className="cinematic-glow mb-3" style={{ fontSize: '2.5rem' }}>
+                {outcome === 'investigators_win'
+                  ? 'انتصر التحقيق!'
+                  : outcome === 'mafiozo_survives'
+                  ? 'المافيوزو نجا...'
+                  : 'انتهت التحقيقات'}
+              </h1>
+              <p className="text-muted mb-6">{
+                outcome === 'investigators_win'
+                  ? 'القبض على المافيوزو قبل ما يكمل خطته. المحققين كسبوا.'
+                  : outcome === 'mafiozo_survives'
+                  ? 'الأرشيف اتفك. الحقيقة هتظهر بعد ثواني.'
+                  : 'انتهت الجلسة.'
+              }</p>
+              <button className="btn-primary" onClick={() => navigate('/lobby')} style={{ maxWidth: '300px', margin: '0 auto' }}>
+                ارجع للساحة
+              </button>
             </div>
           )}
         </div>
