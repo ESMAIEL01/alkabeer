@@ -4,6 +4,19 @@ import { socket, setActiveRoomId, getActiveRoomId } from '../services/socket';
 import { getStoredUser } from '../services/api';
 
 // =============================================================================
+// ConnectionBanner — top-of-screen toast that reflects socket health.
+// Hides itself entirely when the connection is fine.
+// =============================================================================
+function ConnectionBanner({ status }) {
+  if (status === 'connected') return null;
+  let cls = 'info', text = '';
+  if (status === 'reconnecting') { cls = 'info'; text = 'إعادة الاتصال...'; }
+  else if (status === 'disconnected') { cls = 'warn'; text = 'انقطع الاتصال — جار المحاولة'; }
+  else if (status === 'recently_reconnected') { cls = 'ok'; text = 'الاتصال رجع تاني ✓'; }
+  return <div className={`connection-banner ${cls}`}>{text}</div>;
+}
+
+// =============================================================================
 // FinalRevealView — cinematic case conclusion
 //
 // Renders the deterministic payload built by the backend's buildFinalReveal().
@@ -289,8 +302,11 @@ export default function GameBoard() {
   const [clueIndex, setClueIndex] = useState(0);
   const [totalClues, setTotalClues] = useState(3);
   const [hostError, setHostError] = useState('');     // Arabic error from rejected host action
+  const [hostSuccess, setHostSuccess] = useState(''); // brief confirmation for host actions
   const [sessionEnded, setSessionEnded] = useState(false);
   const [finalReveal, setFinalReveal] = useState(null);
+  // Connection: 'connected' | 'reconnecting' | 'disconnected' | 'recently_reconnected'
+  const [connectionStatus, setConnectionStatus] = useState(socket.connected ? 'connected' : 'reconnecting');
 
   // Reset per-round transient state when we enter a new VOTING round.
   useEffect(() => {
@@ -300,6 +316,33 @@ export default function GameBoard() {
       setVoteResult(null);
     }
   }, [gameState]);
+
+  // Connection status banner — driven by socket lifecycle events.
+  useEffect(() => {
+    let recoveryTimer = null;
+    const onConnect = () => {
+      setConnectionStatus(prev => {
+        if (prev === 'disconnected' || prev === 'reconnecting') {
+          // Briefly show "الاتصال رجع تاني", then fade.
+          if (recoveryTimer) clearTimeout(recoveryTimer);
+          recoveryTimer = setTimeout(() => setConnectionStatus('connected'), 2500);
+          return 'recently_reconnected';
+        }
+        return 'connected';
+      });
+    };
+    const onDisconnect = () => setConnectionStatus('disconnected');
+    const onReconnectAttempt = () => setConnectionStatus('reconnecting');
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    socket.io.on('reconnect_attempt', onReconnectAttempt);
+    return () => {
+      if (recoveryTimer) clearTimeout(recoveryTimer);
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+      socket.io.off('reconnect_attempt', onReconnectAttempt);
+    };
+  }, []);
 
   useEffect(() => {
     if (!roomId) {
@@ -394,13 +437,34 @@ export default function GameBoard() {
     };
   }, [roomId, user?.id]);
 
-  // Named host action — server may ack with `{ success: false, error: '<arabic>' }`.
+  // Friendly Arabic success label for each host action.
+  const HOST_ACTION_OK_LABEL = {
+    pause: 'اللعبة اتوقّفت مؤقتاً',
+    resume: 'اللعبة استكملت',
+    extend_timer: 'تم إضافة 30 ثانية',
+    start_first_clue: 'الجولة الأولى بدأت',
+    skip_public_overview: 'الدليل الأول جاي',
+    start_voting_now: 'التصويت اتفتح',
+    end_discussion_now: 'التصويت اتفتح',
+    close_voting_now: 'التصويت اتقفل',
+    continue_next_round: 'الجولة الجاية بدأت',
+    reveal_next_clue: 'الجولة الجاية بدأت',
+    trigger_final_reveal: 'الكشف النهائي بدأ',
+    end_session: 'الجلسة اتقفلت',
+  };
+
+  // Named host action — server may ack with `{ success, error }`.
   const handleHostAction = (action) => {
     setHostError('');
+    setHostSuccess('');
     socket.emit('host_control', { action, roomId }, (resp) => {
       if (resp && resp.success === false && resp.error) {
         setHostError(resp.error);
         setTimeout(() => setHostError(''), 3500);
+      } else if (resp && resp.success) {
+        const label = HOST_ACTION_OK_LABEL[action] || 'تم';
+        setHostSuccess(label);
+        setTimeout(() => setHostSuccess(''), 1800);
       }
     });
   };
@@ -414,43 +478,52 @@ export default function GameBoard() {
   // ----- recovery / loading ----------------------------------------------
   if (sessionEnded) {
     return (
-      <div className="container animate-fade-in" style={{ alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-        <div className="card text-center max-w-md mx-auto" style={{ padding: '2.5rem' }}>
-          <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🚪</div>
-          <h2 className="cinematic-glow mb-3">المضيف أنهى الجلسة</h2>
-          <p className="text-muted mb-6">يلا نبدأ غرفة جديدة؟</p>
-          <button className="btn-primary" onClick={() => navigate('/lobby')}>ارجع للساحة</button>
+      <>
+        <ConnectionBanner status={connectionStatus} />
+        <div className="container animate-fade-in" style={{ alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+          <div className="card text-center max-w-md mx-auto" style={{ padding: '2.5rem' }}>
+            <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🚪</div>
+            <h2 className="cinematic-glow mb-3">المضيف أنهى الجلسة</h2>
+            <p className="text-muted mb-6">يلا نبدأ غرفة جديدة؟</p>
+            <button className="btn-primary" onClick={() => navigate('/lobby')}>ارجع للساحة</button>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (gameState === 'NOT_FOUND') {
     return (
-      <div className="container animate-fade-in" style={{ alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-        <div className="card text-center max-w-md mx-auto" style={{ padding: '2.5rem' }}>
-          <div style={{ fontSize: '4rem', marginBottom: '1rem', filter: 'drop-shadow(0 0 20px rgba(229,9,20,0.4))' }}>🚪</div>
-          <h2 className="cinematic-glow mb-4">تعذر استعادة الغرفة</h2>
-          <p className="text-muted mb-6">الغرفة انتهت أو غير موجودة. ارجع للساحة وابدأ غرفة جديدة.</p>
-          <button className="btn-primary" onClick={() => navigate('/lobby')}>ارجع للساحة</button>
+      <>
+        <ConnectionBanner status={connectionStatus} />
+        <div className="container animate-fade-in" style={{ alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+          <div className="card text-center max-w-md mx-auto" style={{ padding: '2.5rem' }}>
+            <div style={{ fontSize: '4rem', marginBottom: '1rem', filter: 'drop-shadow(0 0 20px rgba(229,9,20,0.4))' }}>🚪</div>
+            <h2 className="cinematic-glow mb-4">تعذر استعادة الغرفة</h2>
+            <p className="text-muted mb-6">الغرفة انتهت أو غير موجودة. ارجع للساحة وابدأ غرفة جديدة.</p>
+            <button className="btn-primary" onClick={() => navigate('/lobby')}>ارجع للساحة</button>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
   if (gameState === 'LOADING') {
     return (
-      <div className="container animate-fade-in" style={{ alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-        <div className="card text-center max-w-md mx-auto" style={{ padding: '2.5rem' }}>
-          <div className="pulse-animation" style={{ fontSize: '5rem', marginBottom: '1rem', filter: 'drop-shadow(0 0 25px rgba(229,9,20,0.6))' }}>🔴</div>
-          <h2 className="cinematic-glow mb-2">جاري استعادة حالة اللعبة...</h2>
-          <p className="text-muted">الكبير بيفتح الأرشيف، استنى لحظة.</p>
-          {roomId && (
-            <p className="golden-text mt-4" style={{ fontSize: '0.9rem', letterSpacing: '2px' }}>
-              غرفة: {roomId}
-            </p>
-          )}
+      <>
+        <ConnectionBanner status={connectionStatus} />
+        <div className="container animate-fade-in" style={{ alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+          <div className="card text-center max-w-md mx-auto" style={{ padding: '2.5rem' }}>
+            <div className="pulse-animation" style={{ fontSize: '5rem', marginBottom: '1rem', filter: 'drop-shadow(0 0 25px rgba(229,9,20,0.6))' }}>🔴</div>
+            <h2 className="cinematic-glow mb-2">جاري استعادة حالة اللعبة...</h2>
+            <p className="text-muted">الكبير بيفتح الأرشيف، استنى لحظة.</p>
+            {roomId && (
+              <p className="golden-text mt-4" style={{ fontSize: '0.9rem', letterSpacing: '2px' }}>
+                غرفة: {roomId}
+              </p>
+            )}
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -458,6 +531,8 @@ export default function GameBoard() {
   if (gameState === 'ROLE_REVEAL') {
     const isBlind = roleRevealMode === 'blind' || roleCard?.mode === 'blind';
     return (
+      <>
+      <ConnectionBanner status={connectionStatus} />
       <div className="container mt-2 animate-fade-in" style={{ maxWidth: '720px' }}>
         <div className="flex justify-between items-center mb-4 p-3 rounded-xl" style={{ background: 'rgba(0,0,0,0.6)', borderBottom: '1px solid var(--accent-gold)' }}>
           <h3 className="golden-text" style={{ margin: 0, fontSize: '1.2rem' }}>هويتك في التحقيق</h3>
@@ -555,12 +630,15 @@ export default function GameBoard() {
           </div>
         )}
       </div>
+      </>
     );
   }
 
   // ----- PUBLIC_CHARACTER_OVERVIEW: 10 s public summary -------------------
   if (gameState === 'PUBLIC_CHARACTER_OVERVIEW') {
     return (
+      <>
+      <ConnectionBanner status={connectionStatus} />
       <div className="container mt-2 animate-fade-in" style={{ maxWidth: '1100px' }}>
         <div className="text-center mb-4">
           <h2 className="cinematic-glow" style={{ fontSize: '2.2rem' }}>الشخصيات على الطاولة</h2>
@@ -591,25 +669,31 @@ export default function GameBoard() {
           </div>
         )}
       </div>
+      </>
     );
   }
 
   // ----- FINAL_REVEAL / POST_GAME (full-width cinematic reveal) -----------
   if (gameState === 'FINAL_REVEAL' || gameState === 'POST_GAME') {
     return (
-      <div className="container mt-2 animate-fade-in" style={{ maxWidth: '1100px' }}>
-        <FinalRevealView
-          data={finalReveal}
-          fallbackOutcome={outcome}
-          onNewGame={() => { setFinalReveal(null); navigate('/lobby'); }}
-          onBackToLobby={() => navigate('/lobby')}
-        />
-      </div>
+      <>
+        <ConnectionBanner status={connectionStatus} />
+        <div className="container mt-2 animate-fade-in" style={{ maxWidth: '1100px' }}>
+          <FinalRevealView
+            data={finalReveal}
+            fallbackOutcome={outcome}
+            onNewGame={() => { setFinalReveal(null); navigate('/lobby'); }}
+            onBackToLobby={() => navigate('/lobby')}
+          />
+        </div>
+      </>
     );
   }
 
   // ----- main arena (CLUE_REVEAL / VOTING / POST_GAME / legacy ARCHIVE_LOCKED)
   return (
+    <>
+    <ConnectionBanner status={connectionStatus} />
     <div className="container mt-2 animate-fade-in" style={{ maxWidth: '1400px' }}>
       <div className="flex justify-between items-center mb-6 p-4 rounded-xl" style={{ background: 'rgba(0,0,0,0.6)', borderBottom: '2px solid var(--accent-red)' }}>
         <h2 className="golden-text" style={{ margin: 0 }}>الساحة المستديرة ⚖️</h2>
@@ -646,6 +730,7 @@ export default function GameBoard() {
 
           {gameState === 'CLUE_REVEAL' && (
             <div className="animate-fade-in text-center w-full">
+              <span className="phase-pill">الدليل {Math.min(clueIndex + 1, totalClues)} من {totalClues}</span>
               <h3 className="golden-text mb-6" style={{ fontSize: '2.2rem' }}>🔍 دليل من الكبير</h3>
               <div className="cinematic-glow p-6 rounded-xl mx-auto" style={{ fontSize: '1.6rem', backgroundColor: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.1)', maxWidth: '80%' }}>
                 "{currentClue || 'لا يوجد دليل متاح حالياً.'}"
@@ -659,14 +744,17 @@ export default function GameBoard() {
             const iAmEliminated = me ? !me.isAlive : false;
             const canVote = !amIHost && !iAmEliminated;
             const aliveNonHost = players.filter(p => !p.isHost && p.isAlive);
+            const iHaveVoted = canVote && myVote !== null && myVote !== undefined;
+            const everyoneVoted = votingProgress.total > 0 && votingProgress.voted >= votingProgress.total;
             return (
               <div className="animate-fade-in text-center w-full">
+                <span className="phase-pill danger">التصويت · جولة {Math.min(clueIndex + 1, totalClues)} من {totalClues}</span>
                 <div className="mb-3 pulse-animation" style={{ fontSize: '3.5rem' }}>⚠️</div>
                 <h1 className="cinematic-glow mb-2" style={{ fontSize: '2.6rem' }}>حان وقت الحُكم</h1>
                 <p className="text-muted mb-2" style={{ fontSize: '1.05rem' }}>
-                  جولة {Math.min(clueIndex + 1, totalClues)} من {totalClues} — مين المشتبه فيه النوبة دي؟
+                  مين المشتبه فيه النوبة دي؟
                 </p>
-                <p className="golden-text mb-6" style={{ fontSize: '1rem' }}>
+                <p className="golden-text mb-4" style={{ fontSize: '1rem' }}>
                   صوّت {votingProgress.voted} من {votingProgress.total}
                 </p>
 
@@ -686,41 +774,55 @@ export default function GameBoard() {
                     💀 خرجت من التحقيق، مش هتقدر تصوّت في الجولة دي.
                   </div>
                 )}
+                {iHaveVoted && !everyoneVoted && (
+                  <div className="mb-4 mx-auto p-3 rounded golden-text" style={{ background: 'rgba(212,175,55,0.10)', border: '1px solid rgba(212,175,55,0.45)', maxWidth: '480px' }}>
+                    ✓ صوّتت — مستني باقي اللاعبين ({votingProgress.total - votingProgress.voted} متبقي)
+                  </div>
+                )}
 
-                <div className="flex justify-center flex-wrap gap-4 mx-auto" style={{ maxWidth: '80%' }}>
-                  {aliveNonHost.map(p => (
-                    <button
-                      key={p.id}
-                      className="btn-secondary"
-                      disabled={!canVote || p.id === user?.id /* can vote self if rules allow; keep enabled */}
-                      style={{
-                        width: '45%',
-                        fontSize: '1.2rem',
-                        padding: '1.5rem',
-                        background: myVote === p.id ? 'var(--accent-red)' : '',
-                        opacity: canVote ? 1 : 0.55,
-                        cursor: canVote ? 'pointer' : 'not-allowed',
-                      }}
-                      onClick={() => canVote && handleVote(p.id)}
-                    >
-                      {p.username} {myVote === p.id && '✅'}
-                    </button>
-                  ))}
-                  <button
-                    className="btn-secondary"
-                    disabled={!canVote}
-                    style={{
-                      width: '45%',
-                      fontSize: '1.2rem',
-                      padding: '1.5rem',
-                      background: myVote === 'skip' ? '#555' : '',
-                      opacity: canVote ? 1 : 0.55,
-                      cursor: canVote ? 'pointer' : 'not-allowed',
-                    }}
-                    onClick={() => canVote && handleVote('skip')}
-                  >
-                    امتناع عن التصويت {myVote === 'skip' && '✅'}
-                  </button>
+                <div className="voting-grid flex justify-center flex-wrap gap-4 mx-auto" style={{ maxWidth: '80%' }}>
+                  {aliveNonHost.map(p => {
+                    const selected = myVote === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        className={`btn-secondary ${selected ? 'vote-pressed' : ''}`}
+                        disabled={!canVote}
+                        style={{
+                          width: '45%',
+                          fontSize: '1.2rem',
+                          padding: '1.5rem',
+                          background: selected ? 'var(--accent-red)' : '',
+                          borderColor: selected ? 'var(--accent-red)' : 'var(--border-subtle)',
+                          opacity: canVote ? 1 : 0.55,
+                          cursor: canVote ? 'pointer' : 'not-allowed',
+                        }}
+                        onClick={() => canVote && handleVote(p.id)}
+                      >
+                        {p.username} {selected && '✅'}
+                      </button>
+                    );
+                  })}
+                  {(() => {
+                    const skipSelected = myVote === 'skip';
+                    return (
+                      <button
+                        className={`btn-secondary ${skipSelected ? 'vote-pressed' : ''}`}
+                        disabled={!canVote}
+                        style={{
+                          width: '45%',
+                          fontSize: '1.2rem',
+                          padding: '1.5rem',
+                          background: skipSelected ? '#555' : '',
+                          opacity: canVote ? 1 : 0.55,
+                          cursor: canVote ? 'pointer' : 'not-allowed',
+                        }}
+                        onClick={() => canVote && handleVote('skip')}
+                      >
+                        امتناع عن التصويت {skipSelected && '✅'}
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
             );
@@ -728,6 +830,7 @@ export default function GameBoard() {
 
           {gameState === 'VOTE_RESULT' && voteResult && (() => {
             const elim = voteResult.eliminatedUsername;
+            const isLastRound = voteResult.round >= totalClues;
             const titleText =
               voteResult.reason === 'majority'
                 ? (voteResult.wasMafiozo ? 'اتقبض على المافيوزو!' : `${elim} خرج من اللعبة`)
@@ -738,12 +841,21 @@ export default function GameBoard() {
                 : voteResult.reason === 'all-skip'
                 ? 'الكل امتنع عن التصويت'
                 : '...';
-            const subText =
-              voteResult.reason === 'majority'
-                ? (voteResult.wasMafiozo
-                    ? 'الأرشيف هيتفك دلوقتي. الحقيقة كلها جاية.'
-                    : 'الجولة الجاية هتبدأ بدليل جديد.')
-                : 'الجولة الجاية هتبدأ بدليل جديد.';
+            // Outcome-aware next-step copy.
+            let subText;
+            if (voteResult.reason === 'majority' && voteResult.wasMafiozo) {
+              subText = 'الحقيقة اتكشفت. الأرشيف بيتفك دلوقتي.';
+            } else if (voteResult.reason === 'majority' && !voteResult.wasMafiozo) {
+              subText = isLastRound
+                ? 'الكشف ضاع — المافيوزو لسه وسطكم.'
+                : 'الدليل الجاي هيقرّبكم من الحقيقة.';
+            } else if (voteResult.reason === 'tie' || voteResult.reason === 'no-vote' || voteResult.reason === 'all-skip') {
+              subText = isLastRound
+                ? 'مفيش حسم في الجولة الأخيرة — المافيوزو لسه وسطكم.'
+                : 'الجولة عدّت بدون حسم. الدليل الجاي طريقكم.';
+            } else {
+              subText = 'الجولة الجاية هتبدأ بدليل جديد.';
+            }
             const accent = voteResult.reason === 'majority' && voteResult.wasMafiozo
               ? 'var(--accent-gold)'
               : voteResult.reason === 'majority'
@@ -751,6 +863,7 @@ export default function GameBoard() {
                 : 'var(--text-muted)';
             return (
               <div className="animate-fade-in text-center w-full">
+                <span className="phase-pill">نتيجة الجولة {voteResult.round} من {totalClues}</span>
                 <div className="mb-3" style={{ fontSize: '4rem', filter: `drop-shadow(0 0 22px ${accent})` }}>
                   {voteResult.wasMafiozo ? '🎯' : voteResult.eliminatedUsername ? '⚖️' : '🤐'}
                 </div>
@@ -794,8 +907,13 @@ export default function GameBoard() {
               <h4 className="golden-text mb-3"><span>🕹️</span> لوحة تحكم الكبير</h4>
 
               {hostError && (
-                <div className="mb-3 p-2 rounded text-center" style={{ background: 'rgba(229,9,20,0.18)', border: '1px solid var(--accent-red)', fontSize: '0.9rem' }}>
+                <div className="host-toast err mb-3 text-center" style={{ display: 'block', fontSize: '0.9rem' }}>
                   ⚠️ {hostError}
+                </div>
+              )}
+              {hostSuccess && !hostError && (
+                <div className="host-toast ok mb-3 text-center" style={{ display: 'block', fontSize: '0.9rem' }}>
+                  ✓ {hostSuccess}
                 </div>
               )}
 
@@ -852,5 +970,6 @@ export default function GameBoard() {
         </div>
       </div>
     </div>
+    </>
   );
 }

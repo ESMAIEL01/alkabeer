@@ -329,6 +329,115 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: 0 0 0 1px var(--border-subtle), 0 12px 38px rgba(0,0,0,0.55), 0 0 32px rgba(229,9,20,0.15);
 }
 
+/* ===========================================================================
+ * Connection banner — slides down from the top when the socket is degraded.
+ * =========================================================================== */
+@keyframes connectionBannerIn {
+  from { transform: translateY(-100%); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+.connection-banner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  padding: 0.55rem 1rem;
+  text-align: center;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-main);
+  z-index: 100;
+  animation: connectionBannerIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  backdrop-filter: blur(8px);
+}
+.connection-banner.warn  { background: rgba(229, 9, 20, 0.85); border-bottom: 1px solid #8b0000; }
+.connection-banner.info  { background: rgba(212, 175, 55, 0.85); color: #20140a; border-bottom: 1px solid #6b5618; }
+.connection-banner.ok    { background: rgba(34, 130, 70, 0.85); border-bottom: 1px solid #1d6e3a; }
+
+/* ===========================================================================
+ * Phase pill — small uppercase badge above CLUE_REVEAL / VOTING / VOTE_RESULT.
+ * =========================================================================== */
+.phase-pill {
+  display: inline-block;
+  padding: 0.3rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--accent-gold);
+  color: var(--accent-gold);
+  font-size: 0.78rem;
+  letter-spacing: 2.5px;
+  font-weight: 700;
+  margin-bottom: 0.7rem;
+}
+.phase-pill.danger {
+  border-color: var(--accent-red);
+  color: var(--accent-red);
+}
+
+/* ===========================================================================
+ * Vote button — soft press feedback + clearer "selected" state.
+ * =========================================================================== */
+@keyframes votePressedPulse {
+  0%   { transform: scale(1.0); }
+  40%  { transform: scale(0.96); box-shadow: 0 0 0 6px rgba(229, 9, 20, 0.2); }
+  100% { transform: scale(1.0); box-shadow: 0 0 0 0  rgba(229, 9, 20, 0); }
+}
+.vote-pressed {
+  animation: votePressedPulse 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* ===========================================================================
+ * Shimmer — used for "AI thinking" placeholders.
+ * =========================================================================== */
+@keyframes shimmerSlide {
+  from { background-position: -150% 0; }
+  to   { background-position: 250%  0; }
+}
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255,255,255,0.04) 0%,
+    rgba(255,255,255,0.12) 50%,
+    rgba(255,255,255,0.04) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmerSlide 1.6s linear infinite;
+  border-radius: 8px;
+}
+
+/* ===========================================================================
+ * Toast (success) — used after a host action acks success.
+ * =========================================================================== */
+@keyframes toastSlideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.host-toast {
+  display: inline-block;
+  padding: 0.5rem 0.85rem;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  animation: toastSlideIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.host-toast.ok   { background: rgba(34, 130, 70, 0.18); border: 1px solid rgba(34, 130, 70, 0.55); color: #c8eccd; }
+.host-toast.err  { background: rgba(229, 9, 20, 0.18); border: 1px solid var(--accent-red); color: var(--text-main); }
+
+/* ===========================================================================
+ * Mobile readability tweaks. Conservative — only adjust where the desktop
+ * layout caused horizontal overflow or unreadable cramped text.
+ * =========================================================================== */
+@media (max-width: 720px) {
+  .container { padding: 1.2rem 0.9rem !important; }
+  h1 { font-size: 2rem !important; }
+  h2 { font-size: 1.5rem !important; }
+  .card { padding: 1.1rem !important; }
+  .input-field { font-size: 1rem; }
+  .btn-primary, .btn-secondary { font-size: 1rem !important; padding: 0.85rem 1rem !important; }
+  /* Voting buttons stack on phones instead of forcing 45% widths */
+  .voting-grid > button { width: 100% !important; }
+  /* Final-reveal hero stays readable */
+  .final-reveal-section h1 { font-size: 1.7rem !important; }
+}
+
 /* Respect users who asked the OS to reduce motion. Applies to every keyframe
    we use elsewhere too (fadeIn, pulseRed, roleCardReveal). */
 @media (prefers-reduced-motion: reduce) {

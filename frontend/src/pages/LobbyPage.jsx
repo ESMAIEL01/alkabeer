@@ -263,14 +263,16 @@ export default function LobbyPage() {
                   onClick={() => handleCreateRoom('HUMAN')}
                   style={{ fontSize: '1.15rem', padding: '1.1rem' }}
                 >
-                  مضيف بشري 👤
+                  <div>مضيف بشري 👤</div>
+                  <div style={{ fontSize: '0.78rem', opacity: 0.85, fontWeight: 400, marginTop: '0.2rem' }}>إنت اللي بتكتب الأرشيف وبتدير الجلسة.</div>
                 </button>
                 <button
                   className="btn-primary"
                   onClick={() => handleCreateRoom('AI')}
                   style={{ fontSize: '1.15rem', padding: '1.1rem', background: 'linear-gradient(135deg, #1f1c2c, #928DAB)' }}
                 >
-                  الكبير الاصطناعي 🤖
+                  <div>الكبير الاصطناعي 🤖</div>
+                  <div style={{ fontSize: '0.78rem', opacity: 0.9, fontWeight: 400, marginTop: '0.2rem' }}>الذكاء بيكتب القصة، وإنت بتتحكم في الجلسة.</div>
                 </button>
               </div>
             </div>

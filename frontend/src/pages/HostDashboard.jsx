@@ -1,7 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { emitWithAck, setActiveRoomId, getActiveRoomId } from '../services/socket';
 import { api } from '../services/api';
+
+// Cycling cinematic microcopy shown while the AI is generating a scenario.
+// Pure flavor — purely decorative, never makes claims about real internals.
+const AI_LOADING_LINES = [
+  'الكبير بيقرأ الخيوط...',
+  'بيجمع الشبهات...',
+  'بيدبر الجريمة في دماغه...',
+  'الأرشيف بيتختم...',
+  'الساحة بتتجهز...',
+];
 
 /**
  * Host crafts (or AI-generates) the sealed archive, then commits it.
@@ -22,6 +32,16 @@ export default function HostDashboard() {
 
   // sealing → 'idle' | 'sealing' | 'sealed'
   const [sealing, setSealing] = useState('idle');
+  const [loadingLineIdx, setLoadingLineIdx] = useState(0);
+
+  // Cycle the cinematic line while loading or sealing so the wait feels alive.
+  useEffect(() => {
+    if (!loading && sealing !== 'sealing') return;
+    const id = setInterval(() => {
+      setLoadingLineIdx(i => (i + 1) % AI_LOADING_LINES.length);
+    }, 1700);
+    return () => clearInterval(id);
+  }, [loading, sealing]);
 
   const handleGenerateAI = async () => {
     setLoading(true);
@@ -86,7 +106,7 @@ export default function HostDashboard() {
   };
 
   const buttonLabel =
-    sealing === 'sealing' ? 'جاري ختم الأرشيف... ⏳'
+    sealing === 'sealing' ? `${AI_LOADING_LINES[loadingLineIdx]} ⏳`
     : sealing === 'sealed' ? 'تم الختم، جار فتح الساحة... 🔥'
     : 'ختم الأرشيف وبدء اللعبة 🔥';
 
@@ -112,8 +132,11 @@ export default function HostDashboard() {
               disabled={sealing !== 'idle'}
             />
             <button className="btn-secondary mb-4" onClick={handleGenerateAI} disabled={loading || sealing !== 'idle'}>
-              {loading ? '⏳ الكبير بيكتب...' : '✨ توليد السيناريو بالذكاء الاصطناعي'}
+              {loading ? `⏳ ${AI_LOADING_LINES[loadingLineIdx]}` : '✨ توليد السيناريو بالذكاء الاصطناعي'}
             </button>
+            {loading && (
+              <div className="shimmer mb-4" style={{ height: '60px' }} aria-hidden="true" />
+            )}
 
             {error && (
               <div className="mb-4 p-2 rounded text-main" style={{ background: 'rgba(229,9,20,0.2)', border: '1px solid var(--accent-red)' }}>
