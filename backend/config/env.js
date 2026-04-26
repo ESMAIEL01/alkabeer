@@ -48,6 +48,17 @@ const config = Object.freeze({
     narrationModel: process.env.GEMINI_NARRATION_MODEL || 'gemini-2.5-flash',
     timeoutMs: parseInt(process.env.GEMINI_TIMEOUT_MS || '30000', 10),
   },
+  // OpenRouter is an OPTIONAL secondary AI fallback. Never required at boot.
+  // Enabled only when AI_FALLBACK_PROVIDER=openrouter AND a key is present.
+  openrouter: {
+    apiKey: process.env.OPENROUTER_API_KEY || '',
+    baseUrl: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
+    fallbackModel: process.env.OPENROUTER_FALLBACK_MODEL || 'nvidia/nemotron-3-super-120b-a12b:free',
+    timeoutMs: parseInt(process.env.OPENROUTER_TIMEOUT_MS || '30000', 10),
+    enabled:
+      ((process.env.AI_FALLBACK_PROVIDER || '').toLowerCase() === 'openrouter') &&
+      !!process.env.OPENROUTER_API_KEY,
+  },
   rateLimit: {
     authWindowMs: parseInt(process.env.AUTH_RATE_WINDOW_MS || '900000', 10), // 15 min
     authMax: parseInt(process.env.AUTH_RATE_MAX || '20', 10),
@@ -63,6 +74,8 @@ if (!isTest) {
   if (!config.gemini.apiKey) {
     console.warn('⚠️  GEMINI_API_KEY is not set — AI features will fall back to a built-in scenario.');
   }
+  // Log presence/absence only — never the key itself.
+  console.log(`🔧 OpenRouter fallback: ${config.openrouter.enabled ? 'enabled (' + config.openrouter.fallbackModel + ')' : 'disabled'}`);
 }
 
 module.exports = config;

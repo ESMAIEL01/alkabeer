@@ -1,17 +1,27 @@
 /**
  * Public AI surface used by the route layer.
  *
- * Two operations:
- *   generateSealedArchive(input)  - one-shot scenario + clues for game start.
- *   narrate({ phase, context })   - short cinematic line for in-game beats.
+ * Provider chain (per call):
+ *   1. Gemini   (primary)        — config.gemini.apiKey present
+ *   2. OpenRouter (fallback)     — config.openrouter.enabled
+ *   3. Built-in scenario/line    — always available
  *
- * Both gracefully fall back to a built-in scenario if Gemini is unavailable
- * (no API key, quota exhausted, content-filter refusal, network failure).
- * Callers always receive a usable structure.
+ * Public functions:
+ *   generateSealedArchive(input) → { source, archive, note? }
+ *   narrate({ phase, context })  → { source, line }
+ *
+ * Both are guaranteed not to throw.
  */
 const config = require('../../config/env');
 const { callGemini } = require('./geminiClient');
+const { callOpenRouter, isConfigured: openrouterConfigured } = require('./openrouterClient');
 const { archivePrompt, narrationPrompt } = require('./prompts');
+const { safeJsonParse, validateArchive, validateNarration } = require('./validators');
+
+// ---------------------------------------------------------------------------
+// Built-in fallback content. The game must always be playable, even when
+// every external provider is down.
+// ---------------------------------------------------------------------------
 
 const FALLBACK_ARCHIVE = {
   title: 'سرقة قصر البارون',
@@ -33,46 +43,15 @@ const FALLBACK_ARCHIVE = {
 };
 
 const FALLBACK_NOTE_AR = 'الكبير اشتغل بقصة احتياطية دلوقتي. خدمة الذكاء مش متاحة للحظات.';
+const FALLBACK_NARRATION = '...الكبير ساكت دلوقتي';
 
-/**
- * Validate that a parsed archive has the required shape.
- * Returns null if valid, else an error message.
- */
-function validateArchive(a) {
-  if (!a || typeof a !== 'object') return 'not an object';
-  if (typeof a.story !== 'string' || a.story.length < 60) return 'story too short';
-  if (typeof a.mafiozo !== 'string' || !a.mafiozo) return 'missing mafiozo';
-  if (typeof a.obvious_suspect !== 'string' || !a.obvious_suspect) return 'missing obvious_suspect';
-  if (!Array.isArray(a.clues) || a.clues.length !== 3) return 'clues must be exactly 3';
-  for (const c of a.clues) if (typeof c !== 'string' || !c.trim()) return 'empty clue';
-  if (!Array.isArray(a.characters) || a.characters.length < 2) return 'need at least 2 characters';
-  return null;
-}
+// ---------------------------------------------------------------------------
+// Internal: provider attempts. Each returns the parsed+validated archive on
+// success, or null on failure. They never throw.
+// ---------------------------------------------------------------------------
 
-function safeJsonParse(text) {
-  if (!text) return null;
-  // Strip code fences if the model added them despite responseMimeType=json.
-  const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-  try {
-    return JSON.parse(cleaned);
-  } catch {
-    // Try to locate the first valid JSON object in the text.
-    const m = cleaned.match(/\{[\s\S]*\}/);
-    if (!m) return null;
-    try { return JSON.parse(m[0]); } catch { return null; }
-  }
-}
-
-/**
- * Build a sealed archive. Always returns:
- *   { source: 'gemini' | 'fallback', archive, note? }
- * Never throws.
- */
-async function generateSealedArchive(input = {}) {
-  if (!config.gemini.apiKey) {
-    return { source: 'fallback', archive: FALLBACK_ARCHIVE, note: FALLBACK_NOTE_AR };
-  }
-
+async function tryGeminiArchive(input) {
+  if (!config.gemini.apiKey) return null;
   try {
     const raw = await callGemini({
       modelName: config.gemini.archiveModel,
@@ -83,40 +62,123 @@ async function generateSealedArchive(input = {}) {
     const parsed = safeJsonParse(raw);
     const err = validateArchive(parsed);
     if (err) {
-      console.warn(`AI archive invalid (${err}). Falling back.`);
-      return { source: 'fallback', archive: FALLBACK_ARCHIVE, note: FALLBACK_NOTE_AR };
+      console.warn(`[ai] gemini archive invalid (${err})`);
+      return null;
     }
-    return { source: 'gemini', archive: parsed };
+    return parsed;
   } catch (err) {
-    console.warn('AI archive call failed:', err.message);
-    return { source: 'fallback', archive: FALLBACK_ARCHIVE, note: FALLBACK_NOTE_AR };
+    console.warn('[ai] gemini archive failed:', err.message);
+    return null;
   }
+}
+
+async function tryOpenRouterArchive(input) {
+  if (!openrouterConfigured()) return null;
+  try {
+    const raw = await callOpenRouter({
+      userPrompt: archivePrompt(input),
+      json: true,
+      temperature: 0.85,
+    });
+    const parsed = safeJsonParse(raw);
+    const err = validateArchive(parsed);
+    if (err) {
+      console.warn(`[ai] openrouter archive invalid (${err})`);
+      return null;
+    }
+    return parsed;
+  } catch (err) {
+    console.warn('[ai] openrouter archive failed:', err.message);
+    return null;
+  }
+}
+
+async function tryGeminiNarration(prompt, forbiddenTerms) {
+  if (!config.gemini.apiKey) return null;
+  try {
+    const raw = await callGemini({
+      modelName: config.gemini.narrationModel,
+      userPrompt: prompt,
+      json: false,
+      temperature: 0.95,
+    });
+    const cleaned = validateNarration(raw, { forbiddenTerms });
+    if (!cleaned) {
+      console.warn('[ai] gemini narration rejected by validator');
+      return null;
+    }
+    return cleaned;
+  } catch (err) {
+    console.warn('[ai] gemini narration failed:', err.message);
+    return null;
+  }
+}
+
+async function tryOpenRouterNarration(prompt, forbiddenTerms) {
+  if (!openrouterConfigured()) return null;
+  try {
+    const raw = await callOpenRouter({
+      userPrompt: prompt,
+      json: false,
+      temperature: 0.9,
+    });
+    const cleaned = validateNarration(raw, { forbiddenTerms });
+    if (!cleaned) {
+      console.warn('[ai] openrouter narration rejected by validator');
+      return null;
+    }
+    return cleaned;
+  } catch (err) {
+    console.warn('[ai] openrouter narration failed:', err.message);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public surface
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a sealed archive. Always returns:
+ *   { source: 'gemini' | 'openrouter' | 'fallback', archive, note? }
+ * Never throws.
+ */
+async function generateSealedArchive(input = {}) {
+  const fromGemini = await tryGeminiArchive(input);
+  if (fromGemini) return { source: 'gemini', archive: fromGemini };
+
+  const fromOpenRouter = await tryOpenRouterArchive(input);
+  if (fromOpenRouter) return { source: 'openrouter', archive: fromOpenRouter };
+
+  return { source: 'fallback', archive: FALLBACK_ARCHIVE, note: FALLBACK_NOTE_AR };
 }
 
 /**
  * Short cinematic narration for in-game phase transitions.
- * Returns plain string. Falls back to a static phrase.
+ * Returns: { source, line }
+ *
+ * @param {object} opts
+ * @param {string} opts.phase
+ * @param {string} [opts.context]
+ * @param {string[]} [opts.forbiddenTerms]  - terms that must not appear in
+ *   the line (e.g. mafiozo identity for mid-game beats).
  */
-async function narrate({ phase, context }) {
-  if (!config.gemini.apiKey) return '...الكبير بيبص في الأرشيف';
-  try {
-    const text = await callGemini({
-      modelName: config.gemini.narrationModel,
-      userPrompt: narrationPrompt({ phase, context }),
-      json: false,
-      temperature: 0.95,
-    });
-    return text.trim() || '...الكبير ساكت دلوقتي';
-  } catch (err) {
-    console.warn('AI narration failed:', err.message);
-    return '...الكبير ساكت دلوقتي';
-  }
+async function narrate({ phase, context, forbiddenTerms } = {}) {
+  const prompt = narrationPrompt({ phase, context });
+
+  const fromGemini = await tryGeminiNarration(prompt, forbiddenTerms);
+  if (fromGemini) return { source: 'gemini', line: fromGemini };
+
+  const fromOpenRouter = await tryOpenRouterNarration(prompt, forbiddenTerms);
+  if (fromOpenRouter) return { source: 'openrouter', line: fromOpenRouter };
+
+  return { source: 'fallback', line: FALLBACK_NARRATION };
 }
 
 module.exports = {
   generateSealedArchive,
   narrate,
-  // Exposed for tests:
+  // Test/diagnostic exports — not part of the route surface.
   _validateArchive: validateArchive,
   _fallbackArchive: FALLBACK_ARCHIVE,
 };

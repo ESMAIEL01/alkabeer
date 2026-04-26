@@ -145,10 +145,40 @@ Now set secrets (these become `process.env.*` inside the container):
 ```bash
 flyctl secrets set \
   DATABASE_URL='postgresql://neondb_owner:<PASSWORD>@ep-XXXXX-pooler.eu-central-1.aws.neon.tech/neondb?sslmode=require' \
-  GEMINI_API_KEY='YOUR_GEMINI_KEY' \
-  JWT_SECRET='YOUR_64_CHAR_HEX_SECRET' \
+  GEMINI_API_KEY='<YOUR_GEMINI_KEY>' \
+  JWT_SECRET='<YOUR_64_CHAR_HEX_SECRET>' \
   FRONTEND_URL='https://alkabeer-prod.vercel.app'
 ```
+
+### Optional: OpenRouter fallback secrets
+
+OpenRouter is a **secondary** AI fallback. Gemini stays primary. If you skip
+this block the game still works — the provider chain becomes
+`Gemini → built-in scenario`. Adding OpenRouter inserts an extra rung between
+Gemini and the built-in fallback, which helps when Gemini briefly refuses a
+mystery prompt or hits a quota.
+
+**Honest caveats** before you wire it:
+
+- The free OpenRouter model `nvidia/nemotron-3-super-120b-a12b:free` shares
+  pooled rate limits with all free users. It may return 429 or 503 at peak
+  times. Treat it as best-effort.
+- Output is validated server-side before being accepted. If it fails the
+  Arabic / structure / safety checks, the chain falls through to the
+  built-in scenario.
+- The OpenRouter key NEVER reaches the frontend — it lives in Fly secrets only.
+
+```bash
+flyctl secrets set \
+  OPENROUTER_API_KEY='<YOUR_OPENROUTER_KEY>' \
+  OPENROUTER_BASE_URL='https://openrouter.ai/api/v1' \
+  OPENROUTER_FALLBACK_MODEL='nvidia/nemotron-3-super-120b-a12b:free' \
+  OPENROUTER_TIMEOUT_MS='30000' \
+  AI_FALLBACK_PROVIDER='openrouter'
+```
+
+> Set `AI_FALLBACK_PROVIDER` to anything other than `openrouter` (or leave it
+> empty) to disable the fallback at runtime without removing the key.
 
 > **Tip:** Quote each value in single quotes so your shell doesn't expand `$` characters from the password.
 
@@ -253,7 +283,8 @@ Never commit `.env`. The repo's `.gitignore` already excludes it, but always run
 |---|---|
 | Frontend shows "تعذّر الاتصال بالخادم" | `curl https://alkabeer-prod.fly.dev/api/status` — if it fails, `flyctl logs` for the cause. Most common: `FRONTEND_URL` doesn't match the Vercel domain → CORS rejects. |
 | `db: down` in /api/status | Neon password rotated and `DATABASE_URL` is stale, or Neon is auto-suspended (wait 2s and retry). |
-| AI always returns "fallback" source | `GEMINI_API_KEY` not set, invalid, or quota exhausted. Check `flyctl logs` for the warning. |
+| AI always returns "fallback" source | Gemini failed AND (OpenRouter unconfigured OR also failed). `flyctl logs \| grep '\[ai\]'` shows which provider rejected. Common causes: missing/expired `GEMINI_API_KEY`, quota exhausted, or `AI_FALLBACK_PROVIDER` not set to `openrouter`. |
+| AI returns "openrouter" source unexpectedly | Gemini is rejecting your prompts (often a content filter or quota). Check `flyctl logs \| grep '\[ai\] gemini'` for the reason. The game still works — this is the fallback chain doing its job. |
 | 429 errors during testing | Rate limiter triggered — wait 60s or temporarily raise `AI_RATE_MAX` / `AUTH_RATE_MAX` in Fly secrets. |
 | Vercel deploy succeeded but app talks to localhost:5000 | `VITE_API_URL` was missing during the build. Set it in Vercel → Settings → Env Vars and **redeploy**. |
 | Socket.IO won't upgrade to WebSocket | This is fine — it'll fall back to polling. To force WS: `flyctl logs` should show `transport=websocket`. |

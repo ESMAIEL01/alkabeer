@@ -109,10 +109,14 @@ router.post('/ai-generate-three', async (req, res, next) => {
 
 router.post('/narrate', async (req, res, next) => {
   try {
-    const { phase, context } = req.body || {};
+    const { phase, context, forbiddenTerms } = req.body || {};
     if (!phase) return res.status(400).json({ error: 'phase is required' });
-    const line = await ai.narrate({ phase, context: context || '' });
-    return res.json({ success: true, line });
+    const result = await ai.narrate({
+      phase,
+      context: context || '',
+      forbiddenTerms: Array.isArray(forbiddenTerms) ? forbiddenTerms : [],
+    });
+    return res.json({ success: true, source: result.source, line: result.line });
   } catch (err) {
     return next(err);
   }
