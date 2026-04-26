@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#f42536",
+                        "accent-gold": "#d4af37",
+                        "background-light": "#f8f5f6",
+                        "background-dark": "#0a0505",
+                        "neutral-dark": "#1a0d0e",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<title>MAFIOZO - Protocol Zero</title>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 antialiased overflow-x-hidden">
+<div class="relative flex min-h-screen w-full flex-col">
+<div class="layout-container flex h-full grow flex-col">
+<!-- Top Navigation Bar -->
+<header class="flex items-center justify-between border-b border-primary/20 px-6 py-4 md:px-20 bg-background-dark/80 backdrop-blur-md sticky top-0 z-50">
+<div class="flex items-center gap-4 text-primary">
+<div class="size-8">
+<svg fill="none" viewbox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path d="M42.4379 44C42.4379 44 36.0744 33.9038 41.1692 24C46.8624 12.9336 42.2078 4 42.2078 4L7.01134 4C7.01134 4 11.6577 12.932 5.96912 23.9969C0.876273 33.9029 7.27094 44 7.27094 44L42.4379 44Z" fill="currentColor"></path>
+</svg>
+</div>
+<h2 class="text-slate-100 text-2xl font-bold leading-tight tracking-widest uppercase">MAFIOZO</h2>
+</div>
+<div class="flex gap-4">
+<button class="flex items-center justify-center rounded-lg h-10 w-10 bg-primary/10 border border-primary/30 text-primary transition-all hover:bg-primary hover:text-white">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="flex items-center justify-center rounded-lg h-10 w-10 bg-primary/10 border border-primary/30 text-primary transition-all hover:bg-primary hover:text-white">
+<span class="material-symbols-outlined">security</span>
+</button>
+</div>
+</header>
+<main class="flex-1 flex flex-col items-center justify-center px-4 py-10 max-w-5xl mx-auto w-full">
+<!-- Protocol Zero Seal -->
+<div class="relative group w-full max-w-md aspect-square flex items-center justify-center mb-12">
+<div class="absolute inset-0 bg-primary/20 rounded-full blur-[100px]"></div>
+<!-- Fragmented Seal Effect -->
+<div class="relative w-full h-full border-[1px] border-primary/40 rounded-full flex items-center justify-center overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-t from-primary/40 to-transparent"></div>
+<div class="z-10 text-center px-8">
+<h3 class="text-primary text-5xl md:text-7xl font-bold tracking-tighter drop-shadow-[0_0_15px_rgba(244,37,54,0.8)]">PROTOCOL<br/>ZERO</h3>
+<div class="mt-4 flex flex-wrap justify-center gap-2 opacity-60 overflow-hidden h-12">
+<span class="text-[10px] text-accent-gold uppercase font-mono animate-pulse">ZWxsc2Ug</span>
+<span class="text-[10px] text-slate-100 font-bold">الحقيقة</span>
+<span class="text-[10px] text-accent-gold uppercase font-mono">Y29kZSA=</span>
+<span class="text-[10px] text-slate-100 font-bold">قادمة</span>
+<span class="text-[10px] text-accent-gold uppercase font-mono">YmFzZTY0</span>
+</div>
+</div>
+</div>
+<!-- Decorative HUD elements -->
+<div class="absolute -top-4 -left-4 w-12 h-12 border-t-2 border-l-2 border-primary"></div>
+<div class="absolute -bottom-4 -right-4 w-12 h-12 border-b-2 border-right-2 border-primary"></div>
+</div>
+<!-- Decryption Progress -->
+<div class="w-full max-w-2xl bg-neutral-dark/80 p-8 rounded-xl border border-primary/20 backdrop-blur-sm relative overflow-hidden shadow-2xl">
+<div class="absolute top-0 right-0 p-2">
+<span class="text-accent-gold text-[10px] font-mono tracking-widest">ENCRYPTION_LEVEL: OMEGA</span>
+</div>
+<h1 class="text-slate-100 tracking-tight text-xl md:text-3xl font-bold leading-tight text-center mb-8 uppercase italic">
+                        DECRYPTING THE SEALED ARCHIVE...
+                    </h1>
+<div class="space-y-4 mb-8">
+<div class="flex justify-between items-end">
+<div class="flex flex-col">
+<p class="text-primary text-xs font-bold tracking-[0.2em] uppercase">Bypass in progress</p>
+<p class="text-slate-400 text-[10px] font-mono">Converting Base64 to Arabic...</p>
+</div>
+<p class="text-slate-100 text-2xl font-bold leading-none">68<span class="text-primary">%</span></p>
+</div>
+<div class="h-3 w-full bg-primary/10 rounded-full overflow-hidden border border-primary/20 p-0.5">
+<div class="h-full bg-gradient-to-r from-primary via-primary to-accent-gold rounded-full" style="width: 68%;"></div>
+</div>
+</div>
+<!-- Character Profile -->
+<div class="flex flex-col md:flex-row items-center gap-6 pt-6 border-t border-primary/20">
+<div class="relative">
+<div class="absolute -inset-1 bg-gradient-to-r from-primary to-accent-gold rounded-full blur opacity-40"></div>
+<div class="relative bg-background-dark border-2 border-primary/50 aspect-square rounded-full w-24 h-24 bg-center bg-cover overflow-hidden" data-alt="Intense portrait of master decryptor Al-Kabeer" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuATkFcXY8h-Bd_6Eiyf56i-JXq_LYFIc_yrEmc1YJvg2q5tDSUyJ-e0AuxXHy5AhEid8qp6-UiChqzG55fvyRz_EmNMeHoChjCKVZXNeRb2tlX1kK_V02QWTucHtB-isv1YsWJPSNhRp4-EgWJvvGyPc-neLaj_wd-emxfdSleq4f4puHRBZyvFdgobOzbaOF5qJ5zQorKCW1qMwWIWRP7a4tIn7ehhrbJRUk78W0T7IbQgyGzF9yUBDXalz6gw6Ch4n7aCmzDGC50");'>
+</div>
+</div>
+<div class="flex flex-col items-center md:items-start text-center md:text-left">
+<p class="text-slate-100 text-xl font-bold tracking-tight">Al-Kabeer</p>
+<p class="text-primary font-semibold text-sm uppercase tracking-widest italic">"The truth is coming"</p>
+<p class="text-slate-400 text-xs mt-1 uppercase">Master Decryptor | Level 99</p>
+</div>
+<div class="ml-auto flex gap-4">
+<button class="px-6 py-2 bg-primary text-white font-bold uppercase tracking-tighter text-sm rounded transition-transform hover:scale-105 active:scale-95 shadow-[0_0_15px_rgba(244,37,54,0.4)]">
+                                Boost Signal
+                            </button>
+</div>
+</div>
+</div>
+<!-- Floating Code Matrix Effect (Bottom) -->
+<div class="mt-12 flex gap-8 overflow-hidden opacity-30 mask-fade-out">
+<p class="whitespace-nowrap font-mono text-xs text-primary">SGVsbG8gV29ybGQ= -&gt; مرحبا بالعالم</p>
+<p class="whitespace-nowrap font-mono text-xs text-accent-gold">Q29kZSBCcmVha2Vy -&gt; كاسر الكود</p>
+<p class="whitespace-nowrap font-mono text-xs text-primary">U2VjcmV0 -&gt; سر</p>
+<p class="whitespace-nowrap font-mono text-xs text-accent-gold">TWFmaW96bw== -&gt; مافيوزو</p>
+</div>
+</main>
+<!-- Bottom Navigation Bar -->
+<footer class="mt-auto border-t border-primary/10 bg-background-dark/90 px-6 py-4 md:px-20">
+<div class="flex justify-between items-center text-[10px] text-slate-500 uppercase tracking-[0.3em]">
+<div class="flex gap-6">
+<a class="hover:text-primary transition-colors" href="#">Archive</a>
+<a class="hover:text-primary transition-colors" href="#">Contracts</a>
+<a class="hover:text-primary transition-colors" href="#">Underworld</a>
+</div>
+<p>© 2024 Mafiozo Syndicate</p>
+</div>
+</footer>
+</div>
+</div>
+<style>
+        .mask-fade-out {
+            mask-image: linear-gradient(to right, transparent, black 20%, black 80%, transparent);
+        }
+    </style>
+</body></html>

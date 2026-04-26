@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Mafiozo - Safe House Lobby</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#f42536",
+                        "background-light": "#f8f5f6",
+                        "background-dark": "#120808",
+                        "panel-dark": "#1c0d0e",
+                        "accent-dark": "#2d1618",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        .scanline {
+            width: 100%;
+            height: 2px;
+            background: rgba(244, 37, 54, 0.1);
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+        }
+        .crt-overlay {
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+        .glitch-border {
+            border: 1px solid rgba(244, 37, 54, 0.3);
+            box-shadow: 0 0 10px rgba(244, 37, 54, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 overflow-hidden">
+<div class="relative flex h-screen w-full flex-col overflow-hidden">
+<!-- Top HUD Navigation -->
+<header class="flex items-center justify-between border-b border-primary/20 bg-panel-dark px-8 py-4 z-10">
+<div class="flex items-center gap-4">
+<div class="text-primary">
+<span class="material-symbols-outlined text-3xl">terminal</span>
+</div>
+<div>
+<h2 class="text-xl font-bold tracking-widest text-primary uppercase">Safe_House_Network_v4.2</h2>
+<p class="text-[10px] text-primary/60 font-mono leading-none tracking-tighter">ENCRYPTION: AES-256-BIT // STATUS: SECURE</p>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex flex-col items-end">
+<span class="text-xs text-primary/60 font-mono uppercase">System_Time</span>
+<span class="text-sm font-bold font-mono">23:14:02.04</span>
+</div>
+<div class="h-8 w-[1px] bg-primary/20"></div>
+<div class="flex gap-2">
+<button class="flex items-center justify-center rounded-lg h-10 w-10 bg-accent-dark text-primary border border-primary/20 hover:bg-primary hover:text-white transition-colors">
+<span class="material-symbols-outlined">security</span>
+</button>
+<button class="flex items-center justify-center rounded-lg h-10 w-10 bg-accent-dark text-primary border border-primary/20 hover:bg-primary hover:text-white transition-colors">
+<span class="material-symbols-outlined">settings_input_component</span>
+</button>
+</div>
+<div class="bg-primary/20 p-0.5 rounded-full border border-primary/40">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-9 border-2 border-primary" data-alt="Cyberpunk character portrait profile picture" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBjW9lFcGkyFGXbFOu-LfX1TkbZmpxXKgMFyPGbObXOuJN86EKC-QRPChJ37bfCgg2qO0QEf2DNzAxTYSykM3KpFb3HqkGTm-JfraA2GiigwTD81NY1BluzulhcPXz827cfyGdZzjxD0pll5oVsr220Ay9z-xWyXMWkACmlPePYugqCVx7OlO2EvCIQVlPnOOYjbQ240fxE_BMnf-Jjelu6ZPFaPWc40PHL2cCBdgIefigLemSDNTPUEPpb5ChnnV4_OQNFm3ERg58");'></div>
+</div>
+</div>
+</header>
+<main class="flex flex-1 overflow-hidden p-6 gap-6">
+<!-- Left Sidebar: Active Personnel -->
+<aside class="w-80 flex flex-col gap-4">
+<div class="flex-1 bg-panel-dark/80 rounded-xl border border-primary/20 flex flex-col p-4 overflow-hidden relative">
+<div class="crt-overlay absolute inset-0"></div>
+<h3 class="text-primary text-xs font-bold mb-4 tracking-widest uppercase flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">groups</span> Connected_Personnel
+                    </h3>
+<div class="flex flex-col gap-3 overflow-y-auto">
+<!-- Player Row 1 -->
+<div class="flex items-center gap-3 p-3 rounded-lg bg-accent-dark border border-primary/10 hover:border-primary/40 transition-all cursor-pointer group">
+<div class="relative">
+<div class="size-10 rounded-lg bg-primary/20 overflow-hidden border border-primary/30">
+<div class="bg-cover bg-center w-full h-full opacity-80" data-alt="Gritty player avatar black and white" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBHMe_iVU8tbbNxZZT7Qg1knUuprAO5DmPgH7eLnmz4OKfY6XFhJnEUGn44CnXyn1lU13-9rMBGPBZYp5JiV9coqFr97AHM58XPkBcncZITdKQBoBuEt7-EQmq4kq6JrO9T71G4lKjhpl9luExxr_x93pgQ_nKHjyzkE5QDsrA8ROcJ_LQESdDCWrrBB7cjGWqeenka-6vXxXjrw0MxhUExgmt3K5anuy1RV6SRjl5io1UAqaFxfksxaAq9rG5c1jHrVrUZy715lMQ");'></div>
+</div>
+<div class="absolute -bottom-1 -right-1 size-3 bg-green-500 rounded-full border-2 border-panel-dark"></div>
+</div>
+<div class="flex flex-col">
+<span class="text-sm font-bold text-slate-100 uppercase">Agent_Zero</span>
+<span class="text-[10px] text-primary font-bold uppercase tracking-tighter">Prestige: Mastermind</span>
+</div>
+<div class="ml-auto opacity-0 group-hover:opacity-100">
+<span class="material-symbols-outlined text-primary text-sm">info</span>
+</div>
+</div>
+<!-- Player Row 2 -->
+<div class="flex items-center gap-3 p-3 rounded-lg bg-accent-dark/40 border border-primary/5 hover:border-primary/40 transition-all cursor-pointer group">
+<div class="relative">
+<div class="size-10 rounded-lg bg-primary/20 overflow-hidden border border-primary/30">
+<div class="bg-cover bg-center w-full h-full opacity-80" data-alt="Gritty player avatar shadow profile" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuCV2vspcXeYJ8baxV6MzAJZfoVGtfIdM8kW-fsj6Aueqd0MsRzzr3mNORo1yHhKKfXWk5H_nUl-tmwPwF23ikn9URO1ymXtpwA9kHZ3XNSQ-ukAtVDnSDEZXhtcoLGwtkyZwurvOQ3Qy9l6WyiJbqfyCHdUaY86UQfD0GlF5RPxdD6cOpU53gU8T1NBVz24GAo0PuSgZTZWbJUFbHlqIEZLv97E49Bu0lw9vNTVRkD9-e7Aw9AZVAtCvcKcadDOZfcdZWjrf7G_hXU");'></div>
+</div>
+<div class="absolute -bottom-1 -right-1 size-3 bg-green-500 rounded-full border-2 border-panel-dark"></div>
+</div>
+<div class="flex flex-col">
+<span class="text-sm font-bold text-slate-100 uppercase">V_Shadow</span>
+<span class="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Prestige: Enforcer</span>
+</div>
+</div>
+<!-- Player Row 3 -->
+<div class="flex items-center gap-3 p-3 rounded-lg bg-accent-dark/40 border border-primary/5 hover:border-primary/40 transition-all cursor-pointer group">
+<div class="relative">
+<div class="size-10 rounded-lg bg-primary/20 overflow-hidden border border-primary/30">
+<div class="bg-cover bg-center w-full h-full opacity-80" data-alt="Female agent player avatar silhouette" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuAWZmLETdUUVDc6QdAGSpon-6uraD4X7vZk4-zoSCkQ-2S-CXVE3HvCmHxlKMkf14vDnrdNJrUrYZJ0LN8jrK7Mr30XFlRkTRTDHPTvO57TAnmXi3aKC8rgfpnCmMvkpXoTz4F5dh_rvDy0RK5G9Td5gtJ-_-lvCma0DL2uZkHEhDOWOg9dkOOu7EfEJx7SUuthK8eF0MWWGxZ8sYaSvfCVqSQRifbzuoxg_yToNj3wSFeWZoT9Rg_Y8njE_lLaFPESc_gR46Z8fPU");'></div>
+</div>
+<div class="absolute -bottom-1 -right-1 size-3 bg-green-500 rounded-full border-2 border-panel-dark"></div>
+</div>
+<div class="flex flex-col">
+<span class="text-sm font-bold text-slate-100 uppercase">Raven_47</span>
+<span class="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Prestige: Infiltrator</span>
+</div>
+</div>
+</div>
+<div class="mt-auto pt-4 border-t border-primary/10">
+<div class="bg-primary/5 rounded p-3">
+<div class="flex justify-between text-[10px] font-mono mb-1 text-primary/60">
+<span>SQUAD_STRENGTH</span>
+<span>88%</span>
+</div>
+<div class="w-full bg-accent-dark h-1.5 rounded-full overflow-hidden">
+<div class="bg-primary h-full w-[88%] shadow-[0_0_8px_rgba(244,37,54,0.5)]"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Execute Button Panel -->
+<div class="bg-panel-dark p-4 rounded-xl border border-primary/40 shadow-[0_0_20px_rgba(244,37,54,0.1)]">
+<button class="w-full bg-primary hover:bg-primary/90 text-white py-4 rounded-lg font-bold tracking-[0.2em] flex flex-col items-center justify-center group transition-all transform active:scale-95">
+<span class="text-lg">EXECUTE OPERATION</span>
+<span class="text-[10px] opacity-70 font-mono tracking-widest mt-1">CONFIRMATION_REQUIRED</span>
+</button>
+</div>
+</aside>
+<!-- Center Content: Surveillance Grid -->
+<section class="flex-1 flex flex-col gap-6">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary animate-pulse">videocam</span>
+<h3 class="text-xl font-bold uppercase tracking-widest italic">Live_Surveillance_Feeds</h3>
+</div>
+<div class="flex gap-2">
+<span class="px-2 py-1 bg-primary/20 border border-primary/40 rounded text-[10px] font-mono text-primary">CAM_COUNT: 04</span>
+<span class="px-2 py-1 bg-accent-dark border border-primary/20 rounded text-[10px] font-mono text-slate-400">FPS: 24.0</span>
+</div>
+</div>
+<div class="grid grid-cols-2 gap-4 flex-1">
+<!-- Camera 1: Corridor -->
+<div class="relative rounded-lg overflow-hidden border border-primary/30 bg-black group">
+<div class="absolute inset-0 bg-cover bg-center grayscale opacity-40 mix-blend-screen" data-alt="Grainy CCTV feed of empty dark hallway" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuC65-9-GbrZtrDw_fxMLuPYA-9ZPAXNIhpGcu9kBeBF7qDhrZfhQyH8Hh4cA-Clf5vHH7CUUIJdw2uIf9ZEg3cl35LktoA9F5t_PGipKtSvBotDZbqf5Uh0OpggCKAHL9GSzNuKvfv0aZoYC6VUpKmxqWDAOHZCpNpp4VOL-nHRQ-XuiOlZnFuquhlP8hAxBzHRbr0QceLsZXDImO9aJ3hs_RTlxMPGafBSgXwOGP9w90Jtlfpdm6mwPjAh2poa25EC7kKhQb7ihz4");'></div>
+<div class="crt-overlay absolute inset-0"></div>
+<div class="absolute top-2 left-2 flex flex-col gap-1">
+<span class="bg-black/80 px-2 py-0.5 text-[10px] font-mono text-primary flex items-center gap-1"><span class="size-1.5 bg-primary rounded-full animate-pulse"></span> REC</span>
+<span class="bg-black/80 px-2 py-0.5 text-[10px] font-mono text-white/70 tracking-widest">CAM_01: SE_WING_CORRIDOR</span>
+</div>
+<div class="absolute bottom-2 right-2 text-primary/40 font-mono text-[10px]">TIMESTAMP: 23:14:02</div>
+</div>
+<!-- Camera 2: Vault -->
+<div class="relative rounded-lg overflow-hidden border border-primary/30 bg-black group">
+<div class="absolute inset-0 bg-cover bg-center grayscale opacity-50 mix-blend-screen" data-alt="High tech security vault door on camera" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuA_oDawQeUtE8HjPe8-TtwAwzyU9Nyrd0b9l0IRAJcCss7mG24niIAfPDhzEI_vDDEddhTE0BkGGSxjrHQTeOkKRV235jX4x9zvB5SscrkPe_5-wryOysHoFchOMWPLt7egaYC4avOantY6Z585i_qFcK3PBmARB0D6H_D-KTKKMy3PXZ8ng4h1ofCKdhiy5vxnmTMKfyCCMvTSXvECce0Ur4Jp1AK4-IRdyejbLHRbiFDZs859S6vHv9ApkOQyzvy9fCCs-VmZVng");'></div>
+<div class="crt-overlay absolute inset-0"></div>
+<div class="absolute top-2 left-2 flex flex-col gap-1">
+<span class="bg-black/80 px-2 py-0.5 text-[10px] font-mono text-primary flex items-center gap-1"><span class="size-1.5 bg-primary rounded-full animate-pulse"></span> REC</span>
+<span class="bg-black/80 px-2 py-0.5 text-[10px] font-mono text-white/70 tracking-widest">CAM_02: MAIN_VAULT_EXT</span>
+</div>
+<div class="absolute bottom-2 right-2 text-primary/40 font-mono text-[10px]">TIMESTAMP: 23:14:02</div>
+</div>
+<!-- Camera 3: Player Alpha -->
+<div class="relative rounded-lg overflow-hidden border border-primary/30 bg-black group">
+<div class="absolute inset-0 bg-cover bg-center grayscale contrast-125 opacity-40 mix-blend-screen" data-alt="Body cam footage of an agent in a dark room" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuB2ynlyhj9NUKBFH4UO-QX0d_RJ8OEWIgfIQkocE3IEkVRTqD6TMt11CX-jcPpcDLmWj8CbELCl-NFqKB7px5HIVTP_UXfHmZVqQfOgLHpGB2KYg4_Tz4SwD6cIyneVb1KUg6cVauW1cb5dlI21o8gTILJ5eToiE66rhamLYq5ADKGYsEVl6vUY06pZGZ7g0BwJag_88Rv7h3MwZrzacHVvIEFTEDsmYFvfGVsj2iMsT0rFx_WTYWcRFOwt1LpOdhe9jOLUjScs_nc");'></div>
+<div class="crt-overlay absolute inset-0"></div>
+<div class="absolute top-2 left-2 flex flex-col gap-1">
+<span class="bg-black/80 px-2 py-0.5 text-[10px] font-mono text-primary flex items-center gap-1"><span class="size-1.5 bg-primary rounded-full animate-pulse"></span> LIVE</span>
+<span class="bg-black/80 px-2 py-0.5 text-[10px] font-mono text-white/70 tracking-widest">CAM_03: ALPHA_BODY_CAM</span>
+</div>
+<div class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-primary/10 border border-primary/40 px-3 py-1 rounded-full text-[10px] text-primary font-bold uppercase backdrop-blur-sm">Signal_Unstable</div>
+</div>
+<!-- Camera 4: Extraction Point -->
+<div class="relative rounded-lg overflow-hidden border border-primary/30 bg-black group">
+<div class="absolute inset-0 bg-cover bg-center grayscale opacity-30 mix-blend-screen" data-alt="Night vision view of a city rooftop" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBrr9YF1DLcvoSIDxgVY7S_3PxSB4gVNXtv0phFOmR5IPIj7CNAmWf7kgibE-FPn-r--hzbaAmJDmV8wKES6pQr-49SPdOoR_xXuBcjtCfl9CmGrAo2LWo0nMJ_wtzdQhowExJqw3EJhRFhpXyi4L5hRD0j26lBS429eWZNBgk0O7nV9xiUI0RJZT1t3siV43aTNYhf-TV8kI99d_0RGMfPTAX1Gra2cok5TK3B1qU5cD11ghPIkwDDzcW-ZauR6oCQBSYxMNnU_rw");'></div>
+<div class="crt-overlay absolute inset-0"></div>
+<div class="absolute top-2 left-2 flex flex-col gap-1">
+<span class="bg-black/80 px-2 py-0.5 text-[10px] font-mono text-yellow-500 flex items-center gap-1"><span class="size-1.5 bg-yellow-500 rounded-full"></span> STANDBY</span>
+<span class="bg-black/80 px-2 py-0.5 text-[10px] font-mono text-white/70 tracking-widest">CAM_04: LZ_ROOFTOP</span>
+</div>
+</div>
+</div>
+<!-- Digital Intel Feed -->
+<div class="h-32 bg-panel-dark/90 rounded-xl border border-primary/20 p-4 relative overflow-hidden">
+<div class="crt-overlay absolute inset-0"></div>
+<div class="flex items-center gap-2 text-primary mb-2">
+<span class="material-symbols-outlined text-sm">database</span>
+<h4 class="text-[10px] font-bold tracking-[0.3em] uppercase">Digital_Intel_Stream</h4>
+</div>
+<div class="space-y-1 font-mono text-[11px] h-full overflow-hidden">
+<p class="text-primary/80"><span class="text-slate-500">[23:13:58]</span> SYSTEM: Decrypting node #420-A... <span class="text-green-500">SUCCESS</span></p>
+<p class="text-slate-300"><span class="text-slate-500">[23:14:01]</span> INTEL: Guard rotation at Vault Entrance shifted to 15min intervals.</p>
+<p class="text-primary/60 italic"><span class="text-slate-500">[23:14:02]</span> SYSTEM: High-value target "The Banker" spotted at Cam_02.</p>
+<p class="text-primary/80"><span class="text-slate-500">[23:14:05]</span> SYSTEM: Initializing tactical HUD for all connected agents...</p>
+</div>
+</div>
+</section>
+<!-- Right Sidebar: Mission Parameters & Map -->
+<aside class="w-80 flex flex-col gap-6">
+<div class="bg-panel-dark/80 rounded-xl border border-primary/20 p-4 relative overflow-hidden flex flex-col">
+<div class="crt-overlay absolute inset-0"></div>
+<h3 class="text-primary text-xs font-bold mb-4 tracking-widest uppercase flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">map</span> Tactical_Map
+                    </h3>
+<div class="relative flex-1 bg-accent-dark/50 rounded-lg border border-primary/20 overflow-hidden min-h-[180px]">
+<div class="absolute inset-0 opacity-40 mix-blend-screen bg-cover bg-center" data-alt="Grid based tactical layout map" data-location="New York" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDm8WIGe4O3pyUxwzEw8uM6ubk1pHAEHikhi4GMWHxsB5-JDMqxooJffhmPhwqUpkHnQQYMkaV4AVo_gGOnEVXLg17XM4X_EhkCimhXBd0aK_BOGJyp27FQXcwLMh2W8SNw_xEsnKEJt8keLbP_KczPtkPKTHVTgSAilNi8VLNYx_FhIkj_UaSfdyeGc9YiknqMq6JyfcDteBTr_u7ZxiDpB5Wi3Cdl65ne_vvQ6stIHQv8Vye-zYuTbd2LQQIZjWi_CzwWy_nL7PU");'></div>
+<!-- UI Elements over map -->
+<div class="absolute top-1/2 left-1/3 size-3 bg-primary rounded-full animate-ping"></div>
+<div class="absolute top-1/2 left-1/3 size-1.5 bg-primary rounded-full"></div>
+<div class="absolute bottom-2 left-2 bg-black/60 p-2 rounded text-[8px] font-mono">
+                            COORD: 40.7128° N, 74.0060° W<br/>
+                            AREA: MANHATTAN_DISTRICT
+                        </div>
+</div>
+</div>
+<div class="flex-1 bg-panel-dark/80 rounded-xl border border-primary/20 p-4 relative overflow-hidden">
+<div class="crt-overlay absolute inset-0"></div>
+<h3 class="text-primary text-xs font-bold mb-4 tracking-widest uppercase flex items-center gap-2">
+<span class="material-symbols-outlined text-sm">assignment</span> Objective_List
+                    </h3>
+<ul class="space-y-4">
+<li class="flex gap-3">
+<span class="material-symbols-outlined text-primary text-lg">check_box</span>
+<div>
+<p class="text-xs font-bold text-slate-100 uppercase">Disable Perimeter Alarms</p>
+<p class="text-[9px] text-slate-400 font-mono">STATUS: COMPLETED</p>
+</div>
+</li>
+<li class="flex gap-3">
+<span class="material-symbols-outlined text-primary text-lg">check_box_outline_blank</span>
+<div>
+<p class="text-xs font-bold text-slate-100 uppercase">Breach Main Vault</p>
+<p class="text-[9px] text-primary/60 font-mono">STATUS: IN_PROGRESS</p>
+</div>
+</li>
+<li class="flex gap-3">
+<span class="material-symbols-outlined text-slate-600 text-lg">check_box_outline_blank</span>
+<div>
+<p class="text-xs font-bold text-slate-400 uppercase">Secure Asset "Omega"</p>
+<p class="text-[9px] text-slate-600 font-mono">STATUS: PENDING</p>
+</div>
+</li>
+</ul>
+</div>
+<div class="bg-accent-dark/40 border-l-4 border-primary p-4">
+<div class="flex items-center gap-2 text-primary font-bold text-xs uppercase mb-1">
+<span class="material-symbols-outlined text-sm">warning</span> Warning
+                    </div>
+<p class="text-[10px] text-slate-300 font-mono leading-tight">
+                        POLICE_RESPONSE_ESTIMATED: <span class="text-primary">04:30 MIN</span><br/>
+                        STEALTH_COEFFICIENT: <span class="text-yellow-500">MODERATE</span>
+</p>
+</div>
+</aside>
+</main>
+<!-- Bottom Footer Info -->
+<footer class="bg-panel-dark border-t border-primary/20 px-8 py-2 flex justify-between items-center z-10">
+<div class="flex gap-4 items-center">
+<div class="flex items-center gap-2">
+<div class="size-2 bg-green-500 rounded-full shadow-[0_0_8px_#22c55e]"></div>
+<span class="text-[10px] font-mono text-slate-400">SERVER_STABLE</span>
+</div>
+<div class="w-[1px] h-4 bg-primary/10"></div>
+<span class="text-[10px] font-mono text-slate-400">PING: 24MS</span>
+</div>
+<div class="flex gap-6 text-[10px] font-mono text-primary/40 uppercase tracking-widest">
+<span>Network_Relay: Singapore_Node_7</span>
+<span>User: Agent_Zero</span>
+</div>
+</footer>
+</div>
+</body></html>

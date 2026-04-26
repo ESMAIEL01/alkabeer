@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>MAFIOZO: THE SEALED ARCHIVE</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#f42536",
+                        "accent-gold": "#d4af37",
+                        "background-light": "#f8f5f6",
+                        "background-dark": "#1a0b0c",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+        }
+        .cinematic-glow {
+            box-shadow: 0 0 20px rgba(244, 37, 54, 0.4);
+        }
+        .gold-border {
+            border: 1px solid rgba(212, 175, 55, 0.3);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen">
+<div class="relative flex min-h-screen w-full flex-col overflow-x-hidden">
+<header class="flex items-center justify-between border-b border-primary/20 px-6 py-4 lg:px-20 bg-background-dark/80 backdrop-blur-md sticky top-0 z-50">
+<div class="flex items-center gap-4 text-primary">
+<div class="size-8">
+<span class="material-symbols-outlined text-4xl">folder_managed</span>
+</div>
+<h2 class="text-xl font-bold leading-tight tracking-tight uppercase">Mafiozo: The Sealed Archive</h2>
+</div>
+<div class="flex gap-4">
+<button class="flex items-center justify-center rounded-lg h-10 w-10 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-all">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<button class="flex items-center justify-center rounded-lg h-10 w-10 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-all">
+<span class="material-symbols-outlined">help</span>
+</button>
+</div>
+</header>
+<main class="flex-1 flex flex-col lg:flex-row max-w-7xl mx-auto w-full p-6 lg:p-10 gap-10">
+<aside class="w-full lg:w-1/3 flex flex-col gap-8">
+<div class="relative group">
+<div class="absolute -inset-1 bg-gradient-to-r from-primary to-accent-gold rounded-xl blur opacity-25 group-hover:opacity-50 transition duration-1000"></div>
+<div class="relative bg-background-dark gold-border rounded-xl p-6 flex flex-col items-center text-center gap-4">
+<div class="w-48 h-48 rounded-full overflow-hidden border-4 border-primary/30" data-alt="Charismatic Egyptian director portrait in noir style" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAFRwSYQDJuKP5r06m2DQT1mtSM9Sii2zK90Y1-j5aO8aWDLRK3LT5ufA9im7n1iCAl79tEtOSbsqXjRoHZ2nStr9AJbHYBb9TMN-CWhXWs5CqLZynZeqYeso0oS3c5iH0Kq4f1w5We16HOZK3HoyFo0obR3oQEJa0CrJETwry9dNp5RRbWvSzEFkD7ilAVwjmAZOUNypmEwmelNIR5dFhEFpTy82arYdebiqzOSqc9g5EYl375mk9beWY6XELu4J2VdVJDGkCwQdU'); background-size: cover; background-position: center;">
+</div>
+<div class="space-y-2">
+<h3 class="text-2xl font-bold text-accent-gold">Al-Kabeer</h3>
+<p class="text-primary italic text-lg font-medium" dir="rtl">أهلاً يا معلم... جاهز تولّع الدنيا؟</p>
+<p class="text-slate-400 text-sm uppercase tracking-widest">Game Master / Director</p>
+</div>
+</div>
+</div>
+<div class="bg-primary/5 gold-border rounded-xl p-6 space-y-6">
+<h4 class="text-slate-100 font-bold uppercase tracking-wider text-sm border-b border-primary/20 pb-2">Archive Configuration</h4>
+<div class="space-y-4">
+<label class="block">
+<span class="text-slate-300 text-sm mb-2 block">Player Count (4-10)</span>
+<input class="w-full h-2 bg-primary/20 rounded-lg appearance-none cursor-pointer accent-primary" max="10" min="4" type="range" value="7"/>
+<div class="flex justify-between text-xs text-primary mt-1 font-bold">
+<span>4 Players</span>
+<span>7 Players</span>
+<span>10 Players</span>
+</div>
+</label>
+<div class="space-y-2">
+<span class="text-slate-300 text-sm block">Suspect Entry</span>
+<div class="flex flex-wrap gap-2">
+<span class="bg-primary/20 text-primary px-3 py-1 rounded-full text-xs font-bold border border-primary/30 flex items-center gap-1">Omar <span class="material-symbols-outlined text-xs">close</span></span>
+<span class="bg-primary/20 text-primary px-3 py-1 rounded-full text-xs font-bold border border-primary/30 flex items-center gap-1">Laila <span class="material-symbols-outlined text-xs">close</span></span>
+<span class="bg-primary/20 text-primary px-3 py-1 rounded-full text-xs font-bold border border-primary/30 flex items-center gap-1">Ziad <span class="material-symbols-outlined text-xs">close</span></span>
+<button class="bg-slate-800 text-slate-400 px-3 py-1 rounded-full text-xs border border-slate-700">+ Add Suspect</button>
+</div>
+</div>
+</div>
+</div>
+</aside>
+<section class="flex-1 flex flex-col gap-8">
+<div>
+<h2 class="text-3xl font-bold text-slate-100 mb-6 flex items-center gap-3">
+<span class="material-symbols-outlined text-primary">theater_comedy</span>
+                        Select Game Mode
+                    </h2>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<div class="group relative overflow-hidden rounded-xl aspect-[3/4] border-2 border-transparent hover:border-primary transition-all cursor-pointer">
+<div class="absolute inset-0 bg-gradient-to-t from-background-dark via-background-dark/20 to-transparent z-10"></div>
+<div class="absolute inset-0 scale-105 group-hover:scale-110 transition-transform duration-700" data-alt="Intimate film noir interrogation room interior" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuD82BJELmt-Hb4j01V8ASlhNYhGHkjNn973o61S6Yci4eSpA33Mj1cmmMov4I9v3uWa4oNn6rl1bJnTzPoxfMpAx7MfxS_gps5n4NkZYG3iaZ5UC_DH_s6RQXN18vq0rPqpEajlBSm0GqPv9_GTbbV6GOXjcq7O8n_y7zPGy4SRcdGbq2ffIsuvS-_jNKwfiqL2ZyVDPhnMY2ADJ31QfbC-msmVnz_5jAkJ1wbsWLRoUipWo-WP3tiOQ6xBEQBkYYnVHsXBKv-qiL8'); background-size: cover; background-position: center;"></div>
+<div class="absolute bottom-0 left-0 p-4 z-20">
+<h4 class="text-xl font-bold text-white">Private Host</h4>
+<p class="text-xs text-slate-300">Local control on a single device</p>
+</div>
+</div>
+<div class="group relative overflow-hidden rounded-xl aspect-[3/4] border-2 border-primary z-10 transition-all cursor-pointer cinematic-glow">
+<div class="absolute inset-0 bg-gradient-to-t from-background-dark via-background-dark/20 to-transparent z-10"></div>
+<div class="absolute inset-0 scale-105 group-hover:scale-110 transition-transform duration-700" data-alt="Classic cinema crowd watching a suspenseful movie" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuD7-Ovd3e-cTL83qR-tTTvlm0ua8AzQQOnaHincPLTmn0b2tJzC6ssgcCFjY3bKhr0OgB8E3YWq3i6RpKx13PotlbzF7bk6VZ4JvsBhb6rsQQPmoBi_zNsWlA7oy-YFBLE9oPEJpUYSZbB3B0F2B-2YIVJUPgaH8MpCVd53azIcU6feDi96h6T5phMJxjSUYSVlfJ9vQXvFL_smKtkTi_ewosDY4vg7ml0gi4gTBD568tBe_8UehTqxEYKKD6JzE_qV0Wcv41dqlOc'); background-size: cover; background-position: center;"></div>
+<div class="absolute top-2 right-2 bg-primary text-white text-[10px] px-2 py-0.5 rounded-full font-bold uppercase z-20">Popular</div>
+<div class="absolute bottom-0 left-0 p-4 z-20">
+<h4 class="text-xl font-bold text-white">Group Present</h4>
+<p class="text-xs text-slate-300">Synchronized cinematic experience</p>
+</div>
+</div>
+<div class="group relative overflow-hidden rounded-xl aspect-[3/4] border-2 border-transparent hover:border-primary transition-all cursor-pointer">
+<div class="absolute inset-0 bg-gradient-to-t from-background-dark via-background-dark/20 to-transparent z-10"></div>
+<div class="absolute inset-0 scale-105 group-hover:scale-110 transition-transform duration-700" data-alt="Digital grid pattern representing external online players" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuD541Po5R7Q-Dp1k2kl7sCFTcKQRxy1oTFt_x2nkwnxoTILbLpSNJxo5ytqWIzU300wJrZdVkU5mgSjynnYCw_wXavygjl3SdCIUPiVj244PJjP5k-3vJ-BDDsCwCGX5Mj64gwOltrjHHIgs0IA5L3l9_WQJvvEdW5HGexQjmNbwqI7Agu_VXy-K2IqXjTGskPmjsqCo1EpAKGn84O0Z6wBNuGBaRJxAIz-J1qqczdQL1POqLNtB3qPUkqvsIycAs89q3cRu7EL7-g'); background-size: cover; background-position: center;"></div>
+<div class="absolute bottom-0 left-0 p-4 z-20">
+<h4 class="text-xl font-bold text-white">External Players</h4>
+<p class="text-xs text-slate-300">Connect suspects from afar</p>
+</div>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="bg-primary/5 gold-border rounded-xl p-6 space-y-4">
+<div class="flex items-center gap-2 text-accent-gold mb-2">
+<span class="material-symbols-outlined">palette</span>
+<span class="font-bold uppercase tracking-wider text-sm">Aesthetic Tone</span>
+</div>
+<div class="flex bg-background-dark/50 p-1 rounded-lg border border-primary/10">
+<button class="flex-1 py-2 text-xs font-bold uppercase rounded text-slate-400 hover:text-white transition-colors">Pure Noir</button>
+<button class="flex-1 py-2 text-xs font-bold uppercase rounded bg-primary text-white">Comedy Mix</button>
+<button class="flex-1 py-2 text-xs font-bold uppercase rounded text-slate-400 hover:text-white transition-colors">Hard Boiled</button>
+</div>
+</div>
+<div class="bg-primary/5 gold-border rounded-xl p-6 space-y-4">
+<div class="flex items-center gap-2 text-accent-gold mb-2">
+<span class="material-symbols-outlined">psychology</span>
+<span class="font-bold uppercase tracking-wider text-sm">Difficulty Level</span>
+</div>
+<div class="flex bg-background-dark/50 p-1 rounded-lg border border-primary/10">
+<button class="flex-1 py-2 text-xs font-bold uppercase rounded text-slate-400 hover:text-white transition-colors">Easy</button>
+<button class="flex-1 py-2 text-xs font-bold uppercase rounded text-slate-400 hover:text-white transition-colors">Medium</button>
+<button class="flex-1 py-2 text-xs font-bold uppercase rounded bg-primary text-white">Genius</button>
+</div>
+</div>
+</div>
+<div class="mt-auto pt-8">
+<button class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-5 px-8 rounded-xl text-xl uppercase tracking-[0.2em] cinematic-glow transition-all active:scale-[0.98] flex items-center justify-center gap-4">
+<span class="material-symbols-outlined text-3xl">lock_open</span>
+                        Build the Sealed Archive
+                    </button>
+<p class="text-center text-slate-500 text-xs mt-4 uppercase tracking-widest">Confidential Information • For Game Master Use Only</p>
+</div>
+</section>
+</main>
+<footer class="border-t border-primary/10 p-6 flex justify-center text-slate-600 text-sm">
+            © 2024 MAFIOZO STUDIOS • THE SEALED ARCHIVE • CAIRO EDITION
+        </footer>
+</div>
+</body></html>

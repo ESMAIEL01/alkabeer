@@ -1,0 +1,25 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Local databases (production uses Neon Postgres)
+*.sqlite
+*.sqlite3
+database.sqlite
+
+# Build / runtime
+dist/
+.cache/
+
+# Fly.io artifacts
+.fly/
+fly.local.toml
+
+# Logs
+logs/
+*.log

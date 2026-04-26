@@ -1,0 +1,141 @@
+const express = require('express');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
+const config = require('../config/env');
+const { query } = require('../database');
+
+const router = express.Router();
+
+const USERNAME_RE = /^[a-zA-Z0-9_؀-ۿ]{3,24}$/; // letters, digits, underscore, Arabic
+const PASSWORD_MIN = 8;
+
+function signUserToken(user, isGuest) {
+  return jwt.sign(
+    { id: user.id, username: user.username, isGuest },
+    config.jwtSecret,
+    { expiresIn: isGuest ? config.guestJwtExpiresIn : config.jwtExpiresIn }
+  );
+}
+
+function publicUser(row, isGuest) {
+  return { id: row.id, username: row.username, isGuest };
+}
+
+// ----- POST /api/auth/register --------------------------------------------
+router.post('/register', async (req, res) => {
+  const { username, password } = req.body || {};
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'الاسم والشفرة مطلوبين.' });
+  }
+  if (!USERNAME_RE.test(username)) {
+    return res.status(400).json({ error: 'الاسم لازم يكون من 3 لـ 24 حرف بالعربي أو الإنجليزي أو أرقام.' });
+  }
+  if (password.length < PASSWORD_MIN) {
+    return res.status(400).json({ error: `الشفرة لازم تكون ${PASSWORD_MIN} حروف على الأقل.` });
+  }
+
+  try {
+    const hash = await bcrypt.hash(password, 10);
+    const { rows } = await query(
+      `INSERT INTO users (username, password_hash, is_guest)
+       VALUES ($1, $2, FALSE)
+       RETURNING id, username`,
+      [username, hash]
+    );
+    const user = rows[0];
+    const token = signUserToken(user, false);
+    return res.status(201).json({ token, user: publicUser(user, false) });
+  } catch (err) {
+    if (err && err.code === '23505') {
+      return res.status(409).json({ error: 'الاسم ده مستخدم قبل كده.' });
+    }
+    console.error('register error:', err);
+    return res.status(500).json({ error: 'حصل خطأ غير متوقع. حاول تاني.' });
+  }
+});
+
+// ----- POST /api/auth/login -----------------------------------------------
+router.post('/login', async (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ error: 'الاسم والشفرة مطلوبين.' });
+  }
+
+  try {
+    const { rows } = await query(
+      `SELECT id, username, password_hash, is_guest
+       FROM users
+       WHERE username = $1`,
+      [username]
+    );
+    const row = rows[0];
+    if (!row || row.is_guest || !row.password_hash) {
+      return res.status(401).json({ error: 'بيانات الدخول غلط.' });
+    }
+
+    const ok = await bcrypt.compare(password, row.password_hash);
+    if (!ok) {
+      return res.status(401).json({ error: 'بيانات الدخول غلط.' });
+    }
+
+    const token = signUserToken(row, false);
+    return res.json({ token, user: publicUser(row, false) });
+  } catch (err) {
+    console.error('login error:', err);
+    return res.status(500).json({ error: 'حصل خطأ غير متوقع. حاول تاني.' });
+  }
+});
+
+// ----- POST /api/auth/guest -----------------------------------------------
+router.post('/guest', async (req, res) => {
+  let baseName = (req.body && req.body.username || '').trim();
+  if (baseName && !USERNAME_RE.test(baseName)) baseName = '';
+  if (!baseName) {
+    baseName = `Guest_${Math.floor(1000 + Math.random() * 9000)}`;
+  } else {
+    baseName = `${baseName}_(Guest)`;
+  }
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const candidate = attempt === 0 ? baseName : `${baseName}_${Math.floor(1000 + Math.random() * 9000)}`;
+    try {
+      const { rows } = await query(
+        `INSERT INTO users (username, password_hash, is_guest)
+         VALUES ($1, NULL, TRUE)
+         RETURNING id, username`,
+        [candidate]
+      );
+      const user = rows[0];
+      const token = signUserToken(user, true);
+      return res.json({ token, user: publicUser(user, true) });
+    } catch (err) {
+      if (err && err.code === '23505') {
+        // Username collision — retry.
+        continue;
+      }
+      console.error('guest error:', err);
+      return res.status(500).json({ error: 'حصل خطأ غير متوقع. حاول تاني.' });
+    }
+  }
+  return res.status(500).json({ error: 'تعذّر إنشاء جلسة الضيف.' });
+});
+
+// ----- GET /api/auth/me ---------------------------------------------------
+// Lightweight token-verifying endpoint the frontend can use to bootstrap.
+router.get('/me', async (req, res) => {
+  const auth = req.headers.authorization || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'غير مصرح.' });
+  try {
+    const decoded = jwt.verify(token, config.jwtSecret);
+    return res.json({
+      user: { id: decoded.id, username: decoded.username, isGuest: !!decoded.isGuest }
+    });
+  } catch {
+    return res.status(401).json({ error: 'الجلسة انتهت.' });
+  }
+});
+
+module.exports = router;

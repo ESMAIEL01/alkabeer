@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#f42536",
+                        "background-light": "#f8f5f6",
+                        "background-dark": "#221011",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: "Space Grotesk", sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 antialiased overflow-x-hidden">
+<div class="relative flex h-auto min-h-screen w-full flex-col group/design-root">
+<div class="layout-container flex h-full grow flex-col">
+<header class="flex items-center justify-between border-b border-solid border-primary/20 px-6 py-4 lg:px-40">
+<div class="flex items-center gap-3">
+<div class="text-primary size-8">
+<svg fill="none" viewbox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path clip-rule="evenodd" d="M47.2426 24L24 47.2426L0.757355 24L24 0.757355L47.2426 24ZM12.2426 21H35.7574L24 9.24264L12.2426 21Z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+<h2 class="text-slate-900 dark:text-slate-100 text-xl font-bold leading-tight tracking-tight uppercase">Mafiozo</h2>
+</div>
+<button class="flex items-center justify-center rounded-lg h-10 w-10 bg-primary/10 hover:bg-primary/20 transition-colors">
+<span class="material-symbols-outlined text-primary">settings</span>
+</button>
+</header>
+<main class="flex flex-1 flex-col items-center px-4 py-8 lg:px-40">
+<div class="w-full max-w-[520px] flex flex-col gap-8">
+<div class="text-center space-y-2">
+<h1 class="text-primary text-4xl font-black uppercase tracking-tighter">Your Secret Identity</h1>
+<p class="text-slate-500 dark:text-slate-400 text-sm font-medium">Keep your screen hidden from the other players</p>
+</div>
+<div class="relative @container">
+<div class="relative aspect-[3/4] overflow-hidden rounded-xl border-2 border-primary/30 shadow-2xl shadow-primary/20">
+<div class="absolute inset-0 bg-gradient-to-t from-background-dark via-transparent to-transparent z-10"></div>
+<div class="h-full w-full bg-cover bg-center transition-transform duration-700 hover:scale-105" data-alt="Intimidating noir portrait of a mafia enforcer in a dark suit" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBYGYGPHURtKrbpVtyL7Of1TQbNu9RlFrfejV4qltCorTsgSGUVLfTZt5HUMq1lvYY9kQF8cDrohULBINCTuk-USghbUz5_JikxqNJ3OuU-jErs6OywtkqudS26a7WZ5xmLAuGfGlCKXMrJ7GJwI8CfzdXhLrBOTUEBt60i1Nt63ko77aG69gogia78YC5fTbhSaXDUYby1vuJprxf33G4KnGYhaQhiWc0Ibk-z7IN8GZ9S1CbaqVvGKAdKT7TRut8L_eLBiqap2gg");'>
+</div>
+<div class="absolute bottom-0 left-0 right-0 p-8 z-20 text-center">
+<span class="text-primary text-xs font-bold tracking-[0.2em] uppercase mb-2 block">Assigned Role</span>
+<h2 class="text-white text-5xl font-black uppercase tracking-tight">THE ENFORCER</h2>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-1 gap-4">
+<div class="bg-primary/5 border border-primary/20 p-6 rounded-xl space-y-3">
+<div class="flex items-center gap-2 text-primary">
+<span class="material-symbols-outlined text-lg">target</span>
+<span class="font-bold text-sm uppercase tracking-wider">Objective</span>
+</div>
+<p class="text-lg text-slate-200 leading-relaxed font-medium">
+                                Eliminate the Town members until the Mafia reaches the majority. Trust no one, strike at night.
+                            </p>
+</div>
+<div class="bg-slate-900/40 border border-slate-700/50 p-6 rounded-xl space-y-3">
+<div class="flex items-center gap-2 text-slate-400">
+<span class="material-symbols-outlined text-lg">search</span>
+<span class="font-bold text-sm uppercase tracking-wider">Suspicious Detail</span>
+</div>
+<p class="text-slate-300 italic">
+                                "Spotted cleaning a violin case that looked surprisingly heavy near the docks at 3 AM."
+                            </p>
+</div>
+</div>
+<div class="flex flex-col gap-4 pt-4 pb-12">
+<button class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-5 rounded-xl text-lg uppercase tracking-widest transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-3">
+<span class="material-symbols-outlined">visibility_off</span>
+                            Confirm &amp; Hide Role
+                        </button>
+<p class="text-slate-500 text-center text-xs uppercase tracking-widest font-bold">
+                            Do not show this screen to others
+                        </p>
+</div>
+</div>
+</main>
+</div>
+</div>
+</body></html>

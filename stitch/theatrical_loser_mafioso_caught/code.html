@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#f42536",
+                        "background-light": "#f8f5f6",
+                        "background-dark": "#221011",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: "Space Grotesk", sans-serif;
+            background-color: #221011;
+        }
+        .noir-gradient {
+            background: linear-gradient(to bottom, rgba(34, 16, 17, 0) 0%, rgba(34, 16, 17, 0.9) 80%, rgba(34, 16, 17, 1) 100%);
+        }
+        .crimson-glow {
+            box-shadow: 0 0 20px rgba(244, 37, 54, 0.2);
+        }
+        input[type="radio"]:checked {
+            background-image: url("data:image/svg+xml,%3csvg viewBox=%270 0 16 16%27 fill=%27%23f42536%27 xmlns=%27http://www.w3.org/2000/svg%27%3e%3ccircle cx=%278%27 cy=%278%27 r=%274%27/%3e%3c/svg%3e");
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 font-display min-h-screen">
+<div class="relative flex min-h-screen w-full flex-col overflow-x-hidden">
+<div class="layout-container flex h-full grow flex-col">
+<!-- Header Section -->
+<header class="flex items-center justify-between whitespace-nowrap border-b border-primary/20 px-6 py-4 lg:px-40">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary text-3xl">gavel</span>
+<h2 class="text-slate-100 text-xl font-bold leading-tight tracking-tight">MAFIA JUSTICE</h2>
+</div>
+<div class="flex gap-3">
+<button class="flex items-center justify-center rounded-lg h-10 w-10 bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-colors">
+<span class="material-symbols-outlined">skull</span>
+</button>
+<button class="flex items-center justify-center rounded-lg h-10 w-10 bg-primary/10 text-primary border border-primary/30 hover:bg-primary/20 transition-colors">
+<span class="material-symbols-outlined">shield_person</span>
+</button>
+</div>
+</header>
+<main class="flex flex-1 justify-center py-8">
+<div class="layout-content-container flex flex-col max-w-[800px] flex-1 px-4">
+<!-- Hero Captured Image Container -->
+<div class="@container mb-8">
+<div class="relative w-full aspect-video rounded-xl overflow-hidden crimson-glow border border-primary/30">
+<div class="absolute inset-0 bg-cover bg-center" data-alt="Defeated mafioso character in a dark interrogation room" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAS3H5suKdZQKdV9mNtBy0J6doEuzZJU1LU6S7i2HBeZPdr58hFGiCUUSa40lNCTqjmyaFcvF7OGqbqPwv7G1TQuTsYzundxGt3ssfZP0rqa-PSid9m4Pn8VNNPUj_FdaZPMU_K9wdo0-v9KoyrDjpZnhva6pjocr4SuiXXOgTlpcTQXiqczziGIE-zxNCgALYWuQTEv94lQDmqrtvpraOYZaKHnnl4uJt7Jaa8fCFVZjUYAby_2ExC38LSLr0Vn8FZXdbXi9ngSSg');"></div>
+<div class="absolute inset-0 noir-gradient flex flex-col justify-end p-8">
+<span class="bg-primary text-white text-xs font-bold uppercase tracking-widest px-3 py-1 rounded w-fit mb-2">Target Acquired</span>
+<h1 class="text-white tracking-tighter text-4xl lg:text-6xl font-bold uppercase italic leading-none">BUSTED: JUSTICE REVEALED</h1>
+</div>
+</div>
+</div>
+<!-- Punishment Section Title -->
+<div class="text-center mb-8">
+<h2 class="text-primary text-3xl font-bold mb-2">وقت الحساب يا معلم...</h2>
+<p class="text-slate-400 uppercase tracking-widest text-sm">Choose the final fate of the syndicate boss</p>
+</div>
+<!-- Punishment Options -->
+<div class="flex flex-col gap-4 mb-12">
+<!-- Option 1 -->
+<label class="group relative flex items-center gap-4 rounded-xl border border-primary/20 bg-background-dark/50 p-5 cursor-pointer hover:border-primary/60 transition-all active:scale-[0.98]">
+<div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+<span class="material-symbols-outlined">videocam</span>
+</div>
+<div class="flex grow flex-col">
+<p class="text-slate-100 text-lg font-bold">Apology Scene</p>
+<p class="text-slate-400 text-sm">Make him beg for mercy on camera for the whole city to see</p>
+</div>
+<input checked="" class="h-6 w-6 border-2 border-primary/30 bg-transparent text-primary focus:ring-primary focus:ring-offset-background-dark rounded-full cursor-pointer" name="punishment" type="radio"/>
+</label>
+<!-- Option 2 -->
+<label class="group relative flex items-center gap-4 rounded-xl border border-primary/20 bg-background-dark/50 p-5 cursor-pointer hover:border-primary/60 transition-all active:scale-[0.98]">
+<div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+<span class="material-symbols-outlined">mic_external_on</span>
+</div>
+<div class="flex grow flex-col">
+<p class="text-slate-100 text-lg font-bold">Confession Song</p>
+<p class="text-slate-400 text-sm">A melodic, high-pitched admission of every single dirty crime</p>
+</div>
+<input class="h-6 w-6 border-2 border-primary/30 bg-transparent text-primary focus:ring-primary focus:ring-offset-background-dark rounded-full cursor-pointer" name="punishment" type="radio"/>
+</label>
+<!-- Option 3 -->
+<label class="group relative flex items-center gap-4 rounded-xl border border-primary/20 bg-background-dark/50 p-5 cursor-pointer hover:border-primary/60 transition-all active:scale-[0.98]">
+<div class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+<span class="material-symbols-outlined">theater_comedy</span>
+</div>
+<div class="flex grow flex-col">
+<p class="text-slate-100 text-lg font-bold">Humiliating Dance</p>
+<p class="text-slate-400 text-sm">The ultimate noir humiliation in a ridiculous costume</p>
+</div>
+<input class="h-6 w-6 border-2 border-primary/30 bg-transparent text-primary focus:ring-primary focus:ring-offset-background-dark rounded-full cursor-pointer" name="punishment" type="radio"/>
+</label>
+</div>
+<!-- Action Button -->
+<div class="flex justify-center">
+<button class="bg-primary text-white font-bold uppercase tracking-widest px-12 py-5 rounded-lg shadow-[0_0_30px_rgba(244,37,54,0.4)] hover:shadow-[0_0_40px_rgba(244,37,54,0.6)] hover:scale-105 active:scale-95 transition-all text-xl">
+                            EXECUTE JUDGMENT
+                        </button>
+</div>
+<!-- Footer Decorative Elements -->
+<div class="mt-20 flex justify-center items-center gap-8 opacity-30 grayscale contrast-125">
+<div class="h-px w-24 bg-primary"></div>
+<span class="material-symbols-outlined text-primary text-4xl">fingerprint</span>
+<div class="h-px w-24 bg-primary"></div>
+</div>
+</div>
+</main>
+</div>
+</div>
+</body></html>

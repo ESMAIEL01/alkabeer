@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#f42536",
+                        "background-light": "#f8f5f6",
+                        "background-dark": "#221011",
+                        "neutral-dark": "#2d1618",
+                        "neutral-muted": "#492225",
+                        "text-muted": "#cb9095",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: "Space Grotesk", sans-serif;
+        }
+        .dossier-clip {
+            clip-path: polygon(0% 0%, 90% 0%, 100% 10%, 100% 100%, 0% 100%);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen">
+<div class="relative flex min-h-screen w-full flex-col overflow-x-hidden">
+<div class="layout-container flex h-full grow flex-col">
+<!-- Navigation Header -->
+<header class="flex items-center justify-between border-b border-solid border-neutral-muted px-6 md:px-20 py-4 bg-background-dark/80 backdrop-blur-md sticky top-0 z-50">
+<div class="flex items-center gap-4 text-slate-100">
+<div class="text-primary">
+<span class="material-symbols-outlined text-3xl">folder_managed</span>
+</div>
+<h2 class="text-xl font-bold tracking-tight uppercase">Mafioso: Dossiers</h2>
+</div>
+<div class="flex gap-3">
+<button class="flex items-center justify-center rounded-lg h-10 w-10 bg-neutral-muted text-slate-100 hover:bg-primary/20 transition-colors">
+<span class="material-symbols-outlined">search</span>
+</button>
+<button class="flex items-center justify-center rounded-lg h-10 w-10 bg-neutral-muted text-slate-100 hover:bg-primary/20 transition-colors">
+<span class="material-symbols-outlined">account_circle</span>
+</button>
+</div>
+</header>
+<main class="flex-1 flex flex-col max-w-6xl mx-auto w-full p-6 md:p-10">
+<!-- Al-Kabeer Profile Section -->
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
+<div class="flex items-center gap-4">
+<div class="relative">
+<div class="size-16 rounded-full border-2 border-primary p-1">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full h-full w-full" data-alt="Portrait of Al-Kabeer, a mysterious man in a suit" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuALQ5dAM_B3abFpKFjoCxNgP1eQ15Vmm82mjO4E_A3nhlOC7iJ2esSkSysnhA0f6wZvsY41e3rBEhSQDB1TzgpE4EjJb2IXq6VqMOxVod8rhxrPR8ROdy3iBjOgK2q28OMUok4YpS_anPVAKpfKBBH-8H7FhqayxIS77SWp1zxEnmtA0N0o0W3nXJ4e_vB2U6yKq8i0Bs-63I-cdyJt_iyycs7X3rO2H4dcmUqEpwTGT0A3gOAp8YkCOXuIM5pIcIhy2eWPFW6ryjE");'></div>
+</div>
+<div class="absolute bottom-0 right-0 size-4 bg-green-500 rounded-full border-2 border-background-dark"></div>
+</div>
+<div class="flex flex-col">
+<h1 class="text-xl font-bold text-slate-100">Al-Kabeer</h1>
+<p class="text-text-muted text-sm font-medium">The Architect of Shadows</p>
+</div>
+</div>
+<div class="bg-neutral-dark border border-neutral-muted p-4 rounded-lg max-w-md">
+<p class="text-text-muted italic text-sm">
+                            "The city is a chessboard, and every crime is a move. Choose your next play carefully, associate. These dossiers contain the keys to your future... or your demise."
+                        </p>
+</div>
+</div>
+<div class="mb-8">
+<h2 class="text-4xl font-black text-slate-100 tracking-tighter uppercase mb-2">Select Your Case</h2>
+<div class="h-1 w-24 bg-primary"></div>
+</div>
+<!-- Dossier Grid -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+<!-- Dossier 1: The Locked Room -->
+<div class="group flex flex-col bg-neutral-dark border border-neutral-muted rounded-lg overflow-hidden transition-all hover:border-primary/50 hover:shadow-[0_0_20px_rgba(244,37,54,0.15)]">
+<div class="relative h-48 overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-t from-neutral-dark to-transparent z-10"></div>
+<div class="absolute top-4 left-4 z-20 bg-primary px-2 py-1 text-[10px] font-bold text-white uppercase tracking-widest rounded">Classified</div>
+<div class="bg-center bg-no-repeat bg-cover h-full w-full transition-transform duration-700 group-hover:scale-110" data-alt="A dark high-security vault door inside a stone building" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBkDCQUKPmOXy9Juq7XFVJGFAcYb8cBkFdXEK8GMPPYdRt8ZySYeeONU4r6gJExsaR6QiLktZ-AD3V73kn9qlcfwfeEEKuZ10_gKuElbki9-P_ZV2G1HXlnvZTJZkkYtHMCcLupb9L_ci1Ao4jZYB0VKUfecoTKtOzVJ79WW0pEmjkv0_MmJO_G6-NghBpHFsbDBVsEfg3ub3iAYs_vwC2rsPnNu5lZyAefSR61hP6F2prp6VAnz-DTV8NsWxoWtac9RxAdo7S5zTM");'></div>
+</div>
+<div class="p-6 flex flex-col flex-1">
+<div class="flex justify-between items-start mb-4">
+<h3 class="text-xl font-bold text-slate-100 uppercase tracking-tight">The Locked Room</h3>
+<div class="text-primary flex">
+<span class="material-symbols-outlined text-sm">star</span>
+<span class="material-symbols-outlined text-sm">star</span>
+<span class="material-symbols-outlined text-sm">star</span>
+<span class="material-symbols-outlined text-sm opacity-30">star</span>
+<span class="material-symbols-outlined text-sm opacity-30">star</span>
+</div>
+</div>
+<p class="text-text-muted text-sm leading-relaxed mb-6 flex-1">
+                                An impossible murder in a high-security vault. No witnesses, no exit, and the security cameras show nothing. Find the leak before the police arrive.
+                            </p>
+<div class="flex items-center justify-between pt-4 border-t border-neutral-muted">
+<span class="text-[10px] text-text-muted font-bold uppercase tracking-widest">Ref: #LR-402</span>
+<button class="bg-primary hover:bg-red-600 text-white px-4 py-2 rounded font-bold text-xs uppercase tracking-widest transition-colors flex items-center gap-2">
+                                    Investigate
+                                    <span class="material-symbols-outlined text-xs">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Dossier 2: The Diamond Heist -->
+<div class="group flex flex-col bg-neutral-dark border border-neutral-muted rounded-lg overflow-hidden transition-all hover:border-primary/50 hover:shadow-[0_0_20px_rgba(244,37,54,0.15)]">
+<div class="relative h-48 overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-t from-neutral-dark to-transparent z-10"></div>
+<div class="absolute top-4 left-4 z-20 bg-primary px-2 py-1 text-[10px] font-bold text-white uppercase tracking-widest rounded">Top Secret</div>
+<div class="bg-center bg-no-repeat bg-cover h-full w-full transition-transform duration-700 group-hover:scale-110" data-alt="Rough uncut diamonds sparkling on a dark velvet surface" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuD3bxvu75SW2cMZpoUO6xRj44kzKy6B4_adSxOwPch7RCLG6DBxiEXxXTF5VhMO23mf_TMUf8htxOA9k_YrrEU8EkoNDo3FV3b8PQ_RbK2GVD9mnj4YLc4kMr6yerJstVYu6CoRFNdyt64ZRFOXA-3Ua4nCkz5oVqWQXvQipnMXyfO6THa4c-jPVsBeeHqoPHATS9zlJhQl_UShZ9s0FU_GoR95NGKKEdNZ3uhKI3drwHkWOz0_pf_g4Rft4q93qnU55oYlV2P_d8o");'></div>
+</div>
+<div class="p-6 flex flex-col flex-1">
+<div class="flex justify-between items-start mb-4">
+<h3 class="text-xl font-bold text-slate-100 uppercase tracking-tight">The Diamond Heist</h3>
+<div class="text-primary flex">
+<span class="material-symbols-outlined text-sm">star</span>
+<span class="material-symbols-outlined text-sm">star</span>
+<span class="material-symbols-outlined text-sm">star</span>
+<span class="material-symbols-outlined text-sm">star</span>
+<span class="material-symbols-outlined text-sm opacity-30">star</span>
+</div>
+</div>
+<p class="text-text-muted text-sm leading-relaxed mb-6 flex-1">
+                                $50 million in uncut stones vanished from the museum in under 60 seconds. A perfect job, or a setup? Follow the trail of smoke before it clears.
+                            </p>
+<div class="flex items-center justify-between pt-4 border-t border-neutral-muted">
+<span class="text-[10px] text-text-muted font-bold uppercase tracking-widest">Ref: #DH-911</span>
+<button class="bg-primary hover:bg-red-600 text-white px-4 py-2 rounded font-bold text-xs uppercase tracking-widest transition-colors flex items-center gap-2">
+                                    Investigate
+                                    <span class="material-symbols-outlined text-xs">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Dossier 3: The Poisoned Chalice -->
+<div class="group flex flex-col bg-neutral-dark border border-neutral-muted rounded-lg overflow-hidden transition-all hover:border-primary/50 hover:shadow-[0_0_20px_rgba(244,37,54,0.15)]">
+<div class="relative h-48 overflow-hidden">
+<div class="absolute inset-0 bg-gradient-to-t from-neutral-dark to-transparent z-10"></div>
+<div class="absolute top-4 left-4 z-20 bg-primary px-2 py-1 text-[10px] font-bold text-white uppercase tracking-widest rounded">Eyes Only</div>
+<div class="bg-center bg-no-repeat bg-cover h-full w-full transition-transform duration-700 group-hover:scale-110" data-alt="An ornate silver chalice on a dark mahogany table with spilled red wine" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBpKBSAzxKKjJqPHVC_PsNRXtiFh_5d9sY0Z7Y8NORXs2SgV3To87DW1giuQ_ZYCwHGPp8knOBTb5BRUrMJsP5pRdGdNQ1R87104282QVX8N2ug0BuqFvvXopDO5wNqPpJhKWC53sX6nQjYZsIoJMHaVtRiX2LAlDdEwo-OOx1rEsUKJ72Uh5cBvhXNDgSPJC5V7Fg4s1l2i_dtXKmaNoSQD3qZq3qu_4PAjMTZFNbyOz99RQdX8X2LjBLDceWbqsEI_CEcFgohlLA");'></div>
+</div>
+<div class="p-6 flex flex-col flex-1">
+<div class="flex justify-between items-start mb-4">
+<h3 class="text-xl font-bold text-slate-100 uppercase tracking-tight">The Poisoned Chalice</h3>
+<div class="text-primary flex">
+<span class="material-symbols-outlined text-sm">star</span>
+<span class="material-symbols-outlined text-sm">star</span>
+<span class="material-symbols-outlined text-sm">star</span>
+<span class="material-symbols-outlined text-sm">star</span>
+<span class="material-symbols-outlined text-sm">star</span>
+</div>
+</div>
+<p class="text-text-muted text-sm leading-relaxed mb-6 flex-1">
+                                A high-ranking council member dropped dead at his daughter's wedding. The poison is unknown. Trace the origin before more guests succumb.
+                            </p>
+<div class="flex items-center justify-between pt-4 border-t border-neutral-muted">
+<span class="text-[10px] text-text-muted font-bold uppercase tracking-widest">Ref: #PC-777</span>
+<button class="bg-primary hover:bg-red-600 text-white px-4 py-2 rounded font-bold text-xs uppercase tracking-widest transition-colors flex items-center gap-2">
+                                    Investigate
+                                    <span class="material-symbols-outlined text-xs">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer Stats -->
+<div class="mt-12 grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-neutral-muted pt-8">
+<div class="flex flex-col">
+<span class="text-[10px] text-text-muted font-bold uppercase tracking-widest mb-1">Active Cases</span>
+<span class="text-2xl font-bold text-slate-100">12</span>
+</div>
+<div class="flex flex-col">
+<span class="text-[10px] text-text-muted font-bold uppercase tracking-widest mb-1">Solved</span>
+<span class="text-2xl font-bold text-slate-100">156</span>
+</div>
+<div class="flex flex-col">
+<span class="text-[10px] text-text-muted font-bold uppercase tracking-widest mb-1">Street Cred</span>
+<span class="text-2xl font-bold text-primary">Level 42</span>
+</div>
+<div class="flex flex-col">
+<span class="text-[10px] text-text-muted font-bold uppercase tracking-widest mb-1">Bounty Total</span>
+<span class="text-2xl font-bold text-slate-100">$2.4M</span>
+</div>
+</div>
+</main>
+<!-- Bottom Action Bar (Contextual) -->
+<footer class="p-4 bg-neutral-dark/50 backdrop-blur-sm border-t border-neutral-muted">
+<div class="max-w-6xl mx-auto flex items-center justify-between text-xs font-bold uppercase tracking-widest text-text-muted">
+<div class="flex gap-6">
+<a class="hover:text-primary transition-colors flex items-center gap-2" href="#">
+<span class="material-symbols-outlined text-lg">map</span> Underworld
+                        </a>
+<a class="hover:text-primary transition-colors flex items-center gap-2" href="#">
+<span class="material-symbols-outlined text-lg">storefront</span> Black Market
+                        </a>
+<a class="text-primary flex items-center gap-2 border-b-2 border-primary pb-1" href="#">
+<span class="material-symbols-outlined text-lg">article</span> Dossiers
+                        </a>
+</div>
+<div class="hidden md:block">
+                        Connection Secure - Cipher: AES-256
+                    </div>
+</div>
+</footer>
+</div>
+</div>
+</body></html>

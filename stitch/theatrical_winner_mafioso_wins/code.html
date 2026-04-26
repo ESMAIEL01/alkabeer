@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Mafioso Wins - Victory Screen</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#f42536",
+              "gold": "#d4af37",
+              "background-light": "#f8f5f6",
+              "background-dark": "#1a0b0c",
+              "panel-dark": "#2a1416",
+            },
+            fontFamily: {
+              "display": ["Space Grotesk", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 antialiased overflow-x-hidden">
+<div class="relative flex h-auto min-h-screen w-full flex-col group/design-root">
+<div class="layout-container flex h-full grow flex-col">
+<!-- Navigation Header -->
+<header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-primary/20 px-6 py-4 md:px-10 lg:px-40">
+<div class="flex items-center gap-3 text-primary">
+<span class="material-symbols-outlined text-3xl" data-icon="theater_comedy">theater_comedy</span>
+<h2 class="text-xl font-bold leading-tight tracking-tight uppercase">Mafia Noir</h2>
+</div>
+<div class="flex items-center gap-4">
+<button class="flex size-10 items-center justify-center rounded-lg bg-panel-dark text-slate-100 hover:bg-primary/20 transition-colors border border-primary/30">
+<span class="material-symbols-outlined text-xl" data-icon="settings">settings</span>
+</button>
+</div>
+</header>
+<main class="flex flex-1 justify-center py-8">
+<div class="layout-content-container flex flex-col max-w-[960px] flex-1 px-4">
+<!-- Hero Victory Section -->
+<div class="@container mb-8">
+<div class="relative overflow-hidden rounded-xl border-2 border-gold/30 shadow-2xl shadow-primary/10">
+<div class="bg-cover bg-center flex flex-col justify-end min-h-[400px] relative" data-alt="Triumphant mob boss in shadowy noir setting" style='background-image: linear-gradient(to top, rgba(26, 11, 12, 1) 10%, rgba(26, 11, 12, 0.4) 50%, rgba(26, 11, 12, 0) 100%), url("https://lh3.googleusercontent.com/aida-public/AB6AXuB4FZZw_PgywD-myVHy4PGPiAO475rWlHwatXl20azoocG7gK8odvq-UUPL5RwDG8-J56ka8Lkz8UaArA70dBthF1Oezq6KC-N_yG7T3B2yYEaoDfhrYIwawtQWXM38sV-2fj3iZgmNaZSVXAvCabgdzcg3NtIgjaH-JBaVgY4t8nRj-OdmJy3M6WJNNO4w5FXJE4SLSOpZJtBZlXY-0KwkfCsG2kp5jCgkVMQ9H6OvKpm6D_pVCc811oV2Hg_XQq1E-peVJ65bvvA");'>
+<div class="absolute top-4 left-4">
+<span class="bg-primary px-3 py-1 rounded text-xs font-bold tracking-widest text-white uppercase shadow-lg">Victory Achieved</span>
+</div>
+<div class="p-8 text-center md:text-left">
+<h3 class="text-primary text-sm font-bold tracking-[0.3em] mb-2 uppercase">Session Terminated</h3>
+<h1 class="text-white tracking-tighter text-4xl md:text-6xl font-extrabold leading-none mb-4">VICTORY: THE SHADOWS REMAIN</h1>
+</div>
+</div>
+</div>
+</div>
+<!-- Egyptian Arabic Commentary -->
+<div class="flex flex-col items-center text-center px-4 py-8 mb-4 border-y border-gold/10 bg-panel-dark/30 rounded-xl">
+<span class="material-symbols-outlined text-gold mb-2 text-4xl" data-icon="format_quote">format_quote</span>
+<h2 class="text-gold text-2xl md:text-4xl font-bold leading-relaxed italic px-4" dir="rtl">
+                        يا سلاااام... المافيوزو كسب والسر فضل في البير!
+                    </h2>
+<p class="text-slate-400 mt-4 text-sm font-medium tracking-widest uppercase">— Al-Kabeer Commentary</p>
+</div>
+<!-- Stats Grid -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
+<div class="flex flex-col gap-2 rounded-xl p-6 bg-panel-dark border border-gold/20 relative group hover:border-gold/50 transition-all">
+<div class="absolute top-4 right-4 text-gold/30">
+<span class="material-symbols-outlined" data-icon="military_tech">military_tech</span>
+</div>
+<p class="text-slate-400 text-xs font-bold uppercase tracking-widest">Total Wins</p>
+<p class="text-white tracking-tight text-3xl font-bold">12</p>
+<p class="text-emerald-400 text-sm font-bold flex items-center gap-1">
+<span class="material-symbols-outlined text-sm" data-icon="trending_up">trending_up</span> +1 Session
+                        </p>
+</div>
+<div class="flex flex-col gap-2 rounded-xl p-6 bg-panel-dark border border-primary/20 relative group hover:border-primary/50 transition-all">
+<div class="absolute top-4 right-4 text-primary/30">
+<span class="material-symbols-outlined" data-icon="workspace_premium">workspace_premium</span>
+</div>
+<p class="text-slate-400 text-xs font-bold uppercase tracking-widest">Rank</p>
+<p class="text-gold tracking-tight text-3xl font-bold">The Godfather</p>
+<p class="text-emerald-400 text-sm font-bold flex items-center gap-1">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span> 5% Influence
+                        </p>
+</div>
+<div class="flex flex-col gap-2 rounded-xl p-6 bg-panel-dark border border-gold/20 relative group hover:border-gold/50 transition-all">
+<div class="absolute top-4 right-4 text-gold/30">
+<span class="material-symbols-outlined" data-icon="payments">payments</span>
+</div>
+<p class="text-slate-400 text-xs font-bold uppercase tracking-widest">Bounty Earned</p>
+<p class="text-white tracking-tight text-3xl font-bold">Gold Tier</p>
+<p class="text-emerald-400 text-sm font-bold flex items-center gap-1">
+<span class="material-symbols-outlined text-sm" data-icon="savings">savings</span> +500 Crédits
+                        </p>
+</div>
+</div>
+<!-- Action Buttons -->
+<div class="flex flex-col sm:flex-row gap-4 justify-center items-center pb-20">
+<button class="group relative flex min-w-[200px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-14 px-8 bg-primary text-white text-lg font-bold transition-transform active:scale-95 shadow-[0_0_20px_rgba(244,37,54,0.3)]">
+<span class="material-symbols-outlined mr-2 group-hover:rotate-180 transition-transform duration-500" data-icon="replay">replay</span>
+<span class="truncate">Play Again</span>
+</button>
+<button class="flex min-w-[200px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-14 px-8 bg-panel-dark text-slate-100 text-lg font-bold border border-slate-700 hover:border-gold/50 transition-all hover:text-gold active:scale-95">
+<span class="material-symbols-outlined mr-2" data-icon="history_edu">history_edu</span>
+<span class="truncate">View Full Archive</span>
+</button>
+</div>
+</div>
+</main>
+<!-- Footer Decoration -->
+<footer class="py-6 flex justify-center items-center opacity-30 gap-8">
+<div class="h-px w-20 bg-gradient-to-r from-transparent to-gold"></div>
+<span class="material-symbols-outlined text-gold" data-icon="poker_chip">poker_chip</span>
+<div class="h-px w-20 bg-gradient-to-l from-transparent to-gold"></div>
+</footer>
+</div>
+</div>
+</body></html>

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#f42536",
+                        "background-light": "#f8f5f6",
+                        "background-dark": "#221011",
+                    },
+                    fontFamily: {
+                        "display": ["Space Grotesk", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .archive-texture {
+            background-image: radial-gradient(circle at 2px 2px, rgba(244, 37, 54, 0.05) 1px, transparent 0);
+            background-size: 24px 24px;
+        }
+        .stamp-effect {
+            transform: rotate(-12deg);
+            border: 4px solid #f42536;
+            color: #f42536;
+            padding: 4px 12px;
+            font-weight: 900;
+            text-transform: uppercase;
+            mix-blend-mode: lighten;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen">
+<div class="relative flex h-auto min-h-screen w-full flex-col overflow-x-hidden archive-texture">
+<div class="layout-container flex h-full grow flex-col">
+<header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-primary/20 px-6 md:px-10 py-4 sticky top-0 bg-background-dark/80 backdrop-blur-md z-50">
+<div class="flex items-center gap-4 text-primary">
+<div class="size-6">
+<svg fill="none" viewbox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path clip-rule="evenodd" d="M47.2426 24L24 47.2426L0.757355 24L24 0.757355L47.2426 24ZM12.2426 21H35.7574L24 9.24264L12.2426 21Z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+<h2 class="text-slate-100 text-xl font-bold leading-tight tracking-tight uppercase tracking-widest">Mafiozo</h2>
+</div>
+<div class="flex gap-3">
+<button class="flex items-center justify-center rounded-lg h-10 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-all px-3">
+<span class="material-symbols-outlined">share</span>
+</button>
+<button class="flex items-center justify-center rounded-lg h-10 bg-primary text-white hover:bg-primary/90 transition-all px-4 font-bold text-sm">
+<span class="mr-2">DOWNLOAD DOSSIER</span>
+<span class="material-symbols-outlined text-sm">download</span>
+</button>
+</div>
+</header>
+<main class="flex-1 max-w-5xl mx-auto w-full px-6 py-12">
+<div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-16 border-l-4 border-primary pl-6">
+<div class="flex flex-col gap-2">
+<span class="text-primary font-bold tracking-[0.2em] text-sm uppercase">Case Status: Solved</span>
+<h1 class="text-slate-100 text-5xl md:text-7xl font-black leading-tight tracking-tighter">TRUTH <span class="text-primary">REVEALED</span></h1>
+<p class="text-slate-400 text-xl max-w-xl">The Archive has been successfully decrypted. The shadows have nowhere left to hide.</p>
+</div>
+<div class="stamp-effect text-3xl border-dashed border-4 px-6 py-2">
+                        DECLASSIFIED
+                    </div>
+</div>
+<div class="grid grid-cols-1 gap-12">
+<section class="relative bg-white/5 border border-slate-800 rounded-xl p-8 overflow-hidden">
+<div class="absolute top-0 right-0 p-4 opacity-10">
+<span class="material-symbols-outlined text-9xl">menu_book</span>
+</div>
+<h2 class="text-primary text-2xl font-bold mb-6 flex items-center gap-3">
+<span class="material-symbols-outlined">history_edu</span>
+                            THE CRIME
+                        </h2>
+<div class="prose prose-invert max-w-none text-slate-300 leading-relaxed text-lg space-y-4">
+<p>It began at 02:00 AM under the neon glow of the Emerald District. What looked like a simple smash-and-grab was actually the most sophisticated data heist in the city's history. The perimeter sensors were looped precisely 42 seconds before the breach.</p>
+<p>The vault wasn't opened by force, but by a ghost sequence embedded in the firmware three months prior. Every security response was anticipated. The tactical team wasn't chasing a thief; they were following a script written by the architect of their own downfall.</p>
+</div>
+</section>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+<section class="bg-white/5 border border-slate-800 rounded-xl p-8 flex flex-col items-center text-center relative overflow-hidden">
+<div class="absolute -top-4 -left-4 stamp-effect text-xs rotate-[-15deg] opacity-40">TARGET IDENTIFIED</div>
+<h2 class="text-primary text-2xl font-bold mb-8 w-full text-left flex items-center gap-3">
+<span class="material-symbols-outlined">person_search</span>
+                                THE MAFIOSO
+                            </h2>
+<div class="relative w-48 h-48 rounded-full border-4 border-primary p-1 mb-6">
+<img alt="Profile of the player revealed as the mastermind" class="w-full h-full object-cover rounded-full grayscale hover:grayscale-0 transition-all duration-700" data-alt="Intense portrait of a man in shadows" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDwP4gCAN9Wk5QtmjMzOjUfwrnKwXmf-JJNrh4QibvW0zWmb1eYQ2t2_h2cvbFHdQtPAoxTzgpWwrajn2oQ8bN5kJTgcJdr6kk-QpNa5XKgr-R32410wbbaKOoqx4bN9peX0ZeOAMiQCBBkLWZwrvEvfIzz6bEWwaVpH1TbpHn3wxnLoX5iX5pj83OlO1Y5NKUrJnnmGbaaRX585uOjgzIAucu3fG7_bbM4FYz2a4RBVE9QS-iPOcIfCGIdnGHDsCgvP3LG2TBHlZg"/>
+<div class="absolute bottom-0 right-0 bg-primary text-white p-2 rounded-full shadow-lg">
+<span class="material-symbols-outlined">verified</span>
+</div>
+</div>
+<h3 class="text-2xl font-bold text-slate-100 mb-2">YOU</h3>
+<p class="text-slate-400 mb-6 font-medium uppercase tracking-widest text-sm">Motive: Ultimate Control</p>
+<p class="text-slate-300 italic leading-relaxed">
+                                "The city needed a villain to unite against, and I needed a city that followed my rhythm. Chaos is just an unread sheet of music."
+                            </p>
+</section>
+<section class="bg-white/5 border border-slate-800 rounded-xl p-8 relative overflow-hidden">
+<div class="absolute top-0 right-0 p-4 opacity-5">
+<span class="material-symbols-outlined text-9xl">visibility_off</span>
+</div>
+<h2 class="text-primary text-2xl font-bold mb-8 flex items-center gap-3">
+<span class="material-symbols-outlined">psychology</span>
+                                THE DECEPTION
+                            </h2>
+<div class="space-y-6">
+<div class="border-l-2 border-slate-700 pl-4">
+<h4 class="text-slate-100 font-bold mb-2 uppercase text-xs tracking-tighter opacity-50">The Red Herring</h4>
+<p class="text-slate-300">The "Broken Ledger" found in the safe house was planted. It was designed to point directly to the docks, where the police wasted 12 hours searching empty containers.</p>
+</div>
+<div class="border-l-2 border-slate-700 pl-4">
+<h4 class="text-slate-100 font-bold mb-2 uppercase text-xs tracking-tighter opacity-50">The Innocent Suspect</h4>
+<p class="text-slate-300">Detective Vance appeared guilty only because his bank accounts were padded with anonymous crypto-transfers—a digital frame job so perfect, even he started doubting his own memory.</p>
+</div>
+</div>
+</section>
+</div>
+<section class="mt-12 py-16 border-t border-primary/20 flex flex-col items-center text-center">
+<div class="relative group cursor-pointer mb-8">
+<div class="absolute -inset-1 bg-gradient-to-r from-primary to-orange-600 rounded-full blur opacity-25 group-hover:opacity-75 transition duration-1000 group-hover:duration-200"></div>
+<div class="relative bg-background-dark rounded-full p-2 border-2 border-primary/50 overflow-hidden w-40 h-40">
+<img alt="Al-Kabeer in a theatrical pose" class="w-full h-full object-cover rounded-full" data-alt="A distinguished man in a suit gesturing dramatically" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBWCtQjcHKvdOUtOOX-SDDB3wUpN9qmqkdWx4HpF8C267QgMftxX9uLSZZwAmaY1tBgHpPDo8ebJpbLuL_WJWuvplkD3FNKhOGXILPFYx1g_HoSBz4R7p6fIUE5XDR6L2rTYVa9KYNQj5vEIvQBIGlr2nXFQCDfDg085D7CsS2IFtTK_qbF05IpdRGiwv1yJw-J3b5vc5Pr2FBgyt5SWARjPI2hVotVArI-tqtYPjV2tHFHK9GyhBeNFPQ1hfO8mbmOkERoTxIsu4Y"/>
+</div>
+</div>
+<div class="space-y-4">
+<p class="text-primary text-3xl font-black md:text-4xl" dir="rtl">
+                                الكبير قال: الحقيقة تستحق الانتظار 🔴
+                            </p>
+<p class="text-slate-400 font-medium tracking-[0.3em] uppercase text-sm">Case Closed • The End</p>
+</div>
+<div class="mt-12 flex gap-4">
+<button class="px-8 py-4 bg-primary text-white font-bold rounded-lg hover:bg-primary/90 transition-all flex items-center gap-2">
+<span class="material-symbols-outlined">refresh</span>
+                                PLAY AGAIN
+                            </button>
+<button class="px-8 py-4 bg-transparent border border-slate-700 text-slate-300 font-bold rounded-lg hover:bg-white/5 transition-all">
+                                VIEW CREDITS
+                            </button>
+</div>
+</section>
+</div>
+</main>
+<footer class="p-10 border-t border-primary/10 text-center">
+<p class="text-slate-600 text-sm">© 2024 MAFIOZO INTERACTIVE • ENCRYPTED SESSION #8821-X</p>
+</footer>
+</div>
+</div>
+</body></html>
