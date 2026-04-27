@@ -8,6 +8,7 @@
 const express = require('express');
 const { query } = require('../database');
 const { authRequired } = require('../middleware/auth');
+const { aiLimiter } = require('../middleware/rateLimit');
 const {
   validateAndNormalizeProfileInput,
   validateBioAiRequest,
@@ -85,12 +86,21 @@ router.put('/me', authRequired, async (req, res, next) => {
  * the user accepts/rejects on the frontend, and saves through the
  * existing PUT /api/profile/me path.
  *
+ * Rate limit: shares the existing aiLimiter (AI_RATE_WINDOW_MS /
+ * AI_RATE_MAX env vars) with /api/scenarios. This endpoint hits the
+ * same Gemini / OpenRouter quota as scenario generation, so the same
+ * per-IP burst limit protects both. Limiter ordering is intentional:
+ *   authRequired → aiLimiter → handler
+ * If the caller is unauthenticated they get 401 (cheap) without
+ * consuming a rate-limit slot. The 429 response uses the limiter's
+ * existing Arabic copy: "الكبير بيكتب لسه... استنى دقيقة وحاول تاني."
+ *
  * AI privacy: writeProfileBio uses C1 logAi metadata-only logging
  * (task=profile_bio). The rawIdea is NOT logged; the generated bio is
  * NOT logged. The AI provider chain is unchanged (Gemini Flash →
  * OpenRouter → deterministic fallback).
  */
-router.post('/bio/ai', authRequired, async (req, res, next) => {
+router.post('/bio/ai', authRequired, aiLimiter, async (req, res, next) => {
   const v = validateBioAiRequest(req.body);
   if (!v.ok) return res.status(400).json({ error: v.error });
   try {
