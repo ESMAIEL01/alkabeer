@@ -137,6 +137,9 @@ class GameManager {
 
       socket.on('create_room', (data, callback) => {
         const safeCb = typeof callback === 'function' ? callback : () => {};
+        if (!socket.userId || !socket.username) {
+          return safeCb({ success: false, message: 'لازم تسجّل دخولك قبل ما تفتح غرفة.' });
+        }
         const roomId = this.generateRoomId();
         const mode = (data && data.mode) === 'AI' ? 'AI' : 'HUMAN';
         const requestedReveal = (data && data.roleRevealMode || '').toLowerCase();
@@ -160,6 +163,9 @@ class GameManager {
       socket.on('join_room', (data, callback) => {
         const safeCb = typeof callback === 'function' ? callback : () => {};
         const { roomId } = data || {};
+        if (!socket.userId || !socket.username) {
+          return safeCb({ success: false, message: 'لازم تسجّل دخولك قبل ما تنضم للغرفة.' });
+        }
         if (!roomId || !this.lobbies.has(roomId)) {
           return safeCb({ success: false, message: 'الغرفة غير موجودة' });
         }
@@ -222,7 +228,7 @@ class GameManager {
           return safeAck({ success: false, error: 'الأرشيف مش مفهوم. ولّده تاني.' });
         }
 
-        const eligible = [...lobby.players.values()].filter(p => !p.isHost);
+        const eligible = [...lobby.players.values()].filter(p => p && p.id && p.username && !p.isHost);
         if (eligible.length < 1) {
           return safeAck({ success: false, error: 'محتاج لاعب واحد على الأقل عشان توزع الأدوار.' });
         }
@@ -465,6 +471,98 @@ class GameManager {
         }
       });
 
+      // Player-driven readiness during CLUE_REVEAL. When ALL eligible voters
+      // (non-host, alive) press "ready", the discussion ends early and the
+      // round transitions to VOTING. Host is excluded — host can still force
+      // start_voting_now via host_control.
+      socket.on('ready_to_vote', (data) => {
+        const { roomId } = data || {};
+        const lobby = this.lobbies.get(roomId);
+        if (!lobby || !lobby.gameData) return;
+        if (lobby.gameData.phase !== 'CLUE_REVEAL') {
+          return socket.emit('ready_to_vote_rejected', {
+            reason: 'wrong_phase',
+            message: 'لا يمكنك إعلان الاستعداد للتصويت الآن.',
+          });
+        }
+        const player = lobby.players.get(socket.userId);
+        if (!player || player.isHost || !player.isAlive) {
+          return socket.emit('ready_to_vote_rejected', {
+            reason: 'not_eligible',
+            message: 'لا يمكنك إعلان الاستعداد للتصويت الآن.',
+          });
+        }
+        if (!lobby.gameData.readyToVote) lobby.gameData.readyToVote = {};
+        lobby.gameData.readyToVote[socket.userId] = true;
+
+        const eligible = this.eligibleVoters(lobby);
+        const ready = eligible.filter(p => lobby.gameData.readyToVote[p.id]).length;
+        this.io.to(roomId).emit('ready_to_vote_progress', { ready, total: eligible.length });
+
+        if (eligible.length > 0 && ready >= eligible.length) {
+          this.stopRoomTimer(lobby);
+          this.enterPhase(lobby, 'VOTING', 30);
+          this.startRoomTimer(roomId);
+        }
+      });
+
+      // Player-driven extension during VOTING. When >= ceil(70%) of eligible
+      // voters request more time, the timer gains exactly 15s. Limited to
+      // ONE successful extension per VOTING round (voteExtensionUsed flag).
+      socket.on('request_vote_extension', (data) => {
+        const { roomId } = data || {};
+        const lobby = this.lobbies.get(roomId);
+        if (!lobby || !lobby.gameData) return;
+        if (lobby.gameData.phase !== 'VOTING') {
+          return socket.emit('vote_extension_rejected', {
+            reason: 'wrong_phase',
+            message: 'تمديد التصويت متاح فقط أثناء التصويت.',
+          });
+        }
+        if (lobby.gameData.voteExtensionUsed) {
+          return socket.emit('vote_extension_rejected', {
+            reason: 'used',
+            message: 'تم استخدام التمديد لهذه الجولة.',
+          });
+        }
+        const player = lobby.players.get(socket.userId);
+        if (!player || player.isHost || !player.isAlive) {
+          return socket.emit('vote_extension_rejected', {
+            reason: 'not_eligible',
+            message: 'مش مسموح لك تطلب تمديد التصويت.',
+          });
+        }
+        if (!lobby.gameData.voteExtensionRequests) lobby.gameData.voteExtensionRequests = {};
+        if (lobby.gameData.voteExtensionRequests[socket.userId]) {
+          return socket.emit('vote_extension_rejected', {
+            reason: 'already_requested',
+            message: 'طلبك متسجّل بالفعل.',
+          });
+        }
+        lobby.gameData.voteExtensionRequests[socket.userId] = true;
+
+        const eligible = this.eligibleVoters(lobby);
+        const requested = eligible.filter(p => lobby.gameData.voteExtensionRequests[p.id]).length;
+        const required = Math.max(1, Math.ceil(eligible.length * 0.7));
+
+        let activated = false;
+        let secondsAdded = 0;
+        if (requested >= required) {
+          lobby.gameData.timer += 15;
+          lobby.gameData.voteExtensionUsed = true;
+          activated = true;
+          secondsAdded = 15;
+          this.io.to(roomId).emit('timer_update', lobby.gameData.timer);
+        }
+        this.io.to(roomId).emit('vote_extension_progress', {
+          requested,
+          total: eligible.length,
+          required,
+          activated,
+          secondsAdded,
+        });
+      });
+
       // Legacy `force_phase` is kept for backwards-compat with deployed clients
       // but routes through the same named-action handler so the safety rules
       // (auth, phase validity, timer cleanup, no double transitions) all apply.
@@ -662,11 +760,31 @@ class GameManager {
     if (!lobby || !lobby.gameData) return;
     lobby.gameData.phase = phase;
     lobby.gameData.timer = durationSeconds;
+    if (phase === 'CLUE_REVEAL') {
+      // Per-round readiness reset. Broadcast a zeroed progress so any client
+      // that missed the previous reset shows the correct count.
+      lobby.gameData.readyToVote = {};
+      const eligibleCount = this.eligibleVoters(lobby).length;
+      this.broadcastFullState(lobby.id);
+      this.io.to(lobby.id).emit('ready_to_vote_progress', { ready: 0, total: eligibleCount });
+      return;
+    }
     if (phase === 'VOTING') {
-      // Always start a voting round CLEAN — votes reset, fresh progress emit.
+      // Always start a voting round CLEAN — votes reset, extension reset,
+      // fresh progress emit.
       lobby.gameData.votes = {};
+      lobby.gameData.voteExtensionRequests = {};
+      lobby.gameData.voteExtensionUsed = false;
       this.broadcastFullState(lobby.id);
       this.emitVotingProgress(lobby.id);
+      const eligibleCount = this.eligibleVoters(lobby).length;
+      this.io.to(lobby.id).emit('vote_extension_progress', {
+        requested: 0,
+        total: eligibleCount,
+        required: Math.max(1, Math.ceil(eligibleCount * 0.7)),
+        activated: false,
+        secondsAdded: 0,
+      });
       return;
     }
     if (phase === 'FINAL_REVEAL') {
@@ -691,7 +809,7 @@ class GameManager {
    */
   eligibleVoters(lobby) {
     if (!lobby) return [];
-    return [...lobby.players.values()].filter(p => !p.isHost && p.isAlive);
+    return [...lobby.players.values()].filter(p => p && p.id && p.username && !p.isHost && p.isAlive);
   }
 
   /**
@@ -766,6 +884,15 @@ class GameManager {
       }
     }
 
+    // Resolve eliminated username with a stable fallback. The live player
+    // record can momentarily look stale (disconnect, race) but the role
+    // assignment was set at finalize-time and won't shift.
+    const resolvedElimUsername = eliminatedId
+      ? (lobby.players.get(eliminatedId)?.username
+         || lobby.gameData.roleAssignments?.[eliminatedId]?.username
+         || null)
+      : null;
+
     // Push to history — used by Commit 4's final reveal.
     const round = (lobby.gameData.clueIndex || 0) + 1;
     lobby.gameData.votingHistory.push({
@@ -773,7 +900,7 @@ class GameManager {
       votes: { ...votes },          // shallow copy of {voterId: targetId}
       tally: { ...tally },
       eliminatedId,
-      eliminatedUsername: eliminatedId ? lobby.players.get(eliminatedId)?.username : null,
+      eliminatedUsername: resolvedElimUsername,
       wasMafiozo,
       reason: outcomeReason,
       closedBy: reason,
@@ -784,7 +911,7 @@ class GameManager {
     const voteResult = {
       round,
       eliminatedId,
-      eliminatedUsername: eliminatedId ? lobby.players.get(eliminatedId)?.username : null,
+      eliminatedUsername: resolvedElimUsername,
       wasMafiozo,
       reason: outcomeReason,
       tally: { ...tally },
@@ -1296,15 +1423,19 @@ class GameManager {
       // Before that, finalReveal is undefined here, so hidden roles never
       // leak into the broadcast prematurely.
       finalReveal: gd?.phase === 'FINAL_REVEAL' ? (gd.finalReveal || null) : undefined,
-      players: Array.from(lobby.players.values()).map(p => ({
-        id: p.id,
-        username: p.username,
-        isAlive: p.isAlive,
-        isHost: p.isHost,
-        // NOTE: deliberately NO `role`, NO `storyCharacterName`. The character
-        // mapping travels in publicCharacterCards above so the client can
-        // join by playerId without seeing it twice.
-      })),
+      players: Array.from(lobby.players.values())
+        // Safety net: filter any record missing id/username so phantom rows
+        // never reach the UI even if a future code path forgets to validate.
+        .filter(p => p && p.id && p.username)
+        .map(p => ({
+          id: p.id,
+          username: p.username,
+          isAlive: p.isAlive,
+          isHost: p.isHost,
+          // NOTE: deliberately NO `role`, NO `storyCharacterName`. The character
+          // mapping travels in publicCharacterCards above so the client can
+          // join by playerId without seeing it twice.
+        })),
     };
   }
 
@@ -1322,6 +1453,17 @@ class GameManager {
   }
 
   joinRoom(socket, roomId, isHost = false) {
+    // Defensive: refuse any socket that did not authenticate. Without
+    // userId/username, lobby.players.set(undefined, {username: undefined, ...})
+    // would create a phantom "مشتبه" row counted in PLAYERS·N — exactly the
+    // QA stop-class failure we are blocking here.
+    if (!socket.userId || !socket.username) {
+      socket.emit('join_rejected', {
+        reason: 'unauthenticated',
+        message: 'لازم تسجّل دخولك قبل ما تنضم للغرفة.',
+      });
+      return;
+    }
     socket.join(roomId);
     const lobby = this.lobbies.get(roomId);
     if (!lobby) return;
@@ -1353,9 +1495,11 @@ class GameManager {
   getRoomPublicData(roomId) {
     const lobby = this.lobbies.get(roomId);
     if (!lobby) return null;
-    const playersArr = Array.from(lobby.players.values()).map(p => ({
-      id: p.id, username: p.username, isHost: p.isHost, isAlive: p.isAlive,
-    }));
+    const playersArr = Array.from(lobby.players.values())
+      .filter(p => p && p.id && p.username)
+      .map(p => ({
+        id: p.id, username: p.username, isHost: p.isHost, isAlive: p.isAlive,
+      }));
     return {
       id: lobby.id,
       state: lobby.state,

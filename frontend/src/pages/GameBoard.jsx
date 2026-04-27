@@ -29,7 +29,7 @@ function FinalRevealView({ data, fallbackOutcome, onNewGame, onBackToLobby }) {
   if (!data) {
     return (
       <div className="s-final animate-fade-in" style={{ textAlign: 'center', paddingTop: 'var(--ak-space-7)' }}>
-        <span className="material-symbols-outlined" aria-hidden style={{ fontSize: '4rem', color: 'var(--ak-gold)' }}>description</span>
+        <span aria-hidden style={{ fontSize: '4rem', color: 'var(--ak-gold)', display: 'block', lineHeight: 1 }}>▲</span>
         <h2 style={{ font: 'var(--ak-t-h2)', margin: 'var(--ak-space-3) 0 var(--ak-space-3)' }}>جاري فك الأرشيف...</h2>
         <p style={{ color: 'var(--ak-text-muted)', font: 'var(--ak-t-body)', marginBottom: 'var(--ak-space-5)' }}>
           {fallbackOutcome === 'investigators_win'
@@ -262,6 +262,15 @@ export default function GameBoard() {
   const [votingProgress, setVotingProgress] = useState({ voted: 0, total: 0 });
   const [voteResult, setVoteResult] = useState(null);
   const [voteError, setVoteError] = useState('');
+  // Player-readiness during CLUE_REVEAL.
+  const [readyProgress, setReadyProgress] = useState({ ready: 0, total: 0 });
+  const [iAmReady, setIAmReady] = useState(false);
+  const [readyError, setReadyError] = useState('');
+  // Player-driven extension during VOTING.
+  const [voteExt, setVoteExt] = useState({ requested: 0, total: 0, required: 0, activated: false, secondsAdded: 0 });
+  const [iRequestedExt, setIRequestedExt] = useState(false);
+  const [extError, setExtError] = useState('');
+  const [extJustAddedAt, setExtJustAddedAt] = useState(0);
   const [eliminatedIds, setEliminatedIds] = useState([]);
   const [outcome, setOutcome] = useState(null);
   const [clueIndex, setClueIndex] = useState(0);
@@ -279,6 +288,17 @@ export default function GameBoard() {
       setMyVote(null);
       setVoteError('');
       setVoteResult(null);
+      // Per-round vote-extension reset on the client. Server also resets
+      // and broadcasts a fresh vote_extension_progress on phase enter.
+      setIRequestedExt(false);
+      setExtError('');
+      setExtJustAddedAt(0);
+    }
+    if (gameState === 'CLUE_REVEAL') {
+      // Fresh round of discussion — reset readiness on the client. Server
+      // also resets and broadcasts a fresh ready_to_vote_progress.
+      setIAmReady(false);
+      setReadyError('');
     }
   }, [gameState]);
 
@@ -367,6 +387,24 @@ export default function GameBoard() {
       setTimeout(() => setHostError(''), 3500);
     };
     const onSessionEnded = () => setSessionEnded(true);
+    const onReadyProgress = (data) => {
+      if (data && typeof data.ready === 'number' && typeof data.total === 'number') {
+        setReadyProgress(data);
+      }
+    };
+    const onReadyRejected = (data) => {
+      setReadyError((data && data.message) || 'لا يمكنك إعلان الاستعداد للتصويت الآن.');
+      setTimeout(() => setReadyError(''), 3500);
+    };
+    const onExtProgress = (data) => {
+      if (!data) return;
+      setVoteExt(data);
+      if (data.activated) setExtJustAddedAt(Date.now());
+    };
+    const onExtRejected = (data) => {
+      setExtError((data && data.message) || 'تعذّر طلب التمديد.');
+      setTimeout(() => setExtError(''), 3500);
+    };
 
     socket.on('full_state_update', onFullState);
     socket.on('timer_update', onTimer);
@@ -380,6 +418,10 @@ export default function GameBoard() {
     socket.on('your_role_card', onYourRoleCard);
     socket.on('host_action_rejected', onHostActionRejected);
     socket.on('session_ended', onSessionEnded);
+    socket.on('ready_to_vote_progress', onReadyProgress);
+    socket.on('ready_to_vote_rejected', onReadyRejected);
+    socket.on('vote_extension_progress', onExtProgress);
+    socket.on('vote_extension_rejected', onExtRejected);
 
     const recoveryTimer = setTimeout(() => {
       if (!stateReceivedRef.current) setGameState('NOT_FOUND');
@@ -399,6 +441,10 @@ export default function GameBoard() {
       socket.off('your_role_card', onYourRoleCard);
       socket.off('host_action_rejected', onHostActionRejected);
       socket.off('session_ended', onSessionEnded);
+      socket.off('ready_to_vote_progress', onReadyProgress);
+      socket.off('ready_to_vote_rejected', onReadyRejected);
+      socket.off('vote_extension_progress', onExtProgress);
+      socket.off('vote_extension_rejected', onExtRejected);
     };
   }, [roomId, user?.id]);
 
@@ -439,6 +485,21 @@ export default function GameBoard() {
     }
   };
   const handleVote = (targetId) => socket.emit('submit_vote', { roomId, targetId });
+
+  // Player-driven flow: declare readiness during CLUE_REVEAL.
+  const handleReadyToVote = () => {
+    if (iAmReady) return;
+    setReadyError('');
+    setIAmReady(true);                // optimistic; server will broadcast
+    socket.emit('ready_to_vote', { roomId });
+  };
+  // Player-driven flow: ask for an extra 15s during VOTING.
+  const handleRequestExtension = () => {
+    if (iRequestedExt || voteExt.activated) return;
+    setExtError('');
+    setIRequestedExt(true);            // optimistic; server will broadcast
+    socket.emit('request_vote_extension', { roomId });
+  };
 
   // ----- recovery / loading ----------------------------------------------
   if (sessionEnded) {
@@ -694,17 +755,52 @@ export default function GameBoard() {
             </div>
           )}
 
-          {gameState === 'CLUE_REVEAL' && (
-            <div className="s-clue animate-fade-in">
-              <span className="ak-overline s-clue-overline">Clue {Math.min(clueIndex + 1, totalClues)} / {totalClues}</span>
-              <h2 style={{ font: 'var(--ak-t-h2)', color: 'var(--ak-gold)', marginBottom: 'var(--ak-space-5)' }}>دليل من الكبير</h2>
-              <div className="s-clue-card">
-                <span className="quote-mark" aria-hidden>"</span>
-                <blockquote>{currentClue || 'لا يوجد دليل متاح حالياً.'}</blockquote>
+          {gameState === 'CLUE_REVEAL' && (() => {
+            const me = players.find(p => p.id === user?.id);
+            const iAmEliminated = me ? !me.isAlive : false;
+            const canReady = !amIHost && !iAmEliminated;
+            return (
+              <div className="s-clue animate-fade-in">
+                <span className="ak-overline s-clue-overline">Clue {Math.min(clueIndex + 1, totalClues)} / {totalClues}</span>
+                <h2 style={{ font: 'var(--ak-t-h2)', color: 'var(--ak-gold)', marginBottom: 'var(--ak-space-5)' }}>دليل من الكبير</h2>
+                <div className="s-clue-card">
+                  <span className="quote-mark" aria-hidden>"</span>
+                  <blockquote>{currentClue || 'لا يوجد دليل متاح حالياً.'}</blockquote>
+                </div>
+                <p className="s-clue-instruction">تناقشوا فيما بينكم. الوقت يمر.</p>
+
+                {/* Player-driven early end of discussion. Eligible players
+                    declare readiness; when ALL are ready, server transitions
+                    to VOTING. Host has a separate "start voting now" control. */}
+                {canReady && (
+                  <div className="s-ready-block" style={{ marginTop: 'var(--ak-space-5)', textAlign: 'center' }}>
+                    {readyError && (
+                      <div className="s-vote-banner error" style={{ marginBottom: 'var(--ak-space-3)' }}>⚠ {readyError}</div>
+                    )}
+                    {!iAmReady ? (
+                      <button
+                        className="ak-btn ak-btn-primary"
+                        onClick={handleReadyToVote}
+                        style={{ minWidth: '240px' }}
+                      >
+                        التصويت الآن
+                      </button>
+                    ) : (
+                      <div className="s-vote-banner waiting">✓ تم تسجيل استعدادك للتصويت</div>
+                    )}
+                    <div className="progress" style={{ marginTop: 'var(--ak-space-3)' }}>
+                      جاهز للتصويت: {readyProgress.ready} من {readyProgress.total}
+                    </div>
+                  </div>
+                )}
+                {amIHost && (
+                  <div className="progress" style={{ marginTop: 'var(--ak-space-4)', textAlign: 'center' }}>
+                    جاهز للتصويت: {readyProgress.ready} من {readyProgress.total}
+                  </div>
+                )}
               </div>
-              <p className="s-clue-instruction">تناقشوا فيما بينكم. الوقت يمر.</p>
-            </div>
-          )}
+            );
+          })()}
 
           {gameState === 'VOTING' && (() => {
             const me = players.find(p => p.id === user?.id);
@@ -725,6 +821,30 @@ export default function GameBoard() {
                 {iAmEliminated && <div className="s-vote-banner elim">خرجت من التحقيق، مش هتقدر تصوّت في الجولة دي.</div>}
                 {iHaveVoted && !everyoneVoted && (
                   <div className="s-vote-banner waiting">✓ صوّتت — مستني باقي اللاعبين ({votingProgress.total - votingProgress.voted} متبقي)</div>
+                )}
+                {extError && <div className="s-vote-banner error">⚠ {extError}</div>}
+                {voteExt.activated && (Date.now() - extJustAddedAt) < 6000 && (
+                  <div className="s-vote-banner waiting">✓ تم تمديد التصويت 15 ثانية</div>
+                )}
+                {/* Player-driven 15s extension. Threshold ceil(70%) of eligible
+                    voters; one extension per round; host/eliminated excluded. */}
+                {canVote && !voteExt.activated && (
+                  <div className="s-ext-block" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--ak-space-2)', marginTop: 'var(--ak-space-3)' }}>
+                    {!iRequestedExt ? (
+                      <button
+                        className="ak-btn ak-btn-host"
+                        onClick={handleRequestExtension}
+                        style={{ minWidth: '220px' }}
+                      >
+                        طلب 15 ثانية إضافية
+                      </button>
+                    ) : (
+                      <div className="s-vote-banner waiting" style={{ margin: 0 }}>✓ طلب التمديد متسجّل</div>
+                    )}
+                    <div className="progress">
+                      طلبات التمديد: {voteExt.requested} من {voteExt.total} · المطلوب {voteExt.required}
+                    </div>
+                  </div>
                 )}
 
                 <div className="s-vote-grid">
@@ -759,11 +879,21 @@ export default function GameBoard() {
           })()}
 
           {gameState === 'VOTE_RESULT' && voteResult && (() => {
-            const elim = voteResult.eliminatedUsername;
+            // Resolve eliminated name: prefer broadcast field, fall back to a
+            // local lookup, then to a safe Arabic placeholder. NEVER allow
+            // the literal string "undefined" to reach the title.
+            const elimById = voteResult.eliminatedId
+              ? players.find(p => String(p.id) === String(voteResult.eliminatedId))
+              : null;
+            const resolvedElim = voteResult.eliminatedUsername
+              || elimById?.username
+              || (voteResult.eliminatedId ? 'مشتبه مجهول' : null);
             const isLastRound = voteResult.round >= totalClues;
             const titleText =
               voteResult.reason === 'majority'
-                ? (voteResult.wasMafiozo ? 'اتقبض على المافيوزو' : `${elim} خرج من اللعبة`)
+                ? (voteResult.wasMafiozo
+                    ? 'اتقبض على المافيوزو'
+                    : (resolvedElim ? `${resolvedElim} خرج من اللعبة` : 'مشتبه خرج من اللعبة'))
                 : voteResult.reason === 'tie'    ? 'تعادل في التصويت — محدش خرج'
                 : voteResult.reason === 'no-vote'? 'محدش صوّت — الجولة عدّت'
                 : voteResult.reason === 'all-skip'? 'الكل امتنع عن التصويت'
@@ -781,13 +911,14 @@ export default function GameBoard() {
             const accentClass = voteResult.reason === 'majority' && voteResult.wasMafiozo
               ? 'gold'
               : voteResult.reason === 'majority' ? 'crimson' : 'muted';
-            const icon = voteResult.wasMafiozo ? 'gavel'
-                      : voteResult.eliminatedUsername ? 'balance'
-                      : 'visibility_off';
+            // Safe Unicode glyphs — no font dependency, no FOUT risk.
+            const glyph = voteResult.wasMafiozo ? '▲'
+                       : voteResult.eliminatedId ? '◆'
+                       : '◌';
             return (
               <div className="s-result animate-fade-in">
                 <span className="ak-overline">Verdict · Round {voteResult.round} / {totalClues}</span>
-                <span className={`material-symbols-outlined s-result-icon ${accentClass}`} aria-hidden style={{ fontSize: '5rem', display: 'block', marginTop: 'var(--ak-space-3)' }}>{icon}</span>
+                <span className={`s-result-icon ${accentClass}`} aria-hidden style={{ fontSize: '5rem', display: 'block', marginTop: 'var(--ak-space-3)', lineHeight: 1 }}>{glyph}</span>
                 <h1 className={accentClass}>{titleText}</h1>
                 <p className="s-result-sub">{subText}</p>
                 <div className="s-result-tally">
@@ -820,7 +951,7 @@ export default function GameBoard() {
             <div className="s-host-panel">
               <div className="s-host-panel-head">
                 <span className="label">Host Controls</span>
-                <span className="material-symbols-outlined icon" aria-hidden>gavel</span>
+                <span className="icon" aria-hidden style={{ fontSize: '1.2rem', lineHeight: 1, color: 'var(--ak-gold)' }}>▲</span>
               </div>
 
               {hostError && <div className="s-host-toast err">⚠ {hostError}</div>}
@@ -864,19 +995,30 @@ export default function GameBoard() {
           )}
 
           <div className="s-player-list">
-            <span className="head">Players · {players.length}</span>
-            {players.length === 0 && <p style={{ color: 'var(--ak-text-muted)', font: 'var(--ak-t-caption)' }}>جاري التحديث...</p>}
-            {players.map(p => {
-              const me = p.id === user?.id;
-              const cls = `s-player-row${p.isHost ? ' host' : ''}${!p.isAlive ? ' eliminated' : ''}`;
+            {(() => {
+              // Belt-and-suspenders: server already filters phantom rows in
+              // buildPublicState, but if any record without id+username sneaks
+              // through (older client cache, race), block it here too. PLAYERS
+              // count must always match the visible rows.
+              const safePlayers = players.filter(p => p && p.id && p.username);
               return (
-                <div key={p.id} className={cls}>
-                  <div className="av">{initial(p.username)}</div>
-                  <div className="nm">{p.username}{me ? ' (أنت)' : ''}</div>
-                  <div className="tag">{p.isHost ? 'المضيف' : (!p.isAlive ? 'خرج' : 'مشتبه')}</div>
-                </div>
+                <>
+                  <span className="head">Players · {safePlayers.length}</span>
+                  {safePlayers.length === 0 && <p style={{ color: 'var(--ak-text-muted)', font: 'var(--ak-t-caption)' }}>جاري التحديث...</p>}
+                  {safePlayers.map(p => {
+                    const me = p.id === user?.id;
+                    const cls = `s-player-row${p.isHost ? ' host' : ''}${!p.isAlive ? ' eliminated' : ''}`;
+                    return (
+                      <div key={p.id} className={cls}>
+                        <div className="av">{initial(p.username)}</div>
+                        <div className="nm">{p.username}{me ? ' (أنت)' : ''}</div>
+                        <div className="tag">{p.isHost ? 'المضيف' : (!p.isAlive ? 'خرج' : 'مشتبه')}</div>
+                      </div>
+                    );
+                  })}
+                </>
               );
-            })}
+            })()}
           </div>
         </aside>
       </div>
