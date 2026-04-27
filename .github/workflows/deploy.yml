@@ -1,11 +1,21 @@
 name: Deploy backend to Fly.io
 
+# Manual-only trigger.
+#
+# Background: this workflow used to auto-run on every push to main that
+# touched backend/**. It has been failing on every recent push — likely
+# because the FLY_API_TOKEN repository secret is missing, expired, or
+# misconfigured. Rather than fix secrets from a code commit, we made the
+# workflow manual-only so it no longer fails automatically.
+#
+# To use it: GitHub → repo → Actions → "Deploy backend to Fly.io" →
+# "Run workflow" → main. Requires a valid FLY_API_TOKEN repository
+# secret with deploy permission for the alkabeer-prod Fly app.
+#
+# If FLY_API_TOKEN is missing or expired, use the reliable fallback:
+#   cd backend && flyctl deploy
+# from a developer machine with `flyctl auth login` already done.
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'backend/**'
-      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 # Cancel any in-progress runs of the same workflow on the same branch.
