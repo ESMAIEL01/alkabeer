@@ -134,9 +134,105 @@ function validateNarration(text, opts = {}) {
   return cleaned;
 }
 
+// ---------------------------------------------------------------------------
+// AI polish validators (C2 / C3).
+//
+// Polish lines are short Arabic noir flavor that the deterministic UI may
+// optionally render. They must NEVER leak hidden roles, JSON internals,
+// markdown, or AI disclaimers. validatePolishLine extends validateNarration
+// with extra rejections specific to the polish use case.
+// ---------------------------------------------------------------------------
+
+// Hard-coded reject set applied to every polish line, in addition to any
+// caller-supplied forbiddenTerms (e.g. alive Mafiozo names mid-game).
+const POLISH_HARD_FORBIDDEN = [
+  'undefined',
+  'gameRole',
+  'roleAssignments',
+  'as an AI',
+  'I cannot',
+  'كذكاء اصطناعي',
+  'كنموذج لغة',
+];
+
+/**
+ * Validate a short AI-generated noir flavor line. Returns the cleaned string
+ * or null. Rejects: empty, too short/long, English-dominant, markdown, JSON
+ * fragments, code fences, AI disclaimers, hidden-role tokens, and any
+ * caller-supplied forbidden term (typically alive Mafiozo identity).
+ */
+function validatePolishLine(text, opts = {}) {
+  // Strict: reject code fences in the RAW output (validateNarration would
+  // silently strip them; for polish lines that is too permissive — fences
+  // signal the model misunderstood the format).
+  if (typeof text === 'string' && /```/.test(text)) return null;
+
+  const forbidden = [...(opts.forbiddenTerms || []), ...POLISH_HARD_FORBIDDEN];
+  const cleaned = validateNarration(text, { forbiddenTerms: forbidden });
+  if (!cleaned) return null;
+  // Reject JSON-shaped output (model returned a JSON object/array).
+  if (/^\s*[{\[]/.test(cleaned)) return null;
+  // Reject markdown bold/heading variations validateNarration didn't catch.
+  if (/^\s*[*_]{2,}/m.test(cleaned)) return null;
+  return cleaned;
+}
+
+// Final-reveal polish: AI returns a JSON object with optional fields. Each
+// field is short Arabic noir prose. We parse, then validate per field.
+const FINAL_REVEAL_FIELD_LIMITS = Object.freeze({
+  heroSubtitle: 240,
+  caseClosingLine: 260,
+  finalParagraph: 700,
+  epilogue: 500,
+});
+
+/**
+ * Validate AI final-reveal polish JSON. Returns an object containing only
+ * the valid optional fields, or null if none survived.
+ */
+function validateFinalRevealPolish(text) {
+  if (typeof text !== 'string') return null;
+  const obj = safeJsonParse(text);
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+
+  const out = {};
+  for (const [field, maxLen] of Object.entries(FINAL_REVEAL_FIELD_LIMITS)) {
+    const v = obj[field];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== 'string') continue;
+    let trimmed = v.replace(/```/g, '').trim();
+    if (!trimmed) continue;
+    if (trimmed.length > maxLen) continue;
+    // Reject markdown bold/heading variations and JSON fragments.
+    if (/^#{1,6}\s/m.test(trimmed)) continue;
+    if (/^\s*[*_]{2,}/m.test(trimmed)) continue;
+    if (/^\s*[{\[]/.test(trimmed)) continue;
+    // Reject hidden-token / AI-disclaimer leakage.
+    const lower = trimmed.toLowerCase();
+    let blocked = false;
+    for (const t of POLISH_HARD_FORBIDDEN) {
+      if (lower.includes(String(t).toLowerCase())) { blocked = true; break; }
+    }
+    if (blocked) continue;
+    // Arabic-dominant content guard (≥60% of letters Arabic script).
+    const letters = trimmed.match(/[\p{L}]/gu) || [];
+    if (letters.length === 0) continue;
+    const ar = letters.filter(ch => ARABIC_SCRIPT_RE.test(ch)).length;
+    if (ar / letters.length < 0.6) continue;
+
+    out[field] = trimmed;
+  }
+
+  if (Object.keys(out).length === 0) return null;
+  return out;
+}
+
 module.exports = {
   safeJsonParse,
   validateArchive,
   validateNarration,
+  validatePolishLine,
+  validateFinalRevealPolish,
+  FINAL_REVEAL_FIELD_LIMITS,
   NARRATION_MAX_LEN,
 };

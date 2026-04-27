@@ -24,7 +24,7 @@ function ConnectionBanner({ status }) {
 // suspicious details, actual voting history, real eliminations, real outcome.
 // No hard-coded "Player X won" lines.
 // =============================================================================
-function FinalRevealView({ data, fallbackOutcome, onNewGame, onBackToLobby }) {
+function FinalRevealView({ data, aiPolish, fallbackOutcome, onNewGame, onBackToLobby }) {
   // Recovery if the backend hasn't emitted the reveal yet (rare race / refresh).
   if (!data) {
     return (
@@ -48,13 +48,20 @@ function FinalRevealView({ data, fallbackOutcome, onNewGame, onBackToLobby }) {
   const truthCls    = tone === 'gold' ? 'gold' : '';
   const closingCls  = tone === 'gold' ? '' : 'crimson';
 
+  // Optional AI polish (C3) — overlay-only. Each field is independently
+  // optional. Deterministic fields stay primary; aiPolish never replaces
+  // headline/title/outcome/role/voting truth.
+  const polish = aiPolish && typeof aiPolish === 'object' ? aiPolish : null;
+  const heroSubtitle = (polish && polish.heroSubtitle) || data.headline?.subtitle || null;
+  const closingLine  = (polish && polish.caseClosingLine) || data.caseSummary?.closingLine || null;
+
   return (
     <div className="s-final animate-fade-in">
       {/* HERO ---------------------------------------------------------- */}
       <section className="s-final-hero final-reveal-section">
         <span className="winner-label">{data.winnerLabel}</span>
         <h1 className={headlineCls}>{data.headline?.title || data.title}</h1>
-        {data.headline?.subtitle && <p>{data.headline.subtitle}</p>}
+        {heroSubtitle && <p>{heroSubtitle}</p>}
       </section>
 
       {/* CASE RECONSTRUCTION ------------------------------------------- */}
@@ -66,7 +73,17 @@ function FinalRevealView({ data, fallbackOutcome, onNewGame, onBackToLobby }) {
           {data.caseSummary?.reconstruction && (
             <div className="reconstruction">{data.caseSummary.reconstruction}</div>
           )}
-          {data.caseSummary?.closingLine && <p className="closing">{data.caseSummary.closingLine}</p>}
+          {polish && polish.finalParagraph && (
+            <p className="story" style={{ fontStyle: 'italic', color: 'var(--ak-text-muted)', marginTop: 'var(--ak-space-3)' }}>
+              {polish.finalParagraph}
+            </p>
+          )}
+          {closingLine && <p className="closing">{closingLine}</p>}
+          {polish && polish.epilogue && (
+            <p className="closing" style={{ marginTop: 'var(--ak-space-3)', fontStyle: 'italic', opacity: 0.85 }}>
+              {polish.epilogue}
+            </p>
+          )}
         </div>
       </section>
 
@@ -279,6 +296,11 @@ export default function GameBoard() {
   const [hostSuccess, setHostSuccess] = useState(''); // brief confirmation for host actions
   const [sessionEnded, setSessionEnded] = useState(false);
   const [finalReveal, setFinalReveal] = useState(null);
+  // Optional AI polish lines (C2 / C3). All start null and remain so when
+  // the AI fails or is slow — deterministic copy renders on its own.
+  const [voteResultFlavor, setVoteResultFlavor] = useState(null);     // { round, line }
+  const [clueTransitionFlavor, setClueTransitionFlavor] = useState(null); // { round, line }
+  const [finalRevealAiPolish, setFinalRevealAiPolish] = useState(null);   // { heroSubtitle?, ... }
   // Connection: 'connected' | 'reconnecting' | 'disconnected' | 'recently_reconnected'
   const [connectionStatus, setConnectionStatus] = useState(socket.connected ? 'connected' : 'reconnecting');
 
@@ -293,12 +315,17 @@ export default function GameBoard() {
       setIRequestedExt(false);
       setExtError('');
       setExtJustAddedAt(0);
+      // Drop the previous round's vote-result flavor; the next vote_result
+      // event will carry a fresh one (or none).
+      setVoteResultFlavor(null);
     }
     if (gameState === 'CLUE_REVEAL') {
       // Fresh round of discussion — reset readiness on the client. Server
       // also resets and broadcasts a fresh ready_to_vote_progress.
       setIAmReady(false);
       setReadyError('');
+      // Clue-transition flavor is per-round; reset on every new clue.
+      setClueTransitionFlavor(null);
     }
   }, [gameState]);
 
@@ -360,7 +387,15 @@ export default function GameBoard() {
       if (Array.isArray(data.eliminatedIds)) setEliminatedIds(data.eliminatedIds);
       if (data.lastVoteResult) setVoteResult(data.lastVoteResult);
       if (data.outcome !== undefined) setOutcome(data.outcome);
-      if (data.finalReveal !== undefined) setFinalReveal(data.finalReveal || null);
+      if (data.finalReveal !== undefined) {
+        setFinalReveal(data.finalReveal || null);
+        // If the server already attached AI polish (later-joining client),
+        // pick it up from the persistent state. The standalone event also
+        // delivers it for in-flight clients.
+        if (data.finalReveal && data.finalReveal.aiPolish && typeof data.finalReveal.aiPolish === 'object') {
+          setFinalRevealAiPolish(data.finalReveal.aiPolish);
+        }
+      }
       setAmIHost(data.hostId === user?.id);
     };
     const onTimer = (time) => setTimer(time);
@@ -387,6 +422,22 @@ export default function GameBoard() {
       setTimeout(() => setHostError(''), 3500);
     };
     const onSessionEnded = () => setSessionEnded(true);
+    // C2 / C3 optional flavor events. All idempotent and best-effort.
+    const onVoteResultFlavor = (data) => {
+      if (data && typeof data.line === 'string' && data.line.length > 0) {
+        setVoteResultFlavor({ round: data.round || null, line: data.line });
+      }
+    };
+    const onClueTransitionFlavor = (data) => {
+      if (data && typeof data.line === 'string' && data.line.length > 0) {
+        setClueTransitionFlavor({ round: data.round || null, line: data.line });
+      }
+    };
+    const onFinalRevealPolish = (data) => {
+      if (data && data.polish && typeof data.polish === 'object') {
+        setFinalRevealAiPolish(data.polish);
+      }
+    };
     const onReadyProgress = (data) => {
       if (data && typeof data.ready === 'number' && typeof data.total === 'number') {
         setReadyProgress(data);
@@ -422,6 +473,9 @@ export default function GameBoard() {
     socket.on('ready_to_vote_rejected', onReadyRejected);
     socket.on('vote_extension_progress', onExtProgress);
     socket.on('vote_extension_rejected', onExtRejected);
+    socket.on('vote_result_flavor', onVoteResultFlavor);
+    socket.on('clue_transition_flavor', onClueTransitionFlavor);
+    socket.on('final_reveal_polish', onFinalRevealPolish);
 
     const recoveryTimer = setTimeout(() => {
       if (!stateReceivedRef.current) setGameState('NOT_FOUND');
@@ -445,6 +499,9 @@ export default function GameBoard() {
       socket.off('ready_to_vote_rejected', onReadyRejected);
       socket.off('vote_extension_progress', onExtProgress);
       socket.off('vote_extension_rejected', onExtRejected);
+      socket.off('vote_result_flavor', onVoteResultFlavor);
+      socket.off('clue_transition_flavor', onClueTransitionFlavor);
+      socket.off('final_reveal_polish', onFinalRevealPolish);
     };
   }, [roomId, user?.id]);
 
@@ -703,8 +760,9 @@ export default function GameBoard() {
         <div className="container mt-2 animate-fade-in" style={{ maxWidth: '1100px' }}>
           <FinalRevealView
             data={finalReveal}
+            aiPolish={finalRevealAiPolish}
             fallbackOutcome={outcome}
-            onNewGame={() => { setFinalReveal(null); navigate('/lobby'); }}
+            onNewGame={() => { setFinalReveal(null); setFinalRevealAiPolish(null); navigate('/lobby'); }}
             onBackToLobby={() => navigate('/lobby')}
           />
         </div>
@@ -763,6 +821,15 @@ export default function GameBoard() {
               <div className="s-clue animate-fade-in">
                 <span className="ak-overline s-clue-overline">Clue {Math.min(clueIndex + 1, totalClues)} / {totalClues}</span>
                 <h2 style={{ font: 'var(--ak-t-h2)', color: 'var(--ak-gold)', marginBottom: 'var(--ak-space-5)' }}>دليل من الكبير</h2>
+                {clueTransitionFlavor && clueTransitionFlavor.line && (
+                  <p className="s-clue-flavor" style={{
+                    color: 'var(--ak-text-muted)',
+                    font: 'var(--ak-t-caption)',
+                    fontStyle: 'italic',
+                    marginBottom: 'var(--ak-space-4)',
+                    lineHeight: 1.7,
+                  }}>{clueTransitionFlavor.line}</p>
+                )}
                 <div className="s-clue-card">
                   <span className="quote-mark" aria-hidden>"</span>
                   <blockquote>{currentClue || 'لا يوجد دليل متاح حالياً.'}</blockquote>
@@ -925,6 +992,17 @@ export default function GameBoard() {
                 <span className={`s-result-icon ${accentClass}`} aria-hidden style={{ fontSize: '5rem', display: 'block', marginTop: 'var(--ak-space-3)', lineHeight: 1 }}>{glyph}</span>
                 <h1 className={accentClass}>{titleText}</h1>
                 <p className="s-result-sub">{subText}</p>
+                {voteResultFlavor && voteResultFlavor.line && (
+                  <p className="s-result-flavor" style={{
+                    color: 'var(--ak-text-muted)',
+                    font: 'var(--ak-t-caption)',
+                    fontStyle: 'italic',
+                    marginTop: 'var(--ak-space-3)',
+                    marginBottom: 'var(--ak-space-3)',
+                    lineHeight: 1.7,
+                    maxWidth: '38rem',
+                  }}>{voteResultFlavor.line}</p>
+                )}
                 <div className="s-result-tally">
                   <div className="head">صوّت {voteResult.votedCount} من {voteResult.eligibleCount} — جولة {voteResult.round} من {totalClues}</div>
                   {voteResult.tally && Object.keys(voteResult.tally).length > 0 && (

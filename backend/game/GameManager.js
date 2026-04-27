@@ -1,5 +1,18 @@
 const crypto = require('crypto');
 
+// AI polish (C2 / C3). Imported via lazy try/require so test harnesses
+// that do not exercise the AI path don't require the whole AI subtree.
+let _ai = null;
+function getAi() {
+  if (_ai !== null) return _ai;
+  try {
+    _ai = require('../services/ai');
+  } catch (_) {
+    _ai = false; // sentinel — AI module unavailable; polish becomes a no-op.
+  }
+  return _ai;
+}
+
 /**
  * GameManager — multiplayer state machine for Mafiozo.
  *
@@ -816,6 +829,11 @@ class GameManager {
       const participantCount = this.getVotingParticipants(lobby).length;
       this.broadcastFullState(lobby.id);
       this.io.to(lobby.id).emit('ready_to_vote_progress', { ready: 0, total: participantCount });
+      // C2: optional AI clue-transition flavor. Fired only on rounds 2+
+      // (the first CLUE_REVEAL has no previous result to bridge from).
+      if (lobby.gameData.clueIndex > 0) {
+        this._polishClueTransition(lobby);
+      }
       return;
     }
     if (phase === 'VOTING') {
@@ -849,6 +867,10 @@ class GameManager {
         lobby.gameData.finalReveal = this.buildSafeMinimalReveal(lobby);
       }
       this.broadcastFullState(lobby.id);
+      // C3: optional AI polish — fire and forget. Deterministic reveal
+      // already shipped; this only attaches optional flavor fields when
+      // the AI returns and the lobby is still in FINAL_REVEAL.
+      this._polishFinalReveal(lobby);
       return;
     }
     this.broadcastFullState(lobby.id);
@@ -1005,6 +1027,11 @@ class GameManager {
     lobby.gameData.lastVoteResult = voteResult;
 
     this.io.to(roomId).emit('vote_result', voteResult);
+
+    // C2: optional AI polish — fire and forget. The deterministic vote_result
+    // already shipped above; this only adds an optional 'vote_result_flavor'
+    // event that the frontend renders if/when it arrives.
+    this._polishVoteResult(lobby, voteResult);
 
     // Decide what comes next.
     const lastClueReached = lobby.gameData.clueIndex >= lobby.gameData.clues.length - 1;
@@ -1526,6 +1553,135 @@ class GameManager {
   broadcastFullState(roomId) {
     const payload = this.buildPublicState(roomId);
     if (payload) this.io.to(roomId).emit('full_state_update', payload);
+  }
+
+  // -------------------------------------------------------------------------
+  // AI polish (C2 / C3) — fire-and-forget. Each method:
+  //   - captures a snapshot of the relevant identifiers
+  //   - calls the AI service (which never throws)
+  //   - on success, re-acquires the live lobby and verifies it is still
+  //     in the same phase / round before delivering the flavor
+  //   - emits a small optional event the frontend renders if it arrives
+  //
+  // Privacy: alive Mafiozo identities are passed as forbiddenTerms to the
+  // line validator (so the AI cannot expose them), NEVER as prompt input.
+  // For final reveal the game is over — names are public.
+  // -------------------------------------------------------------------------
+
+  _aliveMafiozoForbiddenTerms(lobby) {
+    const ra = (lobby && lobby.gameData && lobby.gameData.roleAssignments) || {};
+    const out = [];
+    for (const r of Object.values(ra)) {
+      if (r && r.gameRole === 'mafiozo' && r.isAlive) {
+        if (r.username) out.push(r.username);
+        if (r.storyCharacterName) out.push(r.storyCharacterName);
+      }
+    }
+    return out;
+  }
+
+  _polishVoteResult(lobby, voteResult) {
+    const ai = getAi();
+    if (!ai || typeof ai.embellishVoteResult !== 'function') return;
+    const roomId = lobby.id;
+    const round = voteResult.round;
+    const totalRounds = (lobby.gameData.clues || []).length;
+    const forbiddenTerms = this._aliveMafiozoForbiddenTerms(lobby);
+
+    Promise.resolve(ai.embellishVoteResult({
+      round, totalRounds,
+      reason: voteResult.reason,
+      eliminatedUsername: voteResult.eliminatedUsername || null,
+      wasMafiozo: !!voteResult.wasMafiozo,
+      outcome: lobby.gameData.outcome || null,
+      votedCount: voteResult.votedCount,
+      eligibleCount: voteResult.eligibleCount,
+      mode: lobby.roleRevealMode || 'normal',
+      forbiddenTerms,
+    })).then((result) => {
+      if (!result || !result.line) return;
+      const lobbyNow = this.lobbies.get(roomId);
+      if (!lobbyNow || !lobbyNow.gameData) return;
+      // Stale-response guard: deliver only if lastVoteResult is still the
+      // same round (next round hasn't started, lobby hasn't ended).
+      const lvr = lobbyNow.gameData.lastVoteResult;
+      if (!lvr || lvr.round !== round) return;
+      lvr.flavor = { line: result.line, source: result.source || null };
+      this.io.to(roomId).emit('vote_result_flavor', { round, line: result.line });
+    }).catch(() => { /* swallow */ });
+  }
+
+  _polishClueTransition(lobby) {
+    const ai = getAi();
+    if (!ai || typeof ai.embellishClueTransition !== 'function') return;
+    const roomId = lobby.id;
+    const totalRounds = (lobby.gameData.clues || []).length;
+    const clueIndexAtFire = lobby.gameData.clueIndex;
+    const previous = lobby.gameData.lastVoteResult || null;
+    const forbiddenTerms = this._aliveMafiozoForbiddenTerms(lobby);
+
+    Promise.resolve(ai.embellishClueTransition({
+      nextRound: clueIndexAtFire + 1,
+      totalRounds,
+      previousResultReason: previous ? previous.reason : null,
+      previousEliminationPublicName: previous ? (previous.eliminatedUsername || null) : null,
+      gameContinues: true,
+      mode: lobby.roleRevealMode || 'normal',
+      forbiddenTerms,
+    })).then((result) => {
+      if (!result || !result.line) return;
+      const lobbyNow = this.lobbies.get(roomId);
+      if (!lobbyNow || !lobbyNow.gameData) return;
+      // Only deliver if we're still in the SAME CLUE_REVEAL round.
+      if (lobbyNow.gameData.phase !== 'CLUE_REVEAL') return;
+      if (lobbyNow.gameData.clueIndex !== clueIndexAtFire) return;
+      this.io.to(roomId).emit('clue_transition_flavor', {
+        round: clueIndexAtFire + 1,
+        line: result.line,
+      });
+    }).catch(() => { /* swallow */ });
+  }
+
+  _polishFinalReveal(lobby) {
+    const ai = getAi();
+    if (!ai || typeof ai.embellishFinalReveal !== 'function') return;
+    const roomId = lobby.id;
+    const fr = lobby.gameData.finalReveal;
+    if (!fr) return;
+
+    // Build a compact, safe input. NEVER include archive_b64.
+    const truth = fr.truth || {};
+    const mafiozoNames = Array.isArray(truth.mafiozos) && truth.mafiozos.length
+      ? truth.mafiozos.map(m => ({
+          username: m && m.username ? String(m.username) : '',
+          characterName: m && m.characterName ? String(m.characterName) : '',
+        }))
+      : (truth.mafiozoUsername
+          ? [{ username: String(truth.mafiozoUsername), characterName: String(truth.mafiozoCharacterName || '') }]
+          : []);
+    const votingSummary = (lobby.gameData.votingHistory || []).slice(0, 8).map(h => ({
+      round: h.round,
+      eliminatedUsername: h.eliminatedUsername || null,
+      wasMafiozo: !!h.wasMafiozo,
+      reason: h.reason,
+    }));
+    const totalRounds = (lobby.gameData.clues || []).length;
+
+    Promise.resolve(ai.embellishFinalReveal({
+      outcome: lobby.gameData.outcome,
+      totalRounds,
+      revealMode: lobby.roleRevealMode || 'normal',
+      mafiozoNames,
+      votingSummary,
+    })).then((result) => {
+      if (!result || !result.polish) return;
+      const lobbyNow = this.lobbies.get(roomId);
+      if (!lobbyNow || !lobbyNow.gameData) return;
+      if (lobbyNow.gameData.phase !== 'FINAL_REVEAL') return;
+      if (!lobbyNow.gameData.finalReveal) return;
+      lobbyNow.gameData.finalReveal.aiPolish = result.polish;
+      this.io.to(roomId).emit('final_reveal_polish', { polish: result.polish });
+    }).catch(() => { /* swallow */ });
   }
 
   // -------------------------------------------------------------------------

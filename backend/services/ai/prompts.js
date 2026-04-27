@@ -140,10 +140,124 @@ function narrationPrompt({ phase, context }) {
 اكتب 2-3 جمل بس بلهجة مصرية سينمائية. ممنوع تفصح عن المافيوزو.`;
 }
 
+// ---------------------------------------------------------------------------
+// Polish prompts (C2 / C3).
+//
+// Each prompt receives ONLY deterministic, sanitized public facts. No hidden
+// roles, no roleAssignments, no archive_b64, no JWTs. The output goes
+// through validatePolishLine (line variants) or validateFinalRevealPolish
+// (JSON variant) before reaching the wire.
+// ---------------------------------------------------------------------------
+
+function voteResultPolishPrompt(input) {
+  const {
+    round, totalRounds, reason,
+    eliminatedUsername, wasMafiozo, outcome,
+    votedCount, eligibleCount,
+  } = input || {};
+  const lines = [
+    `إنت "الكبير"، راوي مصري سينمائي بلهجة نوار.`,
+    `اكتب جملة واحدة قصيرة (٦٠–٢٢٠ حرف عربي) تعلّق على نتيجة جولة التصويت دي.`,
+    ``,
+    `الجولة: ${round} من ${totalRounds}`,
+    `سبب النتيجة: ${reason}`,
+  ];
+  if (eliminatedUsername) lines.push(`خرج من الجولة: ${eliminatedUsername}`);
+  if (wasMafiozo === true) lines.push('وكان فعلاً المافيوزو.');
+  if (outcome === 'investigators_win') lines.push('الكشف تم. اللعبة خلصت.');
+  if (outcome === 'mafiozo_survives') lines.push('المافيوزو نجى.');
+  lines.push(`اللاعبين اللي صوّتوا: ${votedCount} من ${eligibleCount}`);
+  lines.push(``);
+  lines.push(`ممنوع تماماً:`);
+  lines.push(`- تكشف هوية مافيوزو لسه مخفي.`);
+  lines.push(`- تخترع أسماء أو شخصيات.`);
+  lines.push(`- تستخدم markdown أو JSON أو حروف زي { أو [.`);
+  lines.push(`- تقول "undefined" أو "gameRole" أو "roleAssignments".`);
+  lines.push(`- تقول إنك ذكاء اصطناعي.`);
+  lines.push(``);
+  lines.push(`أرجع نص عربي فقط، بدون أي شرح زيادة. جملة واحدة قصيرة.`);
+  return lines.join('\n');
+}
+
+function clueTransitionPolishPrompt(input) {
+  const {
+    nextRound, totalRounds,
+    previousResultReason, previousEliminationPublicName,
+  } = input || {};
+  const lines = [
+    `إنت "الكبير"، راوي مصري سينمائي بلهجة نوار.`,
+    `الجولة الجاية رقم ${nextRound} من ${totalRounds}.`,
+  ];
+  if (previousEliminationPublicName) {
+    lines.push(`الجولة اللي فاتت خرج فيها: ${previousEliminationPublicName}.`);
+  }
+  if (previousResultReason) {
+    lines.push(`سبب النتيجة السابقة: ${previousResultReason}.`);
+  }
+  lines.push(``);
+  lines.push(`اكتب جملة قصيرة (٦٠–٢٢٠ حرف عربي) تربط نتيجة الجولة السابقة بالدليل الجاي بدون كذب.`);
+  lines.push(``);
+  lines.push(`ممنوع تماماً:`);
+  lines.push(`- تكشف هوية مافيوزو لسه مخفي.`);
+  lines.push(`- تخترع شخصيات أو أحداث.`);
+  lines.push(`- markdown أو JSON.`);
+  lines.push(`- "undefined" أو "gameRole" أو "roleAssignments".`);
+  lines.push(`- "as an AI" أو "كذكاء اصطناعي".`);
+  lines.push(``);
+  lines.push(`نص عربي فقط، جملة واحدة.`);
+  return lines.join('\n');
+}
+
+function finalRevealPolishPrompt(input) {
+  const { outcome, totalRounds, revealMode, mafiozoNames, votingSummary } = input || {};
+  const mafiozoLabels = Array.isArray(mafiozoNames)
+    ? mafiozoNames.map(m => `${m.username || ''} (${m.characterName || ''})`).filter(s => s !== ' ()').join('، ')
+    : '';
+  const votingLines = Array.isArray(votingSummary)
+    ? votingSummary.slice(0, 5).map(v =>
+        `جولة ${v.round}: ${v.eliminatedUsername || 'لا أحد'} — ${v.reason}${v.wasMafiozo ? ' (مافيوزو)' : ''}`
+      ).join('\n')
+    : '';
+  const outcomeLabel = outcome === 'investigators_win'
+    ? 'انتصر التحقيق على المافيوزو.'
+    : outcome === 'mafiozo_survives'
+    ? 'المافيوزو نجى لآخر جولة.'
+    : 'النتيجة غير محددة.';
+  return [
+    `إنت "الكبير"، راوي مصري سينمائي بلهجة نوار. اللعبة خلصت — الكشف النهائي.`,
+    `النتيجة: ${outcomeLabel}`,
+    `عدد الجولات: ${totalRounds}`,
+    `طور الكشف: ${revealMode}`,
+    mafiozoLabels ? `المافيوزو الحقيقي: ${mafiozoLabels}` : '',
+    votingLines ? `سجلّ التصويت:\n${votingLines}` : '',
+    ``,
+    `أرجع JSON واحد فقط بالشكل ده، كل الحقول اختيارية:`,
+    `{`,
+    `  "heroSubtitle": "جملة قصيرة (≤240 حرف) عربية تحت العنوان الكبير.",`,
+    `  "caseClosingLine": "جملة (≤260 حرف) ختام درامي للقضية.",`,
+    `  "finalParagraph": "فقرة (≤700 حرف) ملخص نهائي بأسلوب نوار.",`,
+    `  "epilogue": "فقرة قصيرة (≤500 حرف) خاتمة سينمائية اختيارية."`,
+    `}`,
+    ``,
+    `قواعد صارمة:`,
+    `- JSON واحد فقط، ممنوع نص قبله أو بعده.`,
+    `- ممنوع markdown، ممنوع code fences، ممنوع تعليقات.`,
+    `- استخدم بس الأسماء والحقائق المعطاة فوق.`,
+    `- ممنوع تخترع لاعبين أو شخصيات أو نتايج جديدة.`,
+    `- ممنوع تغيّر النتيجة أو هوية المافيوزو.`,
+    `- ممنوع "undefined" أو "gameRole" أو "roleAssignments".`,
+    `- ممنوع تقول إنك ذكاء اصطناعي.`,
+    `- نص عربي بنسبة ≥60% في كل حقل.`,
+  ].filter(Boolean).join('\n');
+}
+
 module.exports = {
   loadKnowledge,
   ALKABEER_PERSONA,
   archivePrompt,
   archivePromptStrict,
   narrationPrompt,
+  voteResultPolishPrompt,
+  clueTransitionPolishPrompt,
+  finalRevealPolishPrompt,
 };

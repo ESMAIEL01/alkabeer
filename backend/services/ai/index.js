@@ -21,8 +21,14 @@
 const config = require('../../config/env');
 const { callGemini } = require('./geminiClient');
 const { callOpenRouter, isConfigured: openrouterConfigured } = require('./openrouterClient');
-const { archivePrompt, archivePromptStrict, narrationPrompt } = require('./prompts');
-const { safeJsonParse, validateArchive, validateNarration } = require('./validators');
+const {
+  archivePrompt, archivePromptStrict, narrationPrompt,
+  voteResultPolishPrompt, clueTransitionPolishPrompt, finalRevealPolishPrompt,
+} = require('./prompts');
+const {
+  safeJsonParse, validateArchive, validateNarration,
+  validatePolishLine, validateFinalRevealPolish,
+} = require('./validators');
 const { logAiGeneration } = require('../analytics');
 
 // ---------------------------------------------------------------------------
@@ -301,9 +307,139 @@ async function narrate({ phase, context, forbiddenTerms } = {}) {
   return { source: 'fallback', line: FALLBACK_NARRATION };
 }
 
+// ---------------------------------------------------------------------------
+// Polish provider attempts (C2 / C3).
+//
+// Same provider chain shape as narration (Gemini Flash → OpenRouter), but
+// with caller-supplied validators so JSON-shaped (final reveal) and line-
+// shaped (vote result, clue transition) outputs each get their own gate.
+// ---------------------------------------------------------------------------
+
+async function tryGeminiPolish(prompt, validator, task, { json = false } = {}) {
+  if (!config.gemini.apiKey) return null;
+  const modelName = config.gemini.narrationModel;
+  const start = Date.now();
+  try {
+    const raw = await callGemini({
+      modelName,
+      userPrompt: prompt,
+      json,
+      temperature: 0.95,
+      maxOutputTokens: config.gemini.narrationMaxOutputTokens,
+    });
+    const cleaned = validator(raw);
+    if (!cleaned) {
+      logAi({ task, source: 'gemini', model: modelName,
+        latencyMs: Date.now() - start, ok: false, validatorReason: 'validator_rejected' });
+      return null;
+    }
+    logAi({ task, source: 'gemini', model: modelName,
+      latencyMs: Date.now() - start, ok: true });
+    return cleaned;
+  } catch (err) {
+    logAi({ task, source: 'gemini', model: modelName,
+      latencyMs: Date.now() - start, ok: false, validatorReason: classifyProviderError(err) });
+    return null;
+  }
+}
+
+async function tryOpenRouterPolish(prompt, validator, task, { json = false } = {}) {
+  if (!openrouterConfigured()) return null;
+  const orModel = config.openrouter.fallbackModel;
+  const start = Date.now();
+  try {
+    const raw = await callOpenRouter({
+      userPrompt: prompt,
+      json,
+      temperature: 0.9,
+      maxTokens: config.openrouter.narrationMaxTokens,
+    });
+    const cleaned = validator(raw);
+    if (!cleaned) {
+      logAi({ task, source: 'openrouter', model: orModel,
+        latencyMs: Date.now() - start, ok: false, validatorReason: 'validator_rejected' });
+      return null;
+    }
+    logAi({ task, source: 'openrouter', model: orModel,
+      latencyMs: Date.now() - start, ok: true });
+    return cleaned;
+  } catch (err) {
+    logAi({ task, source: 'openrouter', model: orModel,
+      latencyMs: Date.now() - start, ok: false, validatorReason: classifyProviderError(err) });
+    return null;
+  }
+}
+
+/**
+ * Embellish a vote-result deterministic payload with one short Arabic noir
+ * line. Returns { source, model, line } on success; null otherwise.
+ *
+ * input.forbiddenTerms must include the alive Mafiozo username/character
+ * names mid-game so the AI cannot expose them.
+ */
+async function embellishVoteResult(input) {
+  const prompt = voteResultPolishPrompt(input || {});
+  const forbiddenTerms = Array.isArray(input && input.forbiddenTerms) ? input.forbiddenTerms : [];
+  const validator = (raw) => validatePolishLine(raw, { forbiddenTerms });
+  const task = 'vote_result_polish';
+
+  const fromGemini = await tryGeminiPolish(prompt, validator, task);
+  if (fromGemini) return { source: 'gemini', model: config.gemini.narrationModel, line: fromGemini };
+
+  const fromOpenRouter = await tryOpenRouterPolish(prompt, validator, task);
+  if (fromOpenRouter) return { source: 'openrouter', model: config.openrouter.fallbackModel, line: fromOpenRouter };
+
+  return null;
+}
+
+/**
+ * Bridge prose between a finished round and the next clue. Same contract
+ * as embellishVoteResult.
+ */
+async function embellishClueTransition(input) {
+  const prompt = clueTransitionPolishPrompt(input || {});
+  const forbiddenTerms = Array.isArray(input && input.forbiddenTerms) ? input.forbiddenTerms : [];
+  const validator = (raw) => validatePolishLine(raw, { forbiddenTerms });
+  const task = 'clue_transition_polish';
+
+  const fromGemini = await tryGeminiPolish(prompt, validator, task);
+  if (fromGemini) return { source: 'gemini', model: config.gemini.narrationModel, line: fromGemini };
+
+  const fromOpenRouter = await tryOpenRouterPolish(prompt, validator, task);
+  if (fromOpenRouter) return { source: 'openrouter', model: config.openrouter.fallbackModel, line: fromOpenRouter };
+
+  return null;
+}
+
+/**
+ * Polish the FINAL_REVEAL screen with optional cinematic flavor fields.
+ * Returns { source, model, polish } where polish is an object containing
+ * only validated optional fields (heroSubtitle, caseClosingLine,
+ * finalParagraph, epilogue). Returns null if no provider succeeded.
+ *
+ * The caller MUST guarantee phase === FINAL_REVEAL — at that point all
+ * roles are public, so input may include real Mafiozo names.
+ */
+async function embellishFinalReveal(input) {
+  const prompt = finalRevealPolishPrompt(input || {});
+  const validator = (raw) => validateFinalRevealPolish(raw);
+  const task = 'final_reveal_polish';
+
+  const fromGemini = await tryGeminiPolish(prompt, validator, task, { json: true });
+  if (fromGemini) return { source: 'gemini', model: config.gemini.narrationModel, polish: fromGemini };
+
+  const fromOpenRouter = await tryOpenRouterPolish(prompt, validator, task, { json: true });
+  if (fromOpenRouter) return { source: 'openrouter', model: config.openrouter.fallbackModel, polish: fromOpenRouter };
+
+  return null;
+}
+
 module.exports = {
   generateSealedArchive,
   narrate,
+  embellishVoteResult,
+  embellishClueTransition,
+  embellishFinalReveal,
   // Test/diagnostic exports — not part of the route surface.
   _validateArchive: validateArchive,
   _fallbackArchive: FALLBACK_ARCHIVE,
