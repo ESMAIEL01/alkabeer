@@ -112,6 +112,44 @@ function roleLabelArabic(gameRole) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// ID normalization helpers.
+//
+// users.id in Postgres is SERIAL → JS Number on the wire. lobby.players is
+// a Map keyed by that Number. But ANY object that uses an id as a key
+// (votes{}, tally{}, roleAssignments{}) coerces the key to a String — and
+// Object.entries() / Object.keys() always returns String keys. That means
+// `eliminatedId = topTargets[0]` (from Object.entries(tally)) is a String,
+// and `lobby.players.get("42")` on a Number-keyed Map returns undefined.
+//
+// These helpers do not assume a single canonical type — they try the raw
+// value, the Number form, and the String form, in that order. Use them
+// anywhere a Map.get(id) is reading an id that came through an object key.
+// ---------------------------------------------------------------------------
+function getPlayerById(lobby, id) {
+  if (!lobby || id === undefined || id === null) return null;
+  if (lobby.players.has(id)) return lobby.players.get(id);
+  const asNum = Number(id);
+  if (Number.isFinite(asNum) && lobby.players.has(asNum)) return lobby.players.get(asNum);
+  const asStr = String(id);
+  if (lobby.players.has(asStr)) return lobby.players.get(asStr);
+  return null;
+}
+
+function getRoleAssignment(lobby, id) {
+  const ra = lobby && lobby.gameData && lobby.gameData.roleAssignments;
+  if (!ra || id === undefined || id === null) return null;
+  // Object keys are always String, so `ra[42]` and `ra["42"]` index the same
+  // slot — but be explicit so the intent is obvious to future readers.
+  return ra[id] || ra[String(id)] || ra[Number(id)] || null;
+}
+
+function sameId(a, b) {
+  if (a === b) return true;
+  if (a === undefined || a === null || b === undefined || b === null) return false;
+  return String(a) === String(b);
+}
+
 class GameManager {
   constructor(io, db) {
     this.io = io;
@@ -288,7 +326,7 @@ class GameManager {
         if (!lobby || !lobby.gameData) return;
         if (lobby.gameData.phase !== 'VOTING') return;
 
-        const voter = lobby.players.get(socket.userId);
+        const voter = getPlayerById(lobby, socket.userId);
         if (!voter) return;
 
         // --- eligibility (server-enforced; UI hides controls but cannot be trusted)
@@ -299,9 +337,15 @@ class GameManager {
           return socket.emit('vote_rejected', { reason: 'eliminated', message: 'إنت خرجت من اللعبة، مش هتقدر تصوّت.' });
         }
 
-        // --- target validation
-        if (targetId !== 'skip') {
-          const target = lobby.players.get(targetId);
+        // --- target validation + canonical-id resolution
+        // We store the live player's `id` (matching the Map key type) rather
+        // than the raw client-provided value so the closeVoting tally can
+        // round-trip it back into a Map.get() without a type mismatch.
+        let canonicalTarget;
+        if (targetId === 'skip') {
+          canonicalTarget = 'skip';
+        } else {
+          const target = getPlayerById(lobby, targetId);
           if (!target) {
             return socket.emit('vote_rejected', { reason: 'unknown_target', message: 'اللاعب اللي اخترته مش موجود.' });
           }
@@ -311,11 +355,12 @@ class GameManager {
           if (!target.isAlive) {
             return socket.emit('vote_rejected', { reason: 'target_eliminated', message: 'الشخص ده خرج من اللعبة بالفعل.' });
           }
+          canonicalTarget = target.id;
         }
 
         // Vote change is allowed before close — just overwrite.
-        lobby.gameData.votes[socket.userId] = targetId;
-        socket.emit('vote_registered', { userId: socket.userId, targetId });
+        lobby.gameData.votes[voter.id] = canonicalTarget;
+        socket.emit('vote_registered', { userId: voter.id, targetId: canonicalTarget });
         this.emitVotingProgress(roomId);
 
         // Early close: if every eligible voter has cast a vote, end immediately.
@@ -866,17 +911,25 @@ class GameManager {
         const max = Math.max(...playerEntries.map(([, c]) => c));
         const topTargets = playerEntries.filter(([, c]) => c === max).map(([k]) => k);
         if (topTargets.length === 1) {
-          eliminatedId = topTargets[0];
-          outcomeReason = 'majority';
-          // Mark the eliminated player as out-of-game.
-          const elim = lobby.players.get(eliminatedId);
+          // CRITICAL: Object.entries() returns String keys, but lobby.players
+          // is a Map keyed by Number (the SERIAL user id). Resolve via the
+          // helper, then capture the live player's CANONICAL id for every
+          // downstream read so Map.get and roleAssignments[id] never miss.
+          const rawTopId = topTargets[0];
+          const elim = getPlayerById(lobby, rawTopId);
           if (elim) {
+            eliminatedId = elim.id;             // canonical, matches Map key
+            outcomeReason = 'majority';
             elim.isAlive = false;
-            // Mirror to the role record for downstream reads.
-            const roleRec = lobby.gameData.roleAssignments[eliminatedId];
+            const roleRec = getRoleAssignment(lobby, eliminatedId);
             if (roleRec) roleRec.isAlive = false;
             wasMafiozo = !!(roleRec && roleRec.gameRole === 'mafiozo');
             lobby.gameData.eliminatedIds.push(eliminatedId);
+          } else {
+            // Top-voted id doesn't resolve to a live player — treat as no
+            // elimination. Should never happen now, but stay safe rather
+            // than half-write inconsistent state.
+            outcomeReason = 'no-vote';
           }
         } else {
           outcomeReason = 'tie';
@@ -884,12 +937,13 @@ class GameManager {
       }
     }
 
-    // Resolve eliminated username with a stable fallback. The live player
-    // record can momentarily look stale (disconnect, race) but the role
-    // assignment was set at finalize-time and won't shift.
+    // Resolve eliminated username with a stable fallback. The live record
+    // and role assignment are both keyed off the canonical id we just
+    // captured, so this is now an unconditional success when eliminatedId
+    // is set — but keep the fallback chain for safety on future paths.
     const resolvedElimUsername = eliminatedId
-      ? (lobby.players.get(eliminatedId)?.username
-         || lobby.gameData.roleAssignments?.[eliminatedId]?.username
+      ? (getPlayerById(lobby, eliminatedId)?.username
+         || getRoleAssignment(lobby, eliminatedId)?.username
          || null)
       : null;
 
