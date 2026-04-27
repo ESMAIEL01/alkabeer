@@ -7,6 +7,7 @@ import HostDashboard from './pages/HostDashboard';
 import GameBoard from './pages/GameBoard';
 import PostGameReport from './pages/PostGameReport';
 import ProfilePage from './pages/ProfilePage';
+import ArchiveReplay from './pages/ArchiveReplay';
 
 function App() {
   const token = localStorage.getItem('mafToken');
@@ -22,6 +23,7 @@ function App() {
           <Route path="/game/:roomId" element={<GameBoard />} />
           <Route path="/report" element={<PostGameReport />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/archive/:gameId" element={<ArchiveReplay />} />
         </Routes>
       </div>
     </Router>

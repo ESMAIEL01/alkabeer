@@ -22,6 +22,7 @@ const scenarioRoutes = require('./routes/scenarios');
 const profileRoutes = require('./routes/profile');
 const statsRoutes = require('./routes/stats');
 const historyRoutes = require('./routes/history');
+const archiveRoutes = require('./routes/archive');
 const { authLimiter, aiLimiter } = require('./middleware/rateLimit');
 const GameManager = require('./game/GameManager');
 
@@ -87,6 +88,7 @@ app.use('/api/scenarios', aiLimiter, scenarioRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/stats',   statsRoutes);
 app.use('/api/history', historyRoutes);
+app.use('/api/archive', archiveRoutes);
 
 // 404 for unknown API routes
 app.use('/api', (_req, res) => {
