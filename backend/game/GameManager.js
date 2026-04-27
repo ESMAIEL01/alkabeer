@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 
 /**
- * GameManager — multiplayer state machine for AlKabeer.
+ * GameManager — multiplayer state machine for Mafiozo.
  *
  * Phase flow (post-finalize):
  *   ROLE_REVEAL (30 s)

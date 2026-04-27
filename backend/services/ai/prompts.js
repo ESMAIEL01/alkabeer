@@ -1,5 +1,5 @@
 /**
- * AlKabeer system prompts and knowledge-file loader.
+ * Mafiozo system prompts and knowledge-file loader (الكبير AI host persona).
  *
  * The knowledge file is read once at module load (server boot) and cached.
  * It's injected as the system instruction to Gemini, NOT passed every turn —
@@ -37,7 +37,7 @@ function loadKnowledge() {
 }
 
 /**
- * Compact persona + protocol for AlKabeer.
+ * Compact persona + protocol for الكبير (the AI host of Mafiozo).
  * The full ARCHITECT EDITION knowledge file is appended below.
  */
 const ALKABEER_PERSONA = `أنت "الكبير" — معلم لعبة المافيوزو. شخصيتك مصرية، سينمائية، ساخرة بدون إساءة.

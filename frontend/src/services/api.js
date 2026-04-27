@@ -13,7 +13,7 @@ if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) {
   // Surface in the browser console immediately on production builds.
   // eslint-disable-next-line no-console
   console.error(
-    '[AlKabeer] VITE_API_URL is not set on this production build. ' +
+    '[Mafiozo] VITE_API_URL is not set on this production build. ' +
     'Set it in Vercel → Project → Settings → Environment Variables, then redeploy.'
   );
 }

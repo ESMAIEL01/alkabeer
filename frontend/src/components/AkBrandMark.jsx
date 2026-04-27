@@ -1,7 +1,7 @@
 import React from 'react';
 
 /**
- * Brand mark — the AlKabeer wordmark/sigil composition used in the topnav,
+ * Brand mark — the Mafiozo wordmark/sigil composition used in the topnav,
  * Auth screen, and Lobby header. Pulls from /public/design which is shipped
  * by Vite as static assets.
  *
@@ -21,14 +21,14 @@ export default function AkBrandMark({ variant = 'full', size = 28, className = '
   if (variant === 'wordmark') {
     return (
       <span className={wrap}>
-        <img src="/design/logo-wordmark.svg" alt="AlKabeer" height={size} />
+        <img src="/design/logo-wordmark.svg" alt="Mafiozo" height={size} />
       </span>
     );
   }
   return (
     <span className={wrap}>
       <img src="/design/logo-sigil.svg" alt="" height={size} />
-      <img src="/design/logo-wordmark.svg" alt="AlKabeer" height={size} />
+      <img src="/design/logo-wordmark.svg" alt="Mafiozo" height={size} />
     </span>
   );
 }

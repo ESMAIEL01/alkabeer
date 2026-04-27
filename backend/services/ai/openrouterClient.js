@@ -86,7 +86,7 @@ async function callOpenRouter({ userPrompt, json = false, temperature = 0.85, ma
           // OpenRouter recommends these to identify the calling app on its
           // analytics dashboard. They are public and never expose secrets.
           'HTTP-Referer': config.frontendUrl || 'https://alkabeer.local',
-          'X-Title': 'AlKabeer',
+          'X-Title': 'Mafiozo',
         },
         body: JSON.stringify(body),
       }),

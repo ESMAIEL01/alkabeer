@@ -1,7 +1,7 @@
 {
   "name": "alkabeer-backend",
   "version": "1.0.0",
-  "description": "AlKabeer (الكبير) — Mafiozo game master backend. Express + Socket.IO + Neon Postgres + Gemini.",
+  "description": "Mafiozo — Arabic noir social-deduction game backend (الكبير AI host persona). Express + Socket.IO + Neon Postgres + Gemini.",
   "main": "server.js",
   "engines": {
     "node": ">=20.0.0"

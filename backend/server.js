@@ -119,7 +119,7 @@ async function start() {
 
   // 0.0.0.0 is required so Fly.io's load balancer can reach us.
   server.listen(config.port, '0.0.0.0', () => {
-    console.log(`🚀 AlKabeer backend listening on 0.0.0.0:${config.port}`);
+    console.log(`🚀 Mafiozo backend listening on 0.0.0.0:${config.port}`);
     console.log(`🌐 Allowed origins: ${[...allowedOrigins].join(', ') || '(none)'}`);
   });
 }
