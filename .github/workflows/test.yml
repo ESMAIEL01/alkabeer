@@ -1,0 +1,90 @@
+name: Tests
+
+# Run on every push to main and on every PR targeting main. No path filter
+# — tests are cheap and we want them to run on any code change, including
+# pure-test commits and CI-config tweaks.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel any in-progress runs of this workflow on the same ref. Saves
+# minutes on rapid pushes; the latest commit always supersedes.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Node 22 LTS. Backend engines declares ">=20.0.0"; 22 satisfies
+          # that and supports the `--test` glob form used in the npm script.
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Syntax check — GameManager
+        run: node -c game/GameManager.js
+
+      - name: Syntax check — server entry
+        run: node -c server.js
+
+      - name: Run regression tests
+        run: npm test
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Production build (Vite)
+        run: npm run build
+
+# ---------------------------------------------------------------------------
+# Frontend tests are intentionally NOT part of this workflow yet. The B3
+# plan defers Vitest setup until there is a pure helper module worth
+# testing (e.g. a future computeVoteResultDisplay extraction). The
+# backend regression suite already pins the privacy + voting + lobby
+# contracts that the frontend renders.
+#
+# This workflow runs alongside .github/workflows/deploy.yml. They are
+# independent: deploy.yml ships the backend to Fly.io on push to main
+# whenever backend/** changes; this workflow runs build/test gates on
+# the same push (and on PRs, which deploy.yml ignores). Failure of this
+# workflow does NOT block deploy.yml from running — that's a future
+# tightening if we want stricter ordering.
+# ---------------------------------------------------------------------------
