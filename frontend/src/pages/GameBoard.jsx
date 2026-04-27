@@ -756,9 +756,9 @@ export default function GameBoard() {
           )}
 
           {gameState === 'CLUE_REVEAL' && (() => {
-            const me = players.find(p => p.id === user?.id);
-            const iAmEliminated = me ? !me.isAlive : false;
-            const canReady = !amIHost && !iAmEliminated;
+            // Eliminated jurors are still voting participants in the next
+            // round, so they may also press "ready". Only host is excluded.
+            const canReady = !amIHost;
             return (
               <div className="s-clue animate-fade-in">
                 <span className="ak-overline s-clue-overline">Clue {Math.min(clueIndex + 1, totalClues)} / {totalClues}</span>
@@ -805,7 +805,10 @@ export default function GameBoard() {
           {gameState === 'VOTING' && (() => {
             const me = players.find(p => p.id === user?.id);
             const iAmEliminated = me ? !me.isAlive : false;
-            const canVote = !amIHost && !iAmEliminated;
+            // Jury rule: eliminated players keep voting; only host is barred.
+            const canVote = !amIHost;
+            // Eliminated players cannot be TARGETED — exclude them from the
+            // candidate buttons. Voting eligibility is independent.
             const aliveNonHost = players.filter(p => !p.isHost && p.isAlive);
             const iHaveVoted = canVote && myVote !== null && myVote !== undefined;
             const everyoneVoted = votingProgress.total > 0 && votingProgress.voted >= votingProgress.total;
@@ -818,7 +821,7 @@ export default function GameBoard() {
 
                 {voteError    && <div className="s-vote-banner error">⚠ {voteError}</div>}
                 {amIHost      && <div className="s-vote-banner host">المضيف لا يصوّت. تابع تقدّم اللاعبين.</div>}
-                {iAmEliminated && <div className="s-vote-banner elim">خرجت من التحقيق، مش هتقدر تصوّت في الجولة دي.</div>}
+                {iAmEliminated && <div className="s-vote-banner elim">خرجت من دائرة الاتهام، لكن صوتك لسه مؤثر في الساحة.</div>}
                 {iHaveVoted && !everyoneVoted && (
                   <div className="s-vote-banner waiting">✓ صوّتت — مستني باقي اللاعبين ({votingProgress.total - votingProgress.voted} متبقي)</div>
                 )}
@@ -826,8 +829,9 @@ export default function GameBoard() {
                 {voteExt.activated && (Date.now() - extJustAddedAt) < 6000 && (
                   <div className="s-vote-banner waiting">✓ تم تمديد التصويت 15 ثانية</div>
                 )}
-                {/* Player-driven 15s extension. Threshold ceil(70%) of eligible
-                    voters; one extension per round; host/eliminated excluded. */}
+                {/* Player-driven 15s extension. Threshold ceil(70%) of voting
+                    participants (eliminated jurors included); one extension
+                    per round; only host excluded. */}
                 {canVote && !voteExt.activated && (
                   <div className="s-ext-block" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--ak-space-2)', marginTop: 'var(--ak-space-3)' }}>
                     {!iRequestedExt ? (

@@ -329,12 +329,11 @@ class GameManager {
         const voter = getPlayerById(lobby, socket.userId);
         if (!voter) return;
 
-        // --- eligibility (server-enforced; UI hides controls but cannot be trusted)
+        // --- voter eligibility (server-enforced; UI hides controls but cannot be trusted)
+        // Hosts NEVER vote. Eliminated players DO vote (jury rule) — they
+        // just can't be targeted anymore (handled below).
         if (voter.isHost) {
           return socket.emit('vote_rejected', { reason: 'host_cannot_vote', message: 'المضيف ما بيصوّتش.' });
-        }
-        if (!voter.isAlive) {
-          return socket.emit('vote_rejected', { reason: 'eliminated', message: 'إنت خرجت من اللعبة، مش هتقدر تصوّت.' });
         }
 
         // --- target validation + canonical-id resolution
@@ -363,10 +362,11 @@ class GameManager {
         socket.emit('vote_registered', { userId: voter.id, targetId: canonicalTarget });
         this.emitVotingProgress(roomId);
 
-        // Early close: if every eligible voter has cast a vote, end immediately.
-        const eligible = this.eligibleVoters(lobby);
-        const votedCount = eligible.filter(p => lobby.gameData.votes[p.id] !== undefined).length;
-        if (eligible.length > 0 && votedCount >= eligible.length) {
+        // Early close: if every voting PARTICIPANT (alive or eliminated)
+        // has cast a vote, end immediately. Eliminated jurors count too.
+        const participants = this.getVotingParticipants(lobby);
+        const votedCount = participants.filter(p => lobby.gameData.votes[p.id] !== undefined).length;
+        if (participants.length > 0 && votedCount >= participants.length) {
           this.closeVoting(roomId, 'all_voted');
         }
       });
@@ -516,10 +516,10 @@ class GameManager {
         }
       });
 
-      // Player-driven readiness during CLUE_REVEAL. When ALL eligible voters
-      // (non-host, alive) press "ready", the discussion ends early and the
-      // round transitions to VOTING. Host is excluded — host can still force
-      // start_voting_now via host_control.
+      // Player-driven readiness during CLUE_REVEAL. When ALL voting
+      // participants (non-host, alive OR eliminated) press "ready", the
+      // discussion ends early and the round transitions to VOTING. Host is
+      // excluded — host can still force start_voting_now via host_control.
       socket.on('ready_to_vote', (data) => {
         const { roomId } = data || {};
         const lobby = this.lobbies.get(roomId);
@@ -530,30 +530,32 @@ class GameManager {
             message: 'لا يمكنك إعلان الاستعداد للتصويت الآن.',
           });
         }
-        const player = lobby.players.get(socket.userId);
-        if (!player || player.isHost || !player.isAlive) {
+        const player = getPlayerById(lobby, socket.userId);
+        // Eliminated jurors CAN ready up — only host and unknown sockets are blocked.
+        if (!player || player.isHost) {
           return socket.emit('ready_to_vote_rejected', {
             reason: 'not_eligible',
             message: 'لا يمكنك إعلان الاستعداد للتصويت الآن.',
           });
         }
         if (!lobby.gameData.readyToVote) lobby.gameData.readyToVote = {};
-        lobby.gameData.readyToVote[socket.userId] = true;
+        lobby.gameData.readyToVote[player.id] = true;
 
-        const eligible = this.eligibleVoters(lobby);
-        const ready = eligible.filter(p => lobby.gameData.readyToVote[p.id]).length;
-        this.io.to(roomId).emit('ready_to_vote_progress', { ready, total: eligible.length });
+        const participants = this.getVotingParticipants(lobby);
+        const ready = participants.filter(p => lobby.gameData.readyToVote[p.id]).length;
+        this.io.to(roomId).emit('ready_to_vote_progress', { ready, total: participants.length });
 
-        if (eligible.length > 0 && ready >= eligible.length) {
+        if (participants.length > 0 && ready >= participants.length) {
           this.stopRoomTimer(lobby);
           this.enterPhase(lobby, 'VOTING', 30);
           this.startRoomTimer(roomId);
         }
       });
 
-      // Player-driven extension during VOTING. When >= ceil(70%) of eligible
-      // voters request more time, the timer gains exactly 15s. Limited to
-      // ONE successful extension per VOTING round (voteExtensionUsed flag).
+      // Player-driven extension during VOTING. When >= ceil(70%) of voting
+      // participants (non-host, alive OR eliminated) request more time, the
+      // timer gains exactly 15s. Limited to ONE successful extension per
+      // VOTING round (voteExtensionUsed flag).
       socket.on('request_vote_extension', (data) => {
         const { roomId } = data || {};
         const lobby = this.lobbies.get(roomId);
@@ -570,25 +572,26 @@ class GameManager {
             message: 'تم استخدام التمديد لهذه الجولة.',
           });
         }
-        const player = lobby.players.get(socket.userId);
-        if (!player || player.isHost || !player.isAlive) {
+        const player = getPlayerById(lobby, socket.userId);
+        // Eliminated jurors CAN request — only host and unknown sockets blocked.
+        if (!player || player.isHost) {
           return socket.emit('vote_extension_rejected', {
             reason: 'not_eligible',
             message: 'مش مسموح لك تطلب تمديد التصويت.',
           });
         }
         if (!lobby.gameData.voteExtensionRequests) lobby.gameData.voteExtensionRequests = {};
-        if (lobby.gameData.voteExtensionRequests[socket.userId]) {
+        if (lobby.gameData.voteExtensionRequests[player.id]) {
           return socket.emit('vote_extension_rejected', {
             reason: 'already_requested',
             message: 'طلبك متسجّل بالفعل.',
           });
         }
-        lobby.gameData.voteExtensionRequests[socket.userId] = true;
+        lobby.gameData.voteExtensionRequests[player.id] = true;
 
-        const eligible = this.eligibleVoters(lobby);
-        const requested = eligible.filter(p => lobby.gameData.voteExtensionRequests[p.id]).length;
-        const required = Math.max(1, Math.ceil(eligible.length * 0.7));
+        const participants = this.getVotingParticipants(lobby);
+        const requested = participants.filter(p => lobby.gameData.voteExtensionRequests[p.id]).length;
+        const required = Math.max(1, Math.ceil(participants.length * 0.7));
 
         let activated = false;
         let secondsAdded = 0;
@@ -601,7 +604,7 @@ class GameManager {
         }
         this.io.to(roomId).emit('vote_extension_progress', {
           requested,
-          total: eligible.length,
+          total: participants.length,
           required,
           activated,
           secondsAdded,
@@ -807,26 +810,28 @@ class GameManager {
     lobby.gameData.timer = durationSeconds;
     if (phase === 'CLUE_REVEAL') {
       // Per-round readiness reset. Broadcast a zeroed progress so any client
-      // that missed the previous reset shows the correct count.
+      // that missed the previous reset shows the correct count. Total counts
+      // ALL voting participants (eliminated jurors included).
       lobby.gameData.readyToVote = {};
-      const eligibleCount = this.eligibleVoters(lobby).length;
+      const participantCount = this.getVotingParticipants(lobby).length;
       this.broadcastFullState(lobby.id);
-      this.io.to(lobby.id).emit('ready_to_vote_progress', { ready: 0, total: eligibleCount });
+      this.io.to(lobby.id).emit('ready_to_vote_progress', { ready: 0, total: participantCount });
       return;
     }
     if (phase === 'VOTING') {
       // Always start a voting round CLEAN — votes reset, extension reset,
-      // fresh progress emit.
+      // fresh progress emit. Total counts ALL voting participants
+      // (eliminated jurors included).
       lobby.gameData.votes = {};
       lobby.gameData.voteExtensionRequests = {};
       lobby.gameData.voteExtensionUsed = false;
       this.broadcastFullState(lobby.id);
       this.emitVotingProgress(lobby.id);
-      const eligibleCount = this.eligibleVoters(lobby).length;
+      const participantCount = this.getVotingParticipants(lobby).length;
       this.io.to(lobby.id).emit('vote_extension_progress', {
         requested: 0,
-        total: eligibleCount,
-        required: Math.max(1, Math.ceil(eligibleCount * 0.7)),
+        total: participantCount,
+        required: Math.max(1, Math.ceil(participantCount * 0.7)),
         activated: false,
         secondsAdded: 0,
       });
@@ -850,11 +855,31 @@ class GameManager {
   }
 
   /**
-   * Eligible voters for the current round: non-host AND alive.
+   * Voting PARTICIPANTS: every real non-host player, alive OR eliminated.
+   * Used for early-close totals, ready-to-vote totals, vote-extension
+   * threshold, and the voted/eligible count in vote_result. Eliminated
+   * players remain jury-style voters so a small alive pool can't get stuck.
    */
-  eligibleVoters(lobby) {
+  getVotingParticipants(lobby) {
+    if (!lobby) return [];
+    return [...lobby.players.values()].filter(p => p && p.id && p.username && !p.isHost);
+  }
+
+  /**
+   * Vote TARGETS: real non-host ALIVE players. Used for candidate validation
+   * in submit_vote. Eliminated players can no longer be targeted.
+   */
+  getVoteTargets(lobby) {
     if (!lobby) return [];
     return [...lobby.players.values()].filter(p => p && p.id && p.username && !p.isHost && p.isAlive);
+  }
+
+  /**
+   * Strict per-id check: does this id resolve to a non-host alive player?
+   */
+  isValidVoteTarget(lobby, targetId) {
+    const target = getPlayerById(lobby, targetId);
+    return !!(target && !target.isHost && target.isAlive);
   }
 
   /**
@@ -863,10 +888,10 @@ class GameManager {
   emitVotingProgress(roomId) {
     const lobby = this.lobbies.get(roomId);
     if (!lobby || !lobby.gameData) return;
-    const eligible = this.eligibleVoters(lobby);
+    const participants = this.getVotingParticipants(lobby);
     const votes = lobby.gameData.votes || {};
-    const voted = eligible.filter(p => votes[p.id] !== undefined).length;
-    this.io.to(roomId).emit('voting_progress', { voted, total: eligible.length });
+    const voted = participants.filter(p => votes[p.id] !== undefined).length;
+    this.io.to(roomId).emit('voting_progress', { voted, total: participants.length });
   }
 
   /**
@@ -883,14 +908,18 @@ class GameManager {
 
     this.stopRoomTimer(lobby);
 
-    const eligible = this.eligibleVoters(lobby);
+    const participants = this.getVotingParticipants(lobby);
     const votes = lobby.gameData.votes || {};
 
-    // Tally — only count votes from currently-eligible voters.
+    // Tally — count votes from every voting participant (alive OR eliminated
+    // jurors). A vote whose target is no longer a valid candidate (host or
+    // eliminated by an earlier round) is silently dropped, NOT applied,
+    // because eliminated players cannot be re-targeted.
     const tally = {}; // targetId → count
-    for (const v of eligible) {
+    for (const v of participants) {
       const t = votes[v.id];
       if (t === undefined) continue; // didn't vote
+      if (t !== 'skip' && !this.isValidVoteTarget(lobby, t)) continue; // stale target
       tally[t] = (tally[t] || 0) + 1;
     }
 
@@ -917,7 +946,7 @@ class GameManager {
           // downstream read so Map.get and roleAssignments[id] never miss.
           const rawTopId = topTargets[0];
           const elim = getPlayerById(lobby, rawTopId);
-          if (elim) {
+          if (elim && !elim.isHost && elim.isAlive) {
             eliminatedId = elim.id;             // canonical, matches Map key
             outcomeReason = 'majority';
             elim.isAlive = false;
@@ -926,9 +955,10 @@ class GameManager {
             wasMafiozo = !!(roleRec && roleRec.gameRole === 'mafiozo');
             lobby.gameData.eliminatedIds.push(eliminatedId);
           } else {
-            // Top-voted id doesn't resolve to a live player — treat as no
-            // elimination. Should never happen now, but stay safe rather
-            // than half-write inconsistent state.
+            // Top-voted id doesn't resolve to a valid candidate (gone, host,
+            // already eliminated) — treat as no elimination rather than
+            // half-write inconsistent state. Should be unreachable thanks to
+            // the stale-target filter above.
             outcomeReason = 'no-vote';
           }
         } else {
@@ -969,8 +999,8 @@ class GameManager {
       wasMafiozo,
       reason: outcomeReason,
       tally: { ...tally },
-      eligibleCount: eligible.length,
-      votedCount: eligible.filter(p => votes[p.id] !== undefined).length,
+      eligibleCount: participants.length,
+      votedCount: participants.filter(p => votes[p.id] !== undefined).length,
     };
     lobby.gameData.lastVoteResult = voteResult;
 
