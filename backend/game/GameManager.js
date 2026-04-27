@@ -871,6 +871,10 @@ class GameManager {
       // already shipped; this only attaches optional flavor fields when
       // the AI returns and the lobby is still in FINAL_REVEAL.
       this._polishFinalReveal(lobby);
+      // D1: persist completed session + bump player stats. Fire-and-forget;
+      // never blocks gameplay; idempotent (ON CONFLICT DO NOTHING on the
+      // session row gates the participants + stats writes too).
+      this.persistSessionAndStats(lobby).catch(() => { /* swallow */ });
       return;
     }
     this.broadcastFullState(lobby.id);
@@ -1682,6 +1686,203 @@ class GameManager {
       lobbyNow.gameData.finalReveal.aiPolish = result.polish;
       this.io.to(roomId).emit('final_reveal_polish', { polish: result.polish });
     }).catch(() => { /* swallow */ });
+  }
+
+  // -------------------------------------------------------------------------
+  // D1 — Session + stats persistence.
+  //
+  // Called fire-and-forget on entering FINAL_REVEAL, AFTER the deterministic
+  // reveal has been built and broadcast. Hard guarantees:
+  //   - Never throws. DB failures are caught and logged short.
+  //   - Idempotent: re-entry skips via lobby.gameData.persistenceStarted /
+  //     lobby.gameData.persisted AND via INSERT ... ON CONFLICT DO NOTHING
+  //     on the session row. Stats are bumped only when the session insert
+  //     actually inserted a row.
+  //   - Privacy: writes hidden roles ONLY because phase === FINAL_REVEAL
+  //     (game is over and the existing privacy contract permits it).
+  //   - Skips when this.db is missing or has no .query (test-injection path).
+  //
+  // Returns one of:
+  //   { ok: true,  sessionId, participantCount }
+  //   { ok: true,  skipped: true, reason: 'already_persisted' }
+  //   { ok: false, reason: 'no_lobby' | 'wrong_phase' | 'no_final_reveal'
+  //                       | 'in_progress' | 'no_db' | 'persist_failed' }
+  // -------------------------------------------------------------------------
+
+  async persistSessionAndStats(lobby) {
+    if (!lobby || !lobby.gameData) return { ok: false, reason: 'no_lobby' };
+    if (lobby.gameData.phase !== 'FINAL_REVEAL') return { ok: false, reason: 'wrong_phase' };
+    if (!lobby.gameData.finalReveal) return { ok: false, reason: 'no_final_reveal' };
+    if (lobby.gameData.persisted) return { ok: true, skipped: true, reason: 'already_persisted' };
+    if (lobby.gameData.persistenceStarted) return { ok: false, reason: 'in_progress' };
+    if (!this.db || typeof this.db.query !== 'function') return { ok: false, reason: 'no_db' };
+
+    lobby.gameData.persistenceStarted = true;
+
+    const useTransaction = !!(this.db.pool && typeof this.db.pool.connect === 'function');
+    let client = null;
+    try {
+      if (useTransaction) {
+        client = await this.db.pool.connect();
+        await client.query('BEGIN');
+      }
+      const queryFn = client ? client.query.bind(client) : this.db.query;
+
+      // ---- Build session row ------------------------------------------------
+      const archive = lobby.gameData.decodedArchive || {};
+      const fr = lobby.gameData.finalReveal || {};
+      const scenarioTitle =
+        (typeof archive.title === 'string' && archive.title.trim()) ? archive.title.trim()
+        : (typeof fr.caseTitle === 'string' && fr.caseTitle.trim()) ? fr.caseTitle.trim()
+        : (typeof fr.title === 'string' && fr.title.trim()) ? fr.title.trim()
+        : null;
+
+      const hostUserId =
+        (lobby.mode === 'HUMAN' && Number.isFinite(lobby.hostId)) ? lobby.hostId
+        : (Number.isFinite(lobby.creatorId)) ? lobby.creatorId
+        : (Number.isFinite(lobby.hostId)) ? lobby.hostId
+        : null;
+
+      const sessionParams = [
+        String(lobby.id),
+        hostUserId,
+        lobby.mode || 'UNKNOWN',
+        lobby.gameData.roleRevealMode || lobby.gameData.revealMode || lobby.roleRevealMode || 'normal',
+        lobby.config ? JSON.stringify(lobby.config) : null,
+        lobby.gameData.outcome || null,
+        scenarioTitle,
+        lobby.gameData.archiveBase64 || lobby.gameData.archive_b64 || lobby.archive_b64 || null,
+        JSON.stringify(lobby.gameData.votingHistory || []),
+        JSON.stringify(lobby.gameData.eliminatedIds || []),
+        JSON.stringify(fr),
+        lobby.createdAt || lobby.gameData.startedAt || null,
+      ];
+
+      const sessionResult = await queryFn(
+        `INSERT INTO game_sessions
+           (id, host_user_id, host_mode, reveal_mode, custom_config, outcome,
+            scenario_title, archive_b64, voting_history, eliminated_ids,
+            final_reveal, started_at, ended_at)
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9::jsonb, $10::jsonb,
+                 $11::jsonb, $12, NOW())
+         ON CONFLICT (id) DO NOTHING
+         RETURNING id`,
+        sessionParams
+      );
+
+      const inserted = !!(sessionResult && sessionResult.rows && sessionResult.rows.length);
+      if (!inserted) {
+        // Another path already persisted this session — finish cleanly without
+        // double-counting stats.
+        if (client) await client.query('COMMIT');
+        lobby.gameData.persisted = true;
+        return { ok: true, skipped: true, reason: 'already_persisted' };
+      }
+
+      // ---- Build participant + stats payloads ------------------------------
+      const players = Array.from(lobby.players.values())
+        .filter(p => p && p.id && p.username);
+      const roleAssignments = lobby.gameData.roleAssignments || {};
+      const votingHistory = Array.isArray(lobby.gameData.votingHistory) ? lobby.gameData.votingHistory : [];
+      const outcome = lobby.gameData.outcome || null;
+      const totalRounds =
+        (Array.isArray(archive.clues) && archive.clues.length > 0) ? archive.clues.length
+        : (Array.isArray(lobby.gameData.clues) && lobby.gameData.clues.length > 0) ? lobby.gameData.clues.length
+        : (Array.isArray(votingHistory) ? votingHistory.length : 0);
+
+      let participantCount = 0;
+      for (const p of players) {
+        const isHost = !!p.isHost;
+        let gameRole = null;
+        let storyCharacterName = null;
+        let storyCharacterRole = null;
+        let eliminatedAtRound = null;
+        let wasWinner = null;
+
+        if (!isHost) {
+          const rec = getRoleAssignment(lobby, p.id) || roleAssignments[p.id] || null;
+          if (rec) {
+            gameRole = rec.gameRole || null;
+            storyCharacterName = rec.storyCharacterName || rec.characterName || null;
+            storyCharacterRole = rec.storyCharacterRole || rec.characterRole || null;
+          }
+          // Eliminated-round lookup using the canonical id helper.
+          for (const h of votingHistory) {
+            if (h && h.eliminatedId !== undefined && h.eliminatedId !== null && sameId(h.eliminatedId, p.id)) {
+              eliminatedAtRound = h.round || null;
+              break;
+            }
+          }
+          // Winner determination from outcome + role.
+          const isMafiozo = gameRole === 'mafiozo';
+          if (outcome === 'investigators_win') wasWinner = !isMafiozo;
+          else if (outcome === 'mafiozo_survives') wasWinner = isMafiozo;
+          // otherwise null (tie/unknown)
+        }
+
+        await queryFn(
+          `INSERT INTO game_participants
+             (game_id, user_id, username, was_host, game_role,
+              story_character_name, story_character_role,
+              eliminated_at_round, was_winner)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           ON CONFLICT (game_id, user_id) DO NOTHING`,
+          [String(lobby.id), p.id, p.username, isHost, gameRole,
+           storyCharacterName, storyCharacterRole, eliminatedAtRound, wasWinner]
+        );
+        participantCount++;
+
+        // Stats: only non-host real players, only when we just inserted the
+        // session row (idempotency boundary).
+        if (!isHost) {
+          const survivedRounds = (eliminatedAtRound !== null && Number.isFinite(eliminatedAtRound))
+            ? eliminatedAtRound
+            : totalRounds;
+          await queryFn(
+            `INSERT INTO user_stats
+               (user_id, games_played, wins, losses,
+                times_mafiozo, times_innocent, times_obvious_suspect,
+                total_survival_rounds, favorite_mode, last_played_at)
+             VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, NOW())
+             ON CONFLICT (user_id) DO UPDATE SET
+               games_played          = user_stats.games_played + 1,
+               wins                  = user_stats.wins + EXCLUDED.wins,
+               losses                = user_stats.losses + EXCLUDED.losses,
+               times_mafiozo         = user_stats.times_mafiozo + EXCLUDED.times_mafiozo,
+               times_innocent        = user_stats.times_innocent + EXCLUDED.times_innocent,
+               times_obvious_suspect = user_stats.times_obvious_suspect + EXCLUDED.times_obvious_suspect,
+               total_survival_rounds = user_stats.total_survival_rounds + EXCLUDED.total_survival_rounds,
+               favorite_mode         = COALESCE(EXCLUDED.favorite_mode, user_stats.favorite_mode),
+               last_played_at        = EXCLUDED.last_played_at`,
+            [
+              p.id,
+              wasWinner === true ? 1 : 0,
+              wasWinner === false ? 1 : 0,
+              gameRole === 'mafiozo' ? 1 : 0,
+              gameRole === 'innocent' ? 1 : 0,
+              gameRole === 'obvious_suspect' ? 1 : 0,
+              survivedRounds,
+              lobby.gameData.roleRevealMode || lobby.roleRevealMode || null,
+            ]
+          );
+        }
+      }
+
+      if (client) await client.query('COMMIT');
+      lobby.gameData.persisted = true;
+      return { ok: true, sessionId: lobby.id, participantCount };
+    } catch (err) {
+      if (client) {
+        try { await client.query('ROLLBACK'); } catch (_) { /* swallow */ }
+      }
+      lobby.gameData.persistenceStarted = false; // allow a future retry on transient error
+      const msg = err && err.message ? String(err.message).slice(0, 120) : 'unknown';
+      const code = err && err.code ? String(err.code) : '';
+      console.warn('[persist] failed:', code || msg);
+      return { ok: false, reason: 'persist_failed' };
+    } finally {
+      if (client && typeof client.release === 'function') client.release();
+    }
   }
 
   // -------------------------------------------------------------------------
