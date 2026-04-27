@@ -23,6 +23,37 @@ const { callGemini } = require('./geminiClient');
 const { callOpenRouter, isConfigured: openrouterConfigured } = require('./openrouterClient');
 const { archivePrompt, archivePromptStrict, narrationPrompt } = require('./prompts');
 const { safeJsonParse, validateArchive, validateNarration } = require('./validators');
+const { logAiGeneration } = require('../analytics');
+
+// ---------------------------------------------------------------------------
+// Telemetry helpers — tiny, internal, fire-and-forget.
+// ---------------------------------------------------------------------------
+
+/**
+ * Map a thrown provider error to a short, secret-free classification.
+ * The original err.message may contain provider response bodies — never
+ * forward it to the analytics row directly.
+ */
+function classifyProviderError(err) {
+  const m = err && err.message ? String(err.message).toLowerCase() : '';
+  if (m.includes('timeout') || m.includes('aborted')) return 'timeout';
+  if (m.includes('429') || m.includes('quota') || m.includes('rate limit')
+      || m.includes('401') || m.includes('403') || m.includes('unauthorized')
+      || m.includes('forbidden')) return 'quota_or_auth_error';
+  if (m.includes('json') || m.includes('parse') || m.includes('unexpected token')) return 'malformed_json';
+  return 'provider_error';
+}
+
+/**
+ * Fire-and-forget wrapper. The default logger never rejects, but the .catch
+ * is defensive against future changes.
+ */
+function logAi(args) {
+  try {
+    const p = logAiGeneration(args);
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  } catch { /* swallow */ }
+}
 
 // ---------------------------------------------------------------------------
 // Built-in fallback content. The game must always be playable, even when
@@ -69,6 +100,7 @@ const FALLBACK_NARRATION = '...الكبير ساكت دلوقتي';
 async function tryGeminiArchive(input, modelName, { strict = false } = {}) {
   if (!config.gemini.apiKey) return null;
   if (!modelName) return null;
+  const start = Date.now();
   try {
     const raw = await callGemini({
       modelName,
@@ -78,20 +110,34 @@ async function tryGeminiArchive(input, modelName, { strict = false } = {}) {
       maxOutputTokens: config.gemini.archiveMaxOutputTokens,
     });
     const parsed = safeJsonParse(raw);
+    if (!parsed) {
+      console.warn(`[ai] gemini(${modelName}) archive invalid (malformed_json)`);
+      logAi({ task: 'archive', source: 'gemini', model: modelName,
+        latencyMs: Date.now() - start, ok: false, validatorReason: 'malformed_json' });
+      return null;
+    }
     const err = validateArchive(parsed);
     if (err) {
       console.warn(`[ai] gemini(${modelName}) archive invalid (${err})`);
+      logAi({ task: 'archive', source: 'gemini', model: modelName,
+        latencyMs: Date.now() - start, ok: false, validatorReason: 'validator_rejected' });
       return null;
     }
+    logAi({ task: 'archive', source: 'gemini', model: modelName,
+      latencyMs: Date.now() - start, ok: true });
     return parsed;
   } catch (err) {
     console.warn(`[ai] gemini(${modelName}) archive failed:`, err.message);
+    logAi({ task: 'archive', source: 'gemini', model: modelName,
+      latencyMs: Date.now() - start, ok: false, validatorReason: classifyProviderError(err) });
     return null;
   }
 }
 
 async function tryOpenRouterArchive(input) {
   if (!openrouterConfigured()) return null;
+  const orModel = config.openrouter.fallbackModel;
+  const start = Date.now();
   try {
     const raw = await callOpenRouter({
       userPrompt: archivePromptStrict(input),
@@ -100,14 +146,26 @@ async function tryOpenRouterArchive(input) {
       maxTokens: config.openrouter.archiveMaxTokens,
     });
     const parsed = safeJsonParse(raw);
+    if (!parsed) {
+      console.warn('[ai] openrouter archive invalid (malformed_json)');
+      logAi({ task: 'archive', source: 'openrouter', model: orModel,
+        latencyMs: Date.now() - start, ok: false, validatorReason: 'malformed_json' });
+      return null;
+    }
     const err = validateArchive(parsed);
     if (err) {
       console.warn(`[ai] openrouter archive invalid (${err})`);
+      logAi({ task: 'archive', source: 'openrouter', model: orModel,
+        latencyMs: Date.now() - start, ok: false, validatorReason: 'validator_rejected' });
       return null;
     }
+    logAi({ task: 'archive', source: 'openrouter', model: orModel,
+      latencyMs: Date.now() - start, ok: true });
     return parsed;
   } catch (err) {
     console.warn('[ai] openrouter archive failed:', err.message);
+    logAi({ task: 'archive', source: 'openrouter', model: orModel,
+      latencyMs: Date.now() - start, ok: false, validatorReason: classifyProviderError(err) });
     return null;
   }
 }
@@ -115,6 +173,7 @@ async function tryOpenRouterArchive(input) {
 async function tryGeminiNarration(prompt, forbiddenTerms) {
   if (!config.gemini.apiKey) return null;
   const modelName = config.gemini.narrationModel;
+  const start = Date.now();
   try {
     const raw = await callGemini({
       modelName,
@@ -126,17 +185,25 @@ async function tryGeminiNarration(prompt, forbiddenTerms) {
     const cleaned = validateNarration(raw, { forbiddenTerms });
     if (!cleaned) {
       console.warn(`[ai] gemini(${modelName}) narration rejected by validator`);
+      logAi({ task: 'narration', source: 'gemini', model: modelName,
+        latencyMs: Date.now() - start, ok: false, validatorReason: 'validator_rejected' });
       return null;
     }
+    logAi({ task: 'narration', source: 'gemini', model: modelName,
+      latencyMs: Date.now() - start, ok: true });
     return cleaned;
   } catch (err) {
     console.warn(`[ai] gemini(${modelName}) narration failed:`, err.message);
+    logAi({ task: 'narration', source: 'gemini', model: modelName,
+      latencyMs: Date.now() - start, ok: false, validatorReason: classifyProviderError(err) });
     return null;
   }
 }
 
 async function tryOpenRouterNarration(prompt, forbiddenTerms) {
   if (!openrouterConfigured()) return null;
+  const orModel = config.openrouter.fallbackModel;
+  const start = Date.now();
   try {
     const raw = await callOpenRouter({
       userPrompt: prompt,
@@ -147,11 +214,17 @@ async function tryOpenRouterNarration(prompt, forbiddenTerms) {
     const cleaned = validateNarration(raw, { forbiddenTerms });
     if (!cleaned) {
       console.warn('[ai] openrouter narration rejected by validator');
+      logAi({ task: 'narration', source: 'openrouter', model: orModel,
+        latencyMs: Date.now() - start, ok: false, validatorReason: 'validator_rejected' });
       return null;
     }
+    logAi({ task: 'narration', source: 'openrouter', model: orModel,
+      latencyMs: Date.now() - start, ok: true });
     return cleaned;
   } catch (err) {
     console.warn('[ai] openrouter narration failed:', err.message);
+    logAi({ task: 'narration', source: 'openrouter', model: orModel,
+      latencyMs: Date.now() - start, ok: false, validatorReason: classifyProviderError(err) });
     return null;
   }
 }
@@ -199,6 +272,8 @@ async function generateSealedArchive(input = {}) {
   }
 
   // Rung 4: built-in static scenario
+  logAi({ task: 'archive_fallback', source: 'fallback', model: 'built-in',
+    latencyMs: 0, ok: true, validatorReason: 'fallback_used' });
   return { source: 'fallback', archive: FALLBACK_ARCHIVE, note: FALLBACK_NOTE_AR };
 }
 
@@ -221,6 +296,8 @@ async function narrate({ phase, context, forbiddenTerms } = {}) {
   const fromOpenRouter = await tryOpenRouterNarration(prompt, forbiddenTerms);
   if (fromOpenRouter) return { source: 'openrouter', model: config.openrouter.fallbackModel, line: fromOpenRouter };
 
+  logAi({ task: 'narration_fallback', source: 'fallback', model: 'built-in',
+    latencyMs: 0, ok: true, validatorReason: 'fallback_used' });
   return { source: 'fallback', line: FALLBACK_NARRATION };
 }
 
