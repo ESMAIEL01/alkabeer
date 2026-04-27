@@ -251,6 +251,43 @@ function finalRevealPolishPrompt(input) {
   ].filter(Boolean).join('\n');
 }
 
+// ---------------------------------------------------------------------------
+// Profile bio writer (D5).
+//
+// User-facing — the rough idea is theirs, the rewritten bio is rendered
+// as their own text on the profile page. Constraints reflect the Mafiozo
+// noir tone + the protective denylist (no URLs, no emails, no phones,
+// no @mentions, no #hashtags, no markdown, no AI disclaimers).
+// ---------------------------------------------------------------------------
+
+function profileBioPrompt(input) {
+  const { rawIdea, username } = input || {};
+  const safeIdea = typeof rawIdea === 'string' ? rawIdea.trim().slice(0, 300) : '';
+  const safeUsername = typeof username === 'string' ? username.trim().slice(0, 60) : 'لاعب';
+  return [
+    `إنت "الكبير"، راوي مصري سينمائي بأسلوب نوار. اكتب سيرة قصيرة لـ Mafiozo player.`,
+    `اسم اللاعب: ${safeUsername}`,
+    `فكرته: ${safeIdea}`,
+    ``,
+    `قواعد صارمة:`,
+    `- نص عربي فقط بنسبة ≥60%.`,
+    `- بين 80 و 500 حرف.`,
+    `- جملتين أو ثلاثة بحد أقصى.`,
+    `- أسلوب نوار سينمائي، مش طفولي، مش مبالغ فيه.`,
+    `- ممنوع روابط (http/https/www).`,
+    `- ممنوع إيميلات أو أرقام تليفون أو @mentions أو #hashtags.`,
+    `- ممنوع markdown (## أو ** أو code blocks).`,
+    `- ممنوع emojis.`,
+    `- ممنوع تخترع جرائم حقيقية أو أحداث تاريخية.`,
+    `- ممنوع تقول إنك ذكاء اصطناعي.`,
+    `- ممنوع كلمة "undefined".`,
+    `- ممنوع JSON أو { } أو [ ].`,
+    `- يفضل ذكر "Mafiozo" كاسم اللعبة. "الكبير" راوي/مضيف، مش اسم المنتج.`,
+    ``,
+    `أرجع نص عربي فقط، بدون أي شرح زيادة.`,
+  ].join('\n');
+}
+
 module.exports = {
   loadKnowledge,
   ALKABEER_PERSONA,
@@ -260,4 +297,5 @@ module.exports = {
   voteResultPolishPrompt,
   clueTransitionPolishPrompt,
   finalRevealPolishPrompt,
+  profileBioPrompt,
 };

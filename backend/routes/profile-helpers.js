@@ -132,9 +132,45 @@ function mapStatsRow(row) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// AI bio request validator (D5).
+//
+// rawIdea is the user's free-text seed for the AI bio writer. The helper
+// trims, length-checks (10..300), and rejects URLs / script tags. We
+// deliberately reject URLs at the request boundary so the AI provider
+// never sees them in the prompt body.
+// ---------------------------------------------------------------------------
+
+const BIO_AI_RAW_MIN = 10;
+const BIO_AI_RAW_MAX = 300;
+
+function validateBioAiRequest(body) {
+  const b = (body && typeof body === 'object') ? body : {};
+  if (typeof b.rawIdea !== 'string') {
+    return { ok: false, error: 'لازم تكتب فكرة مختصرة عن نفسك.' };
+  }
+  const trimmed = b.rawIdea.replace(/[\r\n]+/g, ' ').trim();
+  if (trimmed.length < BIO_AI_RAW_MIN) {
+    return { ok: false, error: `الفكرة لازم تكون ${BIO_AI_RAW_MIN} حروف على الأقل.` };
+  }
+  if (trimmed.length > BIO_AI_RAW_MAX) {
+    return { ok: false, error: `الفكرة طويلة جداً (الحد الأقصى ${BIO_AI_RAW_MAX} حرف).` };
+  }
+  if (/<\s*script/i.test(trimmed)) {
+    return { ok: false, error: 'الفكرة فيها شيء غير آمن.' };
+  }
+  if (/\b(?:https?:\/\/|www\.)\S+/i.test(trimmed)) {
+    return { ok: false, error: 'لا تكتب روابط داخل الفكرة.' };
+  }
+  return { ok: true, normalized: { rawIdea: trimmed } };
+}
+
 module.exports = {
   validateAndNormalizeProfileInput,
+  validateBioAiRequest,
   mapProfileRow,
   mapStatsRow,
   LIMITS,
+  BIO_AI_RAW_MIN,
+  BIO_AI_RAW_MAX,
 };

@@ -24,11 +24,14 @@ const { callOpenRouter, isConfigured: openrouterConfigured } = require('./openro
 const {
   archivePrompt, archivePromptStrict, narrationPrompt,
   voteResultPolishPrompt, clueTransitionPolishPrompt, finalRevealPolishPrompt,
+  profileBioPrompt,
 } = require('./prompts');
 const {
   safeJsonParse, validateArchive, validateNarration,
   validatePolishLine, validateFinalRevealPolish,
+  validateBio,
 } = require('./validators');
+const { buildFallbackBio } = require('./bio-fallback');
 const { logAiGeneration } = require('../analytics');
 
 // ---------------------------------------------------------------------------
@@ -434,12 +437,36 @@ async function embellishFinalReveal(input) {
   return null;
 }
 
+/**
+ * Polish a user-supplied rough idea into a Mafiozo-noir bio.
+ * Returns { source, model?, bio } where source is one of
+ * 'gemini' | 'openrouter' | 'fallback'. NEVER throws.
+ */
+async function writeProfileBio(input) {
+  const prompt = profileBioPrompt(input || {});
+  const validator = (raw) => validateBio(raw);
+  const task = 'profile_bio';
+
+  const fromGemini = await tryGeminiPolish(prompt, validator, task);
+  if (fromGemini) return { source: 'gemini', model: config.gemini.narrationModel, bio: fromGemini };
+
+  const fromOpenRouter = await tryOpenRouterPolish(prompt, validator, task);
+  if (fromOpenRouter) return { source: 'openrouter', model: config.openrouter.fallbackModel, bio: fromOpenRouter };
+
+  // Deterministic fallback. Log a fallback row so admin analytics still
+  // sees the bio attempt. Metadata-only (no rawIdea, no bio body).
+  logAi({ task, source: 'fallback', model: 'built-in',
+    latencyMs: 0, ok: true, validatorReason: 'fallback_used' });
+  return { source: 'fallback', bio: buildFallbackBio(input || {}) };
+}
+
 module.exports = {
   generateSealedArchive,
   narrate,
   embellishVoteResult,
   embellishClueTransition,
   embellishFinalReveal,
+  writeProfileBio,
   // Test/diagnostic exports — not part of the route surface.
   _validateArchive: validateArchive,
   _fallbackArchive: FALLBACK_ARCHIVE,

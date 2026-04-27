@@ -227,12 +227,83 @@ function validateFinalRevealPolish(text) {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Profile bio validator (D5).
+//
+// Stricter than narration: bios are rendered on a public-ish surface
+// (any logged-in user fetching their own profile sees it; a future
+// public profile page will too). We reject URLs, emails, phones,
+// @mentions, hashtags, markdown, code fences, AI disclaimers, JSON
+// fragments, and English-dominant content. 80..500 chars.
+// ---------------------------------------------------------------------------
+
+const BIO_MIN_LEN = 80;
+const BIO_MAX_LEN = 500;
+
+const BIO_FORBIDDEN_TERMS = [
+  'undefined',
+  'gameRole',
+  'roleAssignments',
+  'as an AI',
+  'I cannot',
+  'كذكاء اصطناعي',
+  'كنموذج لغة',
+];
+
+// Patterns that immediately reject a bio.
+const URL_RE   = /\b(?:https?:\/\/|www\.)\S+/i;
+const EMAIL_RE = /\b[\w.+-]+@[\w-]+\.[a-z]{2,}\b/i;
+// Conservative phone heuristic: 7+ consecutive digits, with optional + and
+// internal separators. Also catches Arabic-Indic digits.
+const PHONE_RE = /(?:\+?[\d٠-٩][\d٠-٩\s\-]{6,})/;
+const MENTION_RE = /(?:^|\s)@\w/;
+const HASHTAG_RE = /(?:^|\s)#\S/;
+
+function validateBio(text) {
+  if (typeof text !== 'string') return null;
+  // Reject code fences in the raw input (validateNarration would silently
+  // strip them; bios should be rejected outright).
+  if (/```/.test(text)) return null;
+
+  const cleaned = text.replace(/[\r\n]+/g, ' ').trim();
+  if (cleaned.length < BIO_MIN_LEN || cleaned.length > BIO_MAX_LEN) return null;
+
+  // Markdown / heading / bold rejection.
+  if (/^#{1,6}\s/m.test(cleaned)) return null;
+  if (/^\s*[*_]{2,}/m.test(cleaned)) return null;
+  if (/^\s*[{\[]/.test(cleaned)) return null;
+
+  // URL / email / phone / mention / hashtag — never allowed.
+  if (URL_RE.test(cleaned))   return null;
+  if (EMAIL_RE.test(cleaned)) return null;
+  if (PHONE_RE.test(cleaned)) return null;
+  if (MENTION_RE.test(cleaned)) return null;
+  if (HASHTAG_RE.test(cleaned)) return null;
+
+  // Hidden tokens / AI disclaimers.
+  const lower = cleaned.toLowerCase();
+  for (const t of BIO_FORBIDDEN_TERMS) {
+    if (lower.includes(String(t).toLowerCase())) return null;
+  }
+
+  // Arabic-dominant guard (≥60% of letters Arabic script).
+  const letters = cleaned.match(/[\p{L}]/gu) || [];
+  if (letters.length === 0) return null;
+  const ar = letters.filter(ch => ARABIC_SCRIPT_RE.test(ch)).length;
+  if (ar / letters.length < 0.6) return null;
+
+  return cleaned;
+}
+
 module.exports = {
   safeJsonParse,
   validateArchive,
   validateNarration,
   validatePolishLine,
   validateFinalRevealPolish,
+  validateBio,
   FINAL_REVEAL_FIELD_LIMITS,
   NARRATION_MAX_LEN,
+  BIO_MIN_LEN,
+  BIO_MAX_LEN,
 };

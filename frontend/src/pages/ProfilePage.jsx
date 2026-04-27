@@ -51,6 +51,12 @@ export default function ProfilePage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState('');
 
+  // D5 — AI bio writer state. Independent of save state so user can
+  // iterate freely without affecting the underlying form.
+  const [aiBioBusy, setAiBioBusy] = useState(false);
+  const [aiBioPreview, setAiBioPreview] = useState(null);  // { bio, source }
+  const [aiBioError, setAiBioError] = useState('');
+
   const loadProfile = useCallback(async () => {
     setLoading(true);
     setLoadError('');
@@ -102,6 +108,47 @@ export default function ProfilePage() {
   const cancelEdit = () => {
     setEditing(false);
     setSaveError('');
+    setAiBioPreview(null);
+    setAiBioError('');
+  };
+
+  // D5 — AI bio writer. Uses the current bio textarea contents as the
+  // rough idea. Never overwrites the bio automatically; the user has
+  // to press "استخدم النص" to copy the suggestion into the textarea.
+  const requestAiBio = async () => {
+    setAiBioBusy(true);
+    setAiBioError('');
+    setAiBioPreview(null);
+    const rawIdea = (draft.bio || '').trim();
+    if (rawIdea.length < 10) {
+      setAiBioError('اكتب فكرة مختصرة (10 حروف على الأقل) عشان الكبير يقدر يعيد صياغتها.');
+      setAiBioBusy(false);
+      return;
+    }
+    try {
+      const resp = await api.post('/api/profile/bio/ai', { rawIdea });
+      if (resp && typeof resp.bio === 'string' && resp.bio.length > 0) {
+        setAiBioPreview({ bio: resp.bio, source: resp.source || 'fallback' });
+      } else {
+        setAiBioError('الكبير ما رجّعش نص صالح. حاول تاني.');
+      }
+    } catch (err) {
+      setAiBioError(err.message || 'تعذّر التواصل مع الكبير دلوقتي.');
+    } finally {
+      setAiBioBusy(false);
+    }
+  };
+
+  const acceptAiBio = () => {
+    if (!aiBioPreview) return;
+    setDraft(d => ({ ...d, bio: aiBioPreview.bio }));
+    setAiBioPreview(null);
+    setAiBioError('');
+  };
+
+  const rejectAiBio = () => {
+    setAiBioPreview(null);
+    setAiBioError('');
   };
 
   const saveEdit = async (e) => {
@@ -228,6 +275,42 @@ export default function ProfilePage() {
               <small style={{ color: 'var(--ak-text-muted)', font: 'var(--ak-t-caption)' }}>
                 {draft.bio.trim().length} / 500
               </small>
+              <div className="s-bio-ai-block">
+                <AkButton
+                  variant="ghost"
+                  type="button"
+                  onClick={requestAiBio}
+                  disabled={aiBioBusy || saving}
+                >
+                  {aiBioBusy ? 'الكبير بيكتب...' : 'اكتبها بأسلوب Mafiozo'}
+                </AkButton>
+                {aiBioError && (
+                  <div className="s-profile-banner err" style={{ marginTop: 'var(--ak-space-2)' }}>
+                    ⚠ {aiBioError}
+                  </div>
+                )}
+                {aiBioPreview && (
+                  <div className="s-bio-ai-preview">
+                    <div className="s-bio-ai-preview-head">
+                      <span className="ak-overline">اقتراح الكبير</span>
+                      <span style={{ font: 'var(--ak-t-caption)', color: 'var(--ak-text-muted)' }}>
+                        {aiBioPreview.source === 'gemini'      ? 'مصدر: Gemini'
+                          : aiBioPreview.source === 'openrouter' ? 'مصدر: OpenRouter'
+                          : 'مصدر: نص احتياطي'}
+                      </span>
+                    </div>
+                    <div>{aiBioPreview.bio}</div>
+                    <div className="s-bio-ai-preview-actions">
+                      <AkButton variant="primary" type="button" onClick={acceptAiBio} disabled={saving}>
+                        استخدم النص
+                      </AkButton>
+                      <AkButton variant="ghost" type="button" onClick={rejectAiBio} disabled={saving}>
+                        تجاهل
+                      </AkButton>
+                    </div>
+                  </div>
+                )}
+              </div>
             </label>
             <div className="s-profile-edit-actions">
               <AkButton variant="primary" type="submit" disabled={saving}>

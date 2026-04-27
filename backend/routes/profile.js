@@ -10,10 +10,12 @@ const { query } = require('../database');
 const { authRequired } = require('../middleware/auth');
 const {
   validateAndNormalizeProfileInput,
+  validateBioAiRequest,
   mapProfileRow,
   mapStatsRow,
   LIMITS,
 } = require('./profile-helpers');
+const ai = require('../services/ai');
 
 const router = express.Router();
 
@@ -73,9 +75,44 @@ router.put('/me', authRequired, async (req, res, next) => {
   }
 });
 
+/**
+ * POST /api/profile/bio/ai — D5 AI bio writer.
+ *
+ * Body: { rawIdea: string }
+ * Response: { bio, source }
+ *
+ * Generates a Mafiozo-noir bio suggestion. Does NOT persist anything —
+ * the user accepts/rejects on the frontend, and saves through the
+ * existing PUT /api/profile/me path.
+ *
+ * AI privacy: writeProfileBio uses C1 logAi metadata-only logging
+ * (task=profile_bio). The rawIdea is NOT logged; the generated bio is
+ * NOT logged. The AI provider chain is unchanged (Gemini Flash →
+ * OpenRouter → deterministic fallback).
+ */
+router.post('/bio/ai', authRequired, async (req, res, next) => {
+  const v = validateBioAiRequest(req.body);
+  if (!v.ok) return res.status(400).json({ error: v.error });
+  try {
+    const result = await ai.writeProfileBio({
+      rawIdea: v.normalized.rawIdea,
+      username: (req.user && req.user.username) || null,
+    });
+    if (!result || !result.bio) {
+      // writeProfileBio always returns at least a fallback bio; this is
+      // belt-and-suspenders.
+      return res.status(503).json({ error: 'الكبير ما قدرش يكتب الآن. حاول تاني بعد لحظات.' });
+    }
+    return res.json({ bio: result.bio, source: result.source || 'fallback' });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 module.exports = router;
 // Re-exported for convenience; canonical home is profile-helpers.js.
 module.exports.validateAndNormalizeProfileInput = validateAndNormalizeProfileInput;
+module.exports.validateBioAiRequest = validateBioAiRequest;
 module.exports.mapProfileRow = mapProfileRow;
 module.exports.mapStatsRow = mapStatsRow;
 module.exports.LIMITS = LIMITS;
