@@ -836,6 +836,584 @@ h1, h2, h3, h4, h5, h6 {
   margin-block-start: var(--ak-space-2);
 }
 
+/* ===========================================================================
+ * ARENA — the live game shell (CLUE_REVEAL / VOTING / VOTE_RESULT)
+ * =========================================================================== */
+.s-arena {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: var(--ak-space-5);
+}
+.s-arena-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-4) var(--ak-space-5);
+  margin-bottom: var(--ak-space-5);
+}
+.s-arena-top .ph {
+  font: var(--ak-t-overline);
+  color: var(--ak-gold);
+  letter-spacing: var(--ak-tracking-x-wide);
+  text-transform: uppercase;
+  direction: ltr;
+}
+.s-arena-top .timer {
+  font: var(--ak-t-mono);
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--ak-pair-timer-default-fg);
+  direction: ltr;
+}
+.s-arena-top .timer.warn   { color: var(--ak-pair-timer-warn-fg); }
+.s-arena-top .timer.urgent { color: var(--ak-pair-timer-urgent-fg); animation: timerUrgentPulse 1.2s ease-in-out infinite; }
+@keyframes timerUrgentPulse {
+  0%, 100% { text-shadow: 0 0 0 transparent; }
+  50%      { text-shadow: 0 0 18px var(--ak-crimson-glow); }
+}
+
+.s-arena-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: var(--ak-space-5);
+  align-items: start;
+}
+@media (max-width: 1024px) { .s-arena-grid { grid-template-columns: 1fr; } }
+
+.s-arena-stage {
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-6);
+  min-height: 60vh;
+  display: grid;
+  place-items: center;
+  position: relative;
+  overflow: hidden;
+}
+.s-arena-stage::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: var(--ak-bg-crimson-falloff);
+  pointer-events: none;
+  z-index: 0;
+}
+.s-arena-stage > * { position: relative; z-index: 1; }
+
+.s-arena-aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ak-space-4);
+}
+
+/* ----- CLUE_REVEAL — evidence-board card ---------------------------------- */
+.s-clue { width: 100%; max-width: 720px; text-align: center; }
+.s-clue-overline { display: block; margin-bottom: var(--ak-space-3); }
+.s-clue-card {
+  position: relative;
+  background: linear-gradient(135deg, rgba(20,8,9,0.85), rgba(28,13,14,0.85));
+  border: 1.5px solid var(--ak-border-gold-strong);
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-7) var(--ak-space-6);
+  box-shadow: var(--ak-shadow-panel), 0 0 32px rgba(212, 175, 55, 0.08);
+  margin-bottom: var(--ak-space-5);
+}
+.s-clue-card::before {
+  content: '';
+  position: absolute; inset: 8px;
+  border: 1px solid var(--ak-gold-soft);
+  border-radius: var(--ak-radius-lg);
+  pointer-events: none;
+  opacity: 0.5;
+}
+.s-clue-card blockquote {
+  font: var(--ak-t-h3);
+  color: var(--ak-text-strong);
+  margin: 0;
+  text-shadow: 0 0 20px rgba(212, 175, 55, 0.18);
+  line-height: 1.6;
+}
+.s-clue-card .quote-mark {
+  font: 800 3rem/1 var(--ak-font-display);
+  color: var(--ak-gold);
+  opacity: 0.6;
+  display: block;
+  margin-bottom: var(--ak-space-2);
+}
+.s-clue-instruction {
+  color: var(--ak-text-muted);
+  font: var(--ak-t-body);
+}
+
+/* ----- VOTING — judgment table ------------------------------------------- */
+.s-vote { width: 100%; max-width: 760px; text-align: center; }
+.s-vote h1 {
+  font: var(--ak-t-h1);
+  margin: var(--ak-space-3) 0 var(--ak-space-2);
+}
+.s-vote .progress {
+  font: var(--ak-t-mono);
+  color: var(--ak-gold);
+  letter-spacing: var(--ak-tracking-wide);
+  direction: ltr;
+  margin-bottom: var(--ak-space-5);
+}
+.s-vote-banner {
+  max-width: 480px;
+  margin: 0 auto var(--ak-space-4);
+  padding: var(--ak-space-3) var(--ak-space-4);
+  border-radius: var(--ak-radius-md);
+  font: var(--ak-t-body-sm);
+}
+.s-vote-banner.host    { background: rgba(0,0,0,0.45); border: 1px dashed var(--ak-border-soft-strong); color: var(--ak-text-muted); }
+.s-vote-banner.elim    { background: rgba(229,9,20,0.12); border: 1px solid var(--ak-border-red); color: var(--ak-text-on-danger); }
+.s-vote-banner.waiting { background: var(--ak-gold-tint); border: 1px solid var(--ak-border-gold-strong); color: var(--ak-gold); }
+.s-vote-banner.error   { background: var(--ak-pair-panel-danger-bg); border: 1px solid var(--ak-pair-panel-danger-border); color: var(--ak-pair-panel-danger-fg); }
+
+.s-vote-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--ak-space-3);
+  margin: 0 auto;
+  max-width: 600px;
+}
+@media (max-width: 720px) { .s-vote-grid { grid-template-columns: 1fr; } }
+.s-vote-candidate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ak-space-3);
+  padding: var(--ak-space-4) var(--ak-space-4);
+  background: var(--ak-surface-1);
+  border: 1.5px solid var(--ak-border-soft-strong);
+  border-radius: var(--ak-radius-md);
+  font: var(--ak-t-h4);
+  color: var(--ak-text-main);
+  cursor: pointer;
+  min-height: 64px;
+  transition: all var(--ak-dur-fast) var(--ak-ease-cinematic);
+}
+.s-vote-candidate:not(:disabled):hover {
+  border-color: var(--ak-border-red-strong);
+  transform: translateY(-1px);
+  box-shadow: var(--ak-glow-red-danger);
+}
+.s-vote-candidate:disabled { opacity: 0.55; cursor: not-allowed; }
+.s-vote-candidate.selected {
+  background: var(--ak-crimson-action);
+  border-color: var(--ak-crimson-stage);
+  color: var(--ak-text-on-crimson);
+  box-shadow: var(--ak-glow-red-warning);
+}
+.s-vote-candidate.selected.skip {
+  background: var(--ak-surface-2);
+  border-color: var(--ak-border-soft-strong);
+  color: var(--ak-text-strong);
+}
+
+/* ----- VOTE_RESULT — verdict panel --------------------------------------- */
+.s-result { width: 100%; max-width: 640px; text-align: center; }
+.s-result-icon {
+  font: 800 3rem/1 var(--ak-font-display);
+  margin-bottom: var(--ak-space-3);
+}
+.s-result-icon.gold   { color: var(--ak-gold); text-shadow: var(--ak-glow-gold-reveal); }
+.s-result-icon.crimson { color: var(--ak-crimson-stage); text-shadow: var(--ak-glow-red-reveal); }
+.s-result-icon.muted   { color: var(--ak-text-muted); }
+.s-result h1 {
+  font: var(--ak-t-h1);
+  margin: 0 0 var(--ak-space-3);
+}
+.s-result h1.gold    { color: var(--ak-gold); text-shadow: var(--ak-glow-gold-reveal); }
+.s-result h1.crimson { color: var(--ak-crimson-stage); text-shadow: var(--ak-glow-red-urgent); }
+.s-result-sub {
+  color: var(--ak-text-muted);
+  font: var(--ak-t-body-lg);
+  margin-bottom: var(--ak-space-5);
+}
+.s-result-tally {
+  background: rgba(0,0,0,0.5);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-md);
+  padding: var(--ak-space-4);
+  text-align: right;
+}
+.s-result-tally .head {
+  font: var(--ak-t-caption);
+  color: var(--ak-text-muted);
+  margin-bottom: var(--ak-space-3);
+  padding-bottom: var(--ak-space-2);
+  border-block-end: 1px solid var(--ak-border-soft);
+}
+.s-result-tally ul { list-style: none; padding: 0; margin: 0; }
+.s-result-tally li {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--ak-space-2) 0;
+  font: var(--ak-t-body);
+}
+.s-result-tally li + li { border-block-start: 1px solid var(--ak-border-soft); }
+.s-result-tally .count { color: var(--ak-gold); font: var(--ak-t-mono); direction: ltr; }
+
+/* ----- HOST CONTROL PANEL (right column) --------------------------------- */
+.s-host-panel {
+  background: linear-gradient(180deg, rgba(40,8,10,0.5), rgba(15,6,7,0.5));
+  border: 1px solid var(--ak-border-red);
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-4);
+}
+.s-host-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--ak-space-3);
+}
+.s-host-panel-head .label {
+  font: var(--ak-t-overline);
+  color: var(--ak-gold);
+  letter-spacing: var(--ak-tracking-x-wide);
+  text-transform: uppercase;
+  direction: ltr;
+}
+.s-host-panel-head .icon {
+  color: var(--ak-crimson-stage);
+}
+.s-host-toast {
+  margin-bottom: var(--ak-space-3);
+  padding: var(--ak-space-2) var(--ak-space-3);
+  border-radius: var(--ak-radius-md);
+  font: var(--ak-t-caption);
+  text-align: center;
+}
+.s-host-toast.ok  { background: var(--ak-success-tint); color: #c8eccd; border: 1px solid rgba(34,130,70,0.55); }
+.s-host-toast.err { background: var(--ak-pair-panel-danger-bg); color: var(--ak-pair-panel-danger-fg); border: 1px solid var(--ak-pair-panel-danger-border); }
+.s-host-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ak-space-2);
+  margin-bottom: var(--ak-space-3);
+}
+.s-host-row.full { grid-template-columns: 1fr; }
+.s-host-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ak-border-red), transparent);
+  margin: var(--ak-space-3) 0;
+}
+
+/* Compact ghost / danger button variants used inside the host panel */
+.ak-btn-host {
+  background: transparent;
+  color: var(--ak-text-main);
+  border-color: var(--ak-border-soft-strong);
+  font: var(--ak-t-button);
+  padding: 0.7rem 0.85rem;
+  min-height: 44px;
+}
+.ak-btn-host:not(:disabled):hover { background: var(--ak-surface-2); border-color: var(--ak-border-soft-strong); }
+.ak-btn-host.danger {
+  border-color: var(--ak-border-red-strong);
+  color: var(--ak-crimson-stage);
+}
+.ak-btn-host.danger:not(:disabled):hover { background: var(--ak-crimson-tint); }
+
+/* ----- PLAYER LIST (right column under host panel) ----------------------- */
+.s-player-list {
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-4);
+}
+.s-player-list .head {
+  font: var(--ak-t-overline);
+  color: var(--ak-gold);
+  text-transform: uppercase;
+  letter-spacing: var(--ak-tracking-x-wide);
+  direction: ltr;
+  display: block;
+  margin-bottom: var(--ak-space-3);
+  padding-bottom: var(--ak-space-2);
+  border-block-end: 1px solid var(--ak-border-soft);
+}
+.s-player-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ak-space-3);
+  padding: var(--ak-space-2) 0;
+}
+.s-player-row + .s-player-row { border-block-start: 1px solid var(--ak-border-soft); }
+.s-player-row .av {
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--ak-surface-2), var(--ak-bg-deep));
+  border: 2px solid var(--ak-border-soft-strong);
+  display: grid; place-items: center;
+  color: var(--ak-gold);
+  font: 800 0.85rem/1 var(--ak-font-display);
+  flex-shrink: 0;
+}
+.s-player-row.host .av      { border-color: var(--ak-gold); }
+.s-player-row.eliminated .av{ border-color: var(--ak-crimson-stage); opacity: 0.5; }
+.s-player-row .nm  { font: var(--ak-t-h4); }
+.s-player-row.eliminated .nm { color: var(--ak-text-faint); text-decoration: line-through; }
+.s-player-row .tag { font: var(--ak-t-caption); color: var(--ak-text-muted); margin-inline-start: auto; }
+.s-player-row.host .tag { color: var(--ak-gold); }
+
+/* ===========================================================================
+ * FINAL REVEAL — refreshed with ak-* tokens
+ * =========================================================================== */
+.s-final {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--ak-space-5);
+}
+.s-final-hero {
+  text-align: center;
+  padding: var(--ak-space-7) 0 var(--ak-space-6);
+  border-block-end: 1px solid var(--ak-border-soft);
+  margin-bottom: var(--ak-space-6);
+}
+.s-final-hero .winner-label {
+  font: var(--ak-t-overline);
+  color: var(--ak-gold);
+  letter-spacing: var(--ak-tracking-x-wide);
+  text-transform: uppercase;
+  direction: ltr;
+  display: block;
+  margin-bottom: var(--ak-space-3);
+}
+.s-final-hero h1 {
+  font: var(--ak-t-display);
+  margin: 0 0 var(--ak-space-3);
+  letter-spacing: var(--ak-tracking-tight);
+}
+.s-final-hero h1.gold    { color: var(--ak-gold); text-shadow: var(--ak-glow-gold-reveal); }
+.s-final-hero h1.crimson { color: var(--ak-crimson-stage); text-shadow: var(--ak-glow-red-reveal); }
+.s-final-hero p {
+  color: var(--ak-text-muted);
+  font: var(--ak-t-body-lg);
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.s-final-section {
+  margin-bottom: var(--ak-space-5);
+}
+.s-final-section .section-overline {
+  font: var(--ak-t-overline);
+  color: var(--ak-gold);
+  letter-spacing: var(--ak-tracking-x-wide);
+  text-transform: uppercase;
+  direction: ltr;
+  display: block;
+  margin-bottom: var(--ak-space-3);
+}
+.s-final-section h2 {
+  font: var(--ak-t-h2);
+  margin-bottom: var(--ak-space-3);
+}
+
+/* Case reconstruction card */
+.s-final-case {
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-6);
+}
+.s-final-case h2 { color: var(--ak-gold); }
+.s-final-case .story {
+  font: var(--ak-t-body);
+  line-height: 1.85;
+  white-space: pre-wrap;
+  margin-bottom: var(--ak-space-4);
+}
+.s-final-case .reconstruction {
+  border-inline-start: 3px solid var(--ak-crimson-action);
+  padding-inline-start: var(--ak-space-4);
+  font: var(--ak-t-body);
+  line-height: 1.85;
+  white-space: pre-wrap;
+  color: var(--ak-text-main);
+  margin-bottom: var(--ak-space-4);
+}
+.s-final-case .closing {
+  font: var(--ak-t-h4);
+  color: var(--ak-gold);
+  font-style: italic;
+}
+
+/* Truth card — the dramatic mafiozo reveal */
+.s-final-truth {
+  background: linear-gradient(135deg, rgba(229,9,20,0.16), rgba(28,13,14,0.6));
+  border: 2px solid var(--ak-crimson-stage);
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-6);
+  box-shadow: var(--ak-shadow-panel), var(--ak-glow-red-reveal);
+}
+.s-final-truth.gold {
+  background: linear-gradient(135deg, rgba(212,175,55,0.16), rgba(28,13,14,0.6));
+  border-color: var(--ak-gold);
+  box-shadow: var(--ak-shadow-panel), var(--ak-glow-gold-reveal);
+}
+.s-final-truth .accent-name {
+  font: var(--ak-t-h1);
+  color: var(--ak-crimson-stage);
+  margin: var(--ak-space-2) 0 var(--ak-space-2);
+}
+.s-final-truth.gold .accent-name { color: var(--ak-gold); }
+.s-final-truth .character-line {
+  font: var(--ak-t-body-lg);
+  margin-bottom: var(--ak-space-4);
+}
+.s-final-truth .character-line strong { color: var(--ak-text-strong); }
+.s-final-truth .detail {
+  font: var(--ak-t-body);
+  font-style: italic;
+  color: var(--ak-text-muted);
+  margin-bottom: var(--ak-space-4);
+}
+.s-final-truth .explanation {
+  font: var(--ak-t-body);
+  line-height: 1.85;
+}
+
+/* Generic info card used for obvious suspect, blind-mode coda, final paragraph */
+.s-final-card {
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-5);
+}
+.s-final-card.gold-edge   { border-color: var(--ak-border-gold-strong); }
+.s-final-card.danger-edge { border-color: var(--ak-border-red-strong); background: rgba(229,9,20,0.06); }
+.s-final-card .role-name {
+  font: var(--ak-t-h3);
+  color: var(--ak-gold);
+  margin: var(--ak-space-1) 0 var(--ak-space-2);
+}
+.s-final-card .character-line { font: var(--ak-t-body); margin-bottom: var(--ak-space-3); }
+.s-final-card .detail { font-style: italic; color: var(--ak-text-muted); margin-bottom: var(--ak-space-3); }
+.s-final-card p { font: var(--ak-t-body); line-height: 1.8; margin: 0; }
+
+/* Player roster grid */
+.s-final-roster {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--ak-space-3);
+}
+.s-final-player {
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-md);
+  padding: var(--ak-space-4);
+}
+.s-final-player.mafiozo  { border-color: var(--ak-crimson-stage); background: rgba(229,9,20,0.10); }
+.s-final-player.suspect  { border-color: var(--ak-gold); background: rgba(212,175,55,0.08); }
+.s-final-player .nm   { font: var(--ak-t-h4); color: var(--ak-gold); margin-bottom: var(--ak-space-1); }
+.s-final-player .ch   { font: var(--ak-t-body); margin-bottom: var(--ak-space-2); }
+.s-final-player .ch .role { color: var(--ak-text-muted); }
+.s-final-player .det  { font: var(--ak-t-body-sm); font-style: italic; color: var(--ak-text-muted); margin-bottom: var(--ak-space-3); }
+.s-final-player .row  { display: flex; justify-content: space-between; font: var(--ak-t-caption); }
+.s-final-player .role-tag        { font-weight: 700; color: var(--ak-text-muted); }
+.s-final-player.mafiozo .role-tag{ color: var(--ak-crimson-stage); }
+.s-final-player.suspect .role-tag{ color: var(--ak-gold); }
+.s-final-player .status         { color: var(--ak-text-muted); }
+
+/* Clue analysis grid */
+.s-final-clue-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--ak-space-3);
+}
+.s-final-clue {
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-md);
+  padding: var(--ak-space-4);
+}
+.s-final-clue .clue-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--ak-space-3);
+}
+.s-final-clue .clue-num   { font: var(--ak-t-h4); color: var(--ak-gold); }
+.s-final-clue .clue-type  { font: var(--ak-t-overline); color: var(--ak-text-muted); direction: ltr; letter-spacing: var(--ak-tracking-wide); }
+.s-final-clue blockquote  { font: var(--ak-t-body-lg); color: var(--ak-text-strong); margin: 0 0 var(--ak-space-3); line-height: 1.6; }
+.s-final-clue .row-label  { font: var(--ak-t-caption); color: var(--ak-text-muted); margin-bottom: var(--ak-space-1); display: block; letter-spacing: var(--ak-tracking-wide); }
+.s-final-clue .surface    { margin-bottom: var(--ak-space-3); font: var(--ak-t-body-sm); line-height: 1.7; color: var(--ak-text-main); }
+.s-final-clue .reality    { font: var(--ak-t-body-sm); line-height: 1.7; color: var(--ak-text-strong); }
+
+/* Voting timeline */
+.s-final-timeline { display: flex; flex-direction: column; gap: var(--ak-space-3); }
+.s-final-round {
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border-soft);
+  border-inline-start: 4px solid var(--ak-border-soft-strong);
+  border-radius: var(--ak-radius-md);
+  padding: var(--ak-space-3) var(--ak-space-4);
+}
+.s-final-round.caught { border-inline-start-color: var(--ak-gold); }
+.s-final-round.elim   { border-inline-start-color: var(--ak-crimson-stage); }
+.s-final-round .round-num {
+  font: var(--ak-t-h4);
+  color: var(--ak-gold);
+  margin-bottom: var(--ak-space-1);
+}
+.s-final-round .round-summary {
+  font: var(--ak-t-body);
+  line-height: 1.7;
+  margin-bottom: var(--ak-space-2);
+}
+.s-final-round .round-tally {
+  font: var(--ak-t-caption);
+  color: var(--ak-text-muted);
+  font-family: var(--ak-font-mono);
+  direction: ltr;
+}
+
+/* Dramatic beats */
+.s-final-beats { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--ak-space-2); }
+.s-final-beat {
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-md);
+  padding: var(--ak-space-3) var(--ak-space-4);
+  font: var(--ak-t-body);
+  line-height: 1.7;
+}
+.s-final-beat .marker { color: var(--ak-gold); margin-inline-end: var(--ak-space-2); }
+
+/* Final paragraph */
+.s-final-closing {
+  background: rgba(0,0,0,0.55);
+  border: 2px solid var(--ak-border-gold-strong);
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-6);
+  box-shadow: var(--ak-glow-gold-soft);
+}
+.s-final-closing.crimson {
+  border-color: var(--ak-crimson-stage);
+  box-shadow: 0 0 50px rgba(229,9,20,0.20);
+}
+.s-final-closing p {
+  font: var(--ak-t-body-lg);
+  line-height: 2;
+  margin: 0;
+  color: var(--ak-text-strong);
+  text-shadow: 0 0 20px var(--ak-crimson-glow);
+}
+
+/* CTAs */
+.s-final-cta {
+  display: flex;
+  gap: var(--ak-space-3);
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: var(--ak-space-5);
+}
+
 /* Role-card reveal — applied to ROLE_REVEAL screen card */
 @keyframes roleCardReveal {
   from {
@@ -896,9 +1474,25 @@ h1, h2, h3, h4, h5, h6 {
   animation: connectionBannerIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   backdrop-filter: blur(8px);
 }
-.connection-banner.warn  { background: rgba(229, 9, 20, 0.85); border-bottom: 1px solid #8b0000; }
-.connection-banner.info  { background: rgba(212, 175, 55, 0.85); color: #20140a; border-bottom: 1px solid #6b5618; }
-.connection-banner.ok    { background: rgba(34, 130, 70, 0.85); border-bottom: 1px solid #1d6e3a; }
+.connection-banner {
+  font: var(--ak-t-button);
+  z-index: var(--ak-z-banner);
+}
+.connection-banner.warn {
+  background: rgba(229, 9, 20, 0.92);
+  color: var(--ak-text-on-crimson);
+  border-bottom: 1px solid var(--ak-crimson-deep);
+}
+.connection-banner.info {
+  background: rgba(212, 175, 55, 0.92);
+  color: var(--ak-text-on-gold);
+  border-bottom: 1px solid var(--ak-gold-pressed);
+}
+.connection-banner.ok {
+  background: rgba(34, 130, 70, 0.92);
+  color: #e9f8ee;
+  border-bottom: 1px solid var(--ak-success);
+}
 
 /* ===========================================================================
  * Phase pill — small uppercase badge above CLUE_REVEAL / VOTING / VOTE_RESULT.
