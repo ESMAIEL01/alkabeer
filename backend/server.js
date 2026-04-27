@@ -19,6 +19,9 @@ const { Server } = require('socket.io');
 const db = require('./database');
 const authRoutes = require('./routes/auth');
 const scenarioRoutes = require('./routes/scenarios');
+const profileRoutes = require('./routes/profile');
+const statsRoutes = require('./routes/stats');
+const historyRoutes = require('./routes/history');
 const { authLimiter, aiLimiter } = require('./middleware/rateLimit');
 const GameManager = require('./game/GameManager');
 
@@ -81,6 +84,9 @@ app.get('/api/status', async (_req, res) => {
 // --- Routes ---------------------------------------------------------------
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/scenarios', aiLimiter, scenarioRoutes);
+app.use('/api/profile', profileRoutes);
+app.use('/api/stats',   statsRoutes);
+app.use('/api/history', historyRoutes);
 
 // 404 for unknown API routes
 app.use('/api', (_req, res) => {
