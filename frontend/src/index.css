@@ -386,6 +386,456 @@ h1, h2, h3, h4, h5, h6 {
 }
 .ak-brandmark img { display: block; }
 
+/* ===========================================================================
+ * AUTH SCREEN
+ * Adapted from previews/06-screens.html `.s-auth` pattern. Background uses
+ * scene-archive-room.png at 35% with a radial scrim. Glass card centered.
+ * =========================================================================== */
+.s-auth {
+  position: relative;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--ak-space-5);
+  isolation: isolate;
+}
+.s-auth::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: url('/design/scene-archive-room.png') center/cover no-repeat;
+  opacity: 0.32;
+  z-index: -1;
+}
+.s-auth::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(5,5,5,0.55) 0%, rgba(5,5,5,0.95) 100%);
+  z-index: -1;
+}
+.s-auth-card {
+  width: min(440px, 92vw);
+  background: rgba(15, 15, 15, 0.78);
+  backdrop-filter: var(--ak-blur-glass);
+  -webkit-backdrop-filter: var(--ak-blur-glass);
+  border: 1px solid var(--ak-border-gold);
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-6);
+  box-shadow: var(--ak-shadow-elevated), var(--ak-glow-gold-soft);
+}
+.s-auth-card .ak-brandmark { justify-content: center; width: 100%; margin-bottom: var(--ak-space-4); }
+.s-auth-card h1 { font: var(--ak-t-h2); text-align: center; margin: 0 0 var(--ak-space-2); }
+.s-auth-card .auth-sub { color: var(--ak-text-muted); text-align: center; font: var(--ak-t-caption); margin-bottom: var(--ak-space-5); }
+.s-auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: var(--ak-space-2);
+  background: rgba(0,0,0,0.35);
+  padding: var(--ak-space-1);
+  border-radius: var(--ak-radius-md);
+  margin-bottom: var(--ak-space-5);
+}
+.s-auth-tab {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--ak-text-muted);
+  font: var(--ak-t-button);
+  padding: 0.6rem 0.5rem;
+  border-radius: var(--ak-radius-sm);
+  cursor: pointer;
+  transition: all var(--ak-dur-fast) var(--ak-ease-cinematic);
+  min-height: 40px;
+}
+.s-auth-tab:hover { color: var(--ak-text-main); }
+.s-auth-tab[aria-pressed="true"] {
+  color: var(--ak-gold);
+  background: var(--ak-gold-tint);
+  border-color: var(--ak-border-gold-strong);
+}
+.s-auth-field {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  background: var(--ak-surface-input);
+  border: 1px solid var(--ak-border-soft-strong);
+  border-radius: var(--ak-radius-md);
+  color: var(--ak-text-main);
+  font: var(--ak-t-body);
+  outline: none;
+  transition: border-color var(--ak-dur-fast), box-shadow var(--ak-dur-fast);
+}
+.s-auth-field:focus { border-color: var(--ak-gold); box-shadow: var(--ak-glow-focus-ring); }
+.s-auth-error {
+  background: var(--ak-pair-panel-danger-bg);
+  color: var(--ak-pair-panel-danger-fg);
+  border: 1px solid var(--ak-pair-panel-danger-border);
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--ak-radius-md);
+  font: var(--ak-t-caption);
+  margin-bottom: var(--ak-space-3);
+  text-align: center;
+}
+
+/* ===========================================================================
+ * LOBBY SCREEN — two-step setup + active-room view
+ * =========================================================================== */
+.s-lobby {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--ak-space-5);
+}
+.s-lobby-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-4) var(--ak-space-5);
+  margin-bottom: var(--ak-space-5);
+}
+.s-lobby-header .who { display: flex; flex-direction: column; gap: 2px; }
+.s-lobby-header .who-name { font: var(--ak-t-h4); color: var(--ak-gold); }
+.s-lobby-header .who-tag  { font: var(--ak-t-caption); color: var(--ak-text-muted); }
+.s-lobby-header .actions  { display: flex; gap: var(--ak-space-2); }
+
+.s-lobby-step-label {
+  font: var(--ak-t-overline);
+  color: var(--ak-gold);
+  letter-spacing: var(--ak-tracking-x-wide);
+  text-transform: uppercase;
+  display: inline-block;
+  margin-bottom: var(--ak-space-2);
+  direction: ltr;
+}
+.s-lobby-step-title { font: var(--ak-t-h2); margin-bottom: var(--ak-space-5); text-align: center; }
+
+.s-lobby-mode-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ak-space-4);
+  margin-bottom: var(--ak-space-5);
+}
+@media (max-width: 720px) {
+  .s-lobby-mode-grid { grid-template-columns: 1fr; }
+}
+.s-lobby-mode-card {
+  background: var(--ak-surface-1);
+  border: 1.5px solid var(--ak-border-soft-strong);
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-5);
+  text-align: right;
+  cursor: pointer;
+  transition: all var(--ak-dur-base) var(--ak-ease-cinematic);
+  position: relative;
+  overflow: hidden;
+}
+.s-lobby-mode-card:hover {
+  border-color: var(--ak-border-gold-strong);
+  transform: translateY(-2px);
+  box-shadow: var(--ak-shadow-panel-hover);
+}
+.s-lobby-mode-card.danger:hover {
+  border-color: var(--ak-border-red-strong);
+  box-shadow: var(--ak-shadow-panel-hover), var(--ak-glow-red-danger);
+}
+.s-lobby-mode-card .mode-title { font: var(--ak-t-h3); margin-bottom: var(--ak-space-2); }
+.s-lobby-mode-card.gold   .mode-title { color: var(--ak-gold); }
+.s-lobby-mode-card.danger .mode-title { color: var(--ak-crimson-stage); }
+.s-lobby-mode-card .mode-desc  { color: var(--ak-text-muted); font: var(--ak-t-body-sm); line-height: 1.65; }
+
+.s-lobby-mode-badge {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border-gold-strong);
+  border-radius: var(--ak-radius-md);
+  padding: var(--ak-space-3) var(--ak-space-4);
+  margin-bottom: var(--ak-space-5);
+}
+.s-lobby-mode-badge.danger { border-color: var(--ak-border-red-strong); }
+.s-lobby-mode-badge .label { font: var(--ak-t-overline); color: var(--ak-text-muted); text-transform: uppercase; direction: ltr; }
+.s-lobby-mode-badge .value { font: var(--ak-t-h4); color: var(--ak-gold); }
+.s-lobby-mode-badge.danger .value { color: var(--ak-crimson-stage); }
+
+/* Room code: 5 mono chars in individual tile cells. */
+.s-lobby-roomcode {
+  display: inline-flex;
+  gap: var(--ak-space-1);
+  direction: ltr;
+}
+.s-lobby-roomcode .ch {
+  width: 36px; height: 50px;
+  display: grid; place-items: center;
+  background: var(--ak-bg-deep);
+  color: var(--ak-gold);
+  font: 700 1.5rem/1 var(--ak-font-mono);
+  border-radius: var(--ak-radius-sm);
+  border: 1px solid var(--ak-border-gold);
+}
+.s-lobby-room-shell {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ak-space-5);
+}
+@media (max-width: 720px) { .s-lobby-room-shell { grid-template-columns: 1fr; } }
+
+.s-lobby-roster {
+  display: flex; flex-direction: column; gap: var(--ak-space-2);
+}
+.s-lobby-seat {
+  display: flex; align-items: center; gap: var(--ak-space-3);
+  padding: var(--ak-space-3) var(--ak-space-4);
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-md);
+}
+.s-lobby-seat.host { border-color: var(--ak-border-gold-strong); box-shadow: 0 0 12px var(--ak-gold-glow); }
+.s-lobby-seat .av {
+  width: 40px; height: 40px;
+  border-radius: var(--ak-radius-full);
+  background: linear-gradient(135deg, var(--ak-surface-2), var(--ak-bg-deep));
+  border: 2px solid var(--ak-border-soft-strong);
+  display: grid; place-items: center;
+  color: var(--ak-gold);
+  font: var(--ak-t-h4);
+  flex-shrink: 0;
+}
+.s-lobby-seat.host .av { border-color: var(--ak-gold); }
+.s-lobby-seat .nm  { font: var(--ak-t-h4); }
+.s-lobby-seat .tag { font: var(--ak-t-caption); color: var(--ak-text-muted); margin-inline-start: auto; }
+
+/* ===========================================================================
+ * HOST DASHBOARD
+ * =========================================================================== */
+.s-host {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: var(--ak-space-5);
+}
+.s-host-hero {
+  position: relative;
+  background: var(--ak-bg-noir-diagonal);
+  border: 1px solid var(--ak-border-red);
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-6);
+  margin-bottom: var(--ak-space-5);
+  overflow: hidden;
+}
+.s-host-hero::after {
+  content: '';
+  position: absolute;
+  inset-block-start: -40px;
+  inset-inline-end: -40px;
+  width: 220px; height: 220px;
+  border-radius: 50%;
+  background: var(--ak-bg-seal);
+  opacity: 0.22;
+  filter: blur(40px);
+  pointer-events: none;
+}
+.s-host-hero .ov   { font: var(--ak-t-overline); color: var(--ak-gold); letter-spacing: var(--ak-tracking-x-wide); text-transform: uppercase; direction: ltr; text-align: left; display:block; margin-bottom: var(--ak-space-2); }
+.s-host-hero h1    { font: var(--ak-t-h1); margin: 0 0 var(--ak-space-2); }
+.s-host-hero h1 .glow { color: var(--ak-crimson-stage); text-shadow: var(--ak-glow-red-urgent); }
+.s-host-hero p     { color: var(--ak-text-muted); margin: 0 0 var(--ak-space-4); }
+
+.s-host-section {
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-5);
+  margin-bottom: var(--ak-space-4);
+}
+.s-host-section .section-label {
+  font: var(--ak-t-overline);
+  color: var(--ak-gold);
+  letter-spacing: var(--ak-tracking-x-wide);
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: var(--ak-space-3);
+  direction: ltr;
+  text-align: left;
+}
+.s-host-section .section-title { font: var(--ak-t-h3); margin-bottom: var(--ak-space-3); }
+.s-host-textarea {
+  width: 100%;
+  padding: var(--ak-space-3) var(--ak-space-4);
+  background: var(--ak-surface-input);
+  border: 1px solid var(--ak-border-soft-strong);
+  border-radius: var(--ak-radius-md);
+  color: var(--ak-text-main);
+  font: var(--ak-t-body);
+  outline: none;
+  resize: vertical;
+  min-height: 90px;
+}
+.s-host-textarea:focus { border-color: var(--ak-gold); box-shadow: var(--ak-glow-focus-ring); }
+.s-host-story-pre {
+  background: var(--ak-bg-deep);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-md);
+  padding: var(--ak-space-4);
+  font: var(--ak-t-body-sm);
+  white-space: pre-wrap;
+  margin-bottom: var(--ak-space-3);
+}
+.s-host-clue-list { list-style: none; padding: 0; margin: 0; }
+.s-host-clue-list li {
+  padding: var(--ak-space-3);
+  background: var(--ak-surface-1);
+  border-inline-start: 3px solid var(--ak-gold);
+  border-radius: var(--ak-radius-sm);
+  font: var(--ak-t-body-sm);
+  margin-bottom: var(--ak-space-2);
+}
+
+/* ===========================================================================
+ * ROLE REVEAL — private card (player view)
+ * Adapted from previews/06-screens.html `.s-reveal .card` and the
+ * canonical role-card pattern in previews/04-components.html.
+ * =========================================================================== */
+.s-reveal {
+  position: relative;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--ak-space-5);
+  isolation: isolate;
+  background: radial-gradient(circle at 50% 40%, #4a0a0e 0%, var(--ak-bg-deep) 70%);
+}
+.s-reveal::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 50%, rgba(229,9,20,0.18) 0%, transparent 60%);
+  pointer-events: none;
+}
+.s-reveal-shell { position: relative; width: min(420px, 92vw); }
+.s-reveal-timer {
+  text-align: center;
+  font: var(--ak-t-mono);
+  color: var(--ak-text-muted);
+  margin-bottom: var(--ak-space-3);
+  direction: ltr;
+}
+
+.role-card {
+  position: relative;
+  background: linear-gradient(135deg, var(--ak-surface-1), var(--ak-surface-2));
+  border: 1.5px solid var(--ak-gold);
+  border-radius: var(--ak-radius-card);
+  box-shadow: 0 0 60px var(--ak-crimson-glow), inset 0 0 40px rgba(0,0,0,.6);
+  padding: var(--ak-space-6);
+  display: flex; flex-direction: column; gap: var(--ak-space-4);
+}
+.role-card::before {
+  content: '';
+  position: absolute; inset: 8px;
+  border: 1px solid var(--ak-gold-soft);
+  border-radius: var(--ak-radius-lg);
+  pointer-events: none;
+}
+.role-card.blind { border-color: var(--ak-border-soft-strong); box-shadow: var(--ak-shadow-elevated); }
+.role-card.blind::before { border-color: var(--ak-border-soft); }
+
+.role-card .ov {
+  font: var(--ak-t-overline);
+  color: var(--ak-gold);
+  letter-spacing: var(--ak-tracking-x-wide);
+  text-transform: uppercase;
+  text-align: center;
+  direction: ltr;
+}
+.role-card .seal {
+  width: 96px; height: 96px;
+  margin: 0 auto;
+  border-radius: 50%;
+  background: var(--ak-bg-seal);
+  border: 2px solid var(--ak-gold);
+  box-shadow: var(--ak-shadow-seal);
+  display: grid; place-items: center;
+  color: #fff5d6;
+  font: 800 2.5rem/1 var(--ak-font-display);
+}
+.role-card.blind .seal { background: var(--ak-surface-2); color: var(--ak-text-faint); border-color: var(--ak-border-soft-strong); box-shadow: none; }
+.role-card .character-name { font: var(--ak-t-h2); text-align: center; margin: 0; text-shadow: var(--ak-glow-red-urgent); }
+.role-card .character-role { color: var(--ak-text-muted); text-align: center; margin: 0; }
+.role-card .role-section {
+  background: rgba(0,0,0,0.35);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-md);
+  padding: var(--ak-space-3);
+  text-align: right;
+}
+.role-card .role-section .label { font: var(--ak-t-caption); color: var(--ak-gold); margin-bottom: var(--ak-space-1); display: block; }
+.role-card .role-section .value { font: var(--ak-t-body); font-style: italic; }
+.role-card .secret-banner {
+  background: rgba(229,9,20,0.15);
+  border: 1px solid var(--ak-crimson-stage);
+  color: var(--ak-text-strong);
+  border-radius: var(--ak-radius-md);
+  padding: var(--ak-space-3);
+  text-align: center;
+}
+.role-card .secret-banner.gold { background: rgba(212,175,55,0.12); border-color: var(--ak-gold); color: var(--ak-gold); }
+.role-card .secret-banner.muted { background: rgba(255,255,255,0.03); border-color: var(--ak-border-soft-strong); }
+.role-card .secret-banner .label-en { font: var(--ak-t-overline); display: block; margin-bottom: var(--ak-space-1); direction: ltr; }
+.role-card .secret-banner h3 { font: var(--ak-t-h3); margin: 0 0 var(--ak-space-1); color: var(--ak-text-strong); }
+.role-card .secret-banner p { font: var(--ak-t-body-sm); color: var(--ak-text-muted); margin: 0; }
+.role-card .warning {
+  text-align: center;
+  font: var(--ak-t-caption);
+  color: var(--ak-text-muted);
+}
+
+/* Host overview during ROLE_REVEAL — simple list, no glow */
+.host-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--ak-space-3);
+}
+
+/* ===========================================================================
+ * PUBLIC CHARACTER OVERVIEW grid (10s)
+ * =========================================================================== */
+.s-public {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--ak-space-5);
+}
+.s-public-head {
+  text-align: center;
+  margin-bottom: var(--ak-space-5);
+}
+.s-public-head h1 { font: var(--ak-t-h1); margin: 0 0 var(--ak-space-2); }
+.s-public-head .countdown {
+  font: var(--ak-t-mono);
+  color: var(--ak-crimson-stage);
+  letter-spacing: var(--ak-tracking-wide);
+  direction: ltr;
+}
+.s-public-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--ak-space-4);
+}
+.s-public-card {
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-4);
+  text-align: right;
+}
+.s-public-card .player-name { font: var(--ak-t-h4); color: var(--ak-gold); margin-bottom: var(--ak-space-1); }
+.s-public-card .character { font: var(--ak-t-body); margin-bottom: var(--ak-space-1); }
+.s-public-card .character .role { color: var(--ak-text-muted); }
+.s-public-card .detail {
+  font: var(--ak-t-body-sm);
+  color: var(--ak-text-muted);
+  font-style: italic;
+  border-block-start: 1px solid var(--ak-border-soft);
+  padding-block-start: var(--ak-space-2);
+  margin-block-start: var(--ak-space-2);
+}
+
 /* Role-card reveal — applied to ROLE_REVEAL screen card */
 @keyframes roleCardReveal {
   from {

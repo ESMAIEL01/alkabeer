@@ -1,7 +1,18 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, setSession } from '../services/api';
+import AkBrandMark from '../components/AkBrandMark';
+import AkButton from '../components/AkButton';
 
+/**
+ * AuthPage — first impression of the brand.
+ *
+ * Layout: full-bleed scene-archive-room.png background + radial scrim,
+ * centered glass card with the AlKabeer brand mark, three tab buttons
+ * (دخول / عضوية / ضيف), single-column form, primary CTA in crimson.
+ *
+ * No game logic changed. Same handler, same endpoints, same setSession().
+ */
 export default function AuthPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('login'); // login | register | guest
@@ -14,14 +25,11 @@ export default function AuthPage() {
     e.preventDefault();
     setLoading(true);
     setError('');
-
     try {
       let endpoint = '/api/auth/login';
       if (activeTab === 'register') endpoint = '/api/auth/register';
-      if (activeTab === 'guest') endpoint = '/api/auth/guest';
-
+      if (activeTab === 'guest')    endpoint = '/api/auth/guest';
       const payload = activeTab === 'guest' ? { username } : { username, password };
-
       const data = await api.post(endpoint, payload);
       setSession({ token: data.token, user: data.user });
       navigate('/lobby');
@@ -32,71 +40,84 @@ export default function AuthPage() {
     }
   };
 
+  const submitLabel =
+    loading
+      ? 'يتم التحقق من الأرشيف...'
+      : activeTab === 'login'
+      ? 'ادخل الساحة'
+      : activeTab === 'register'
+      ? 'تسجيل البصمة'
+      : 'دخول كضيف';
+
+  const placeholderName =
+    activeTab === 'guest' ? 'اسمك كضيف (اختياري)' : 'اسم المستخدم';
+
   return (
-    <div className="container justify-center items-center">
-      <div className="card max-w-md animate-fade-in text-center mx-auto" style={{ marginTop: '5vh' }}>
-        
-        <div className="mb-6">
-          <h1 className="cinematic-glow golden-text mb-2" style={{ fontSize: '3.5rem' }}>مافيوزو</h1>
-          <p className="text-muted" style={{ fontSize: '1.2rem'}}>Mafiozo</p>
-          <div className="divider"></div>
-          <p className="text-main" style={{ fontSize: '1.1rem', fontWeight: '500'}}>الأرشيف المختوم بانتظارك...</p>
-        </div>
+    <div className="s-auth">
+      <div className="s-auth-card">
+        <AkBrandMark variant="full" size={36} />
+        <h1>الأرشيف المختوم بانتظارك</h1>
+        <p className="auth-sub">سجّل دخولك أو ادخل كضيف لتبدأ التحقيق.</p>
 
-        <div className="flex justify-between gap-2 mb-6 p-2" style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '16px' }}>
-          <button 
-            className={`btn-secondary \${activeTab === 'login' ? 'golden-text' : ''}`}
+        <div className="s-auth-tabs" role="tablist">
+          <button
+            role="tab"
+            type="button"
+            aria-pressed={activeTab === 'login'}
+            className="s-auth-tab"
             onClick={() => { setActiveTab('login'); setError(''); }}
-            style={{ padding: '0.8rem 1rem', border: activeTab === 'login' ? '1px solid var(--accent-gold)' : 'none' }}
           >
-            دخول مباشر
+            دخول
           </button>
-          <button 
-            className={`btn-secondary \${activeTab === 'register' ? 'golden-text' : ''}`}
+          <button
+            role="tab"
+            type="button"
+            aria-pressed={activeTab === 'register'}
+            className="s-auth-tab"
             onClick={() => { setActiveTab('register'); setError(''); }}
-            style={{ padding: '0.8rem 1rem', border: activeTab === 'register' ? '1px solid var(--accent-gold)' : 'none' }}
           >
-            عضوية جديدة
+            عضوية
           </button>
-          <button 
-            className={`btn-secondary \${activeTab === 'guest' ? 'golden-text' : ''}`}
+          <button
+            role="tab"
+            type="button"
+            aria-pressed={activeTab === 'guest'}
+            className="s-auth-tab"
             onClick={() => { setActiveTab('guest'); setError(''); }}
-            style={{ padding: '0.8rem 1rem', border: activeTab === 'guest' ? '1px solid var(--accent-gold)' : 'none' }}
           >
-            كضيف
+            ضيف
           </button>
         </div>
 
-        {error && (
-          <div className="mb-4 p-4 text-center rounded-lg" style={{ background: 'rgba(229, 9, 20, 0.15)', color: 'var(--accent-red)', border: '1px solid rgba(229, 9, 20, 0.3)' }}>
-            ⚠️ {error}
-          </div>
-        )}
+        {error && <div className="s-auth-error">⚠ {error}</div>}
 
-        <form onSubmit={handleAuth} className="flex flex-col gap-4">
-          <input 
-            type="text" 
-            placeholder={activeTab === 'guest' ? 'اسمك كضيف (اختياري)' : 'اسم المستخدم السري'} 
-            className="input-field mb-1" 
+        <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--ak-space-3)' }}>
+          <input
+            type="text"
+            placeholder={placeholderName}
+            className="s-auth-field"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required={activeTab !== 'guest'}
           />
-          
           {activeTab !== 'guest' && (
-            <input 
-              type="password" 
-              placeholder="شفرة المرور" 
-              className="input-field mb-1" 
+            <input
+              type="password"
+              placeholder="شفرة المرور"
+              className="s-auth-field"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              required 
+              required
             />
           )}
-
-          <button type="submit" className="btn-primary mt-2" disabled={loading}>
-            {loading ? 'يتم التحقق من الأرشيف...' : (activeTab === 'login' ? 'ادخل الساحة 🎬' : (activeTab === 'register' ? 'تسجيل البصمة 📝' : 'دخول سريع ⚡'))}
-          </button>
+          <AkButton
+            variant="primary"
+            type="submit"
+            disabled={loading}
+            style={{ width: '100%', padding: '0.95rem', marginTop: 'var(--ak-space-2)' }}
+          >
+            {submitLabel}
+          </AkButton>
         </form>
       </div>
     </div>

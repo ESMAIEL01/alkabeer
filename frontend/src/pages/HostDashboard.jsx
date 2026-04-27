@@ -2,25 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { emitWithAck, setActiveRoomId, getActiveRoomId } from '../services/socket';
 import { api } from '../services/api';
+import AkButton from '../components/AkButton';
 
-// Cycling cinematic microcopy shown while the AI is generating a scenario.
-// Pure flavor — purely decorative, never makes claims about real internals.
+// Cycling cinematic microcopy. Decorative — never claims real internals.
 const AI_LOADING_LINES = [
-  'الكبير بيقرأ الخيوط...',
-  'بيجمع الشبهات...',
-  'بيدبر الجريمة في دماغه...',
-  'الأرشيف بيتختم...',
-  'الساحة بتتجهز...',
+  'الكبير بيقرأ الخيوط',
+  'بيجمع الشبهات',
+  'بيدبر الجريمة في دماغه',
+  'الأرشيف بيتختم',
+  'الساحة بتتجهز',
 ];
 
-/**
- * Host crafts (or AI-generates) the sealed archive, then commits it.
- * Navigation to /game/:roomId only happens AFTER the server acknowledges
- * `finalize_archive`. No client-side guessing of the room id.
- */
 export default function HostDashboard() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('create');
   const [prompt, setPrompt] = useState('');
   const [scenarioText, setScenarioText] = useState('');
   const [base64Archive, setBase64Archive] = useState('');
@@ -29,12 +23,9 @@ export default function HostDashboard() {
   const [aiNote, setAiNote] = useState('');
   const [error, setError] = useState('');
   const [showRawArchive, setShowRawArchive] = useState(false);
-
-  // sealing → 'idle' | 'sealing' | 'sealed'
-  const [sealing, setSealing] = useState('idle');
+  const [sealing, setSealing] = useState('idle'); // idle | sealing | sealed
   const [loadingLineIdx, setLoadingLineIdx] = useState(0);
 
-  // Cycle the cinematic line while loading or sealing so the wait feels alive.
   useEffect(() => {
     if (!loading && sealing !== 'sealing') return;
     const id = setInterval(() => {
@@ -65,10 +56,8 @@ export default function HostDashboard() {
   };
 
   const finalizeScenario = async () => {
-    if (sealing !== 'idle') return; // double-click guard
+    if (sealing !== 'idle') return;
     setError('');
-
-    // Step-by-step preconditions, each with an Arabic message.
     if (!base64Archive || !scenarioText) {
       setError('لازم تولّد الأرشيف الأول.');
       return;
@@ -78,7 +67,6 @@ export default function HostDashboard() {
       setError('الغرفة مش محفوظة. ارجع للساحة وابدأ غرفة جديدة.');
       return;
     }
-
     setSealing('sealing');
     try {
       const ack = await emitWithAck('finalize_archive', {
@@ -87,14 +75,9 @@ export default function HostDashboard() {
         raw: scenarioText,
         clues,
       }, 8_000);
-
-      if (!ack || !ack.success) {
-        throw new Error((ack && ack.error) || 'تعذّر ختم الأرشيف.');
-      }
-
+      if (!ack || !ack.success) throw new Error((ack && ack.error) || 'تعذّر ختم الأرشيف.');
       setActiveRoomId(ack.roomId || roomId);
       setSealing('sealed');
-      // Brief "sealed, opening arena" pause so the user sees confirmation.
       setTimeout(() => navigate(`/game/${ack.roomId || roomId}`), 600);
     } catch (err) {
       setSealing('idle');
@@ -105,107 +88,119 @@ export default function HostDashboard() {
     }
   };
 
-  const buttonLabel =
-    sealing === 'sealing' ? `${AI_LOADING_LINES[loadingLineIdx]} ⏳`
-    : sealing === 'sealed' ? 'تم الختم، جار فتح الساحة... 🔥'
-    : 'ختم الأرشيف وبدء اللعبة 🔥';
+  const sealLabel =
+    sealing === 'sealing' ? AI_LOADING_LINES[loadingLineIdx] + '...'
+    : sealing === 'sealed' ? 'تم الختم — جار فتح الساحة'
+    : 'ختم الأرشيف وبدء اللعبة';
 
   return (
-    <div className="container">
-      <h2 className="golden-text mb-4 text-center">لوحة تحكم الكبير (المضيف)</h2>
+    <div className="s-host">
+      {/* Hero — archive room mood */}
+      <div className="s-host-hero">
+        <span className="ov">Sealed Archive · Protocol Zero</span>
+        <h1>غرفة <span className="glow">صياغة الأرشيف</span></h1>
+        <p>اكتب فكرة الجريمة أو سيب الكبير يبدع. لما الأرشيف يتختم، الجلسة تبدأ.</p>
+      </div>
 
-      <div className="card max-w-md mx-auto animate-fade-in">
-        <div className="flex justify-between mb-4 border-b pb-2" style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-          <button className={`btn-secondary ${activeTab === 'create' ? 'golden-text' : ''}`} onClick={() => setActiveTab('create')}>صناعة الأرشيف</button>
-          <button className={`btn-secondary ${activeTab === 'drafts' ? 'golden-text' : ''}`} onClick={() => setActiveTab('drafts')}>مسودات</button>
-          <button className={`btn-secondary ${activeTab === 'market' ? 'golden-text' : ''}`} onClick={() => setActiveTab('market')}>المكتبة</button>
+      {/* Generation section */}
+      <section className="s-host-section">
+        <span className="section-label">01 · صناعة السيناريو</span>
+        <h2 className="section-title">فكرة المضيف</h2>
+        <textarea
+          className="s-host-textarea"
+          rows="3"
+          placeholder="مثال: سرقة لوحة نادرة في متحف مصري… أو سيب الكبير يختار."
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          disabled={sealing !== 'idle'}
+        />
+        <div style={{ marginTop: 'var(--ak-space-3)' }}>
+          <AkButton
+            variant="ghost"
+            onClick={handleGenerateAI}
+            disabled={loading || sealing !== 'idle'}
+            style={{ width: '100%' }}
+          >
+            {loading ? AI_LOADING_LINES[loadingLineIdx] + '...' : 'توليد السيناريو بالذكاء الاصطناعي'}
+          </AkButton>
         </div>
+        {loading && (
+          <div className="shimmer" style={{ height: '70px', marginTop: 'var(--ak-space-3)' }} aria-hidden="true" />
+        )}
+        {error && (
+          <div className="s-auth-error" style={{ marginTop: 'var(--ak-space-3)' }}>⚠ {error}</div>
+        )}
+        {aiNote && (
+          <div style={{ marginTop: 'var(--ak-space-3)', padding: 'var(--ak-space-3)', background: 'var(--ak-gold-tint)', border: '1px solid var(--ak-border-gold-strong)', borderRadius: 'var(--ak-radius-md)', color: 'var(--ak-text-muted)', font: 'var(--ak-t-caption)' }}>
+            {aiNote}
+          </div>
+        )}
+      </section>
 
-        {activeTab === 'create' && (
-          <div>
-            <textarea
-              className="input-field mb-2"
-              rows="3"
-              placeholder="وصف الجريمة (مثال: سرقة لوحة نادرة في متحف مصري)... أو سيب الكبير يبدع"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              disabled={sealing !== 'idle'}
-            />
-            <button className="btn-secondary mb-4" onClick={handleGenerateAI} disabled={loading || sealing !== 'idle'}>
-              {loading ? `⏳ ${AI_LOADING_LINES[loadingLineIdx]}` : '✨ توليد السيناريو بالذكاء الاصطناعي'}
-            </button>
-            {loading && (
-              <div className="shimmer mb-4" style={{ height: '60px' }} aria-hidden="true" />
-            )}
+      {/* Story + clues */}
+      {scenarioText && (
+        <section className="s-host-section animate-fade-in">
+          <span className="section-label">02 · القصة الكاملة</span>
+          <h2 className="section-title">القصة (سرية للمضيف)</h2>
+          <div className="s-host-story-pre">{scenarioText}</div>
 
-            {error && (
-              <div className="mb-4 p-2 rounded text-main" style={{ background: 'rgba(229,9,20,0.2)', border: '1px solid var(--accent-red)' }}>
-                ⚠️ {error}
-              </div>
-            )}
+          {clues.length > 0 && (
+            <>
+              <span className="section-label" style={{ marginTop: 'var(--ak-space-4)' }}>الأدلة الثلاثة</span>
+              <ol className="s-host-clue-list" style={{ paddingInlineStart: 0, listStyle: 'none' }}>
+                {clues.map((c, i) => (
+                  <li key={i}>
+                    <span style={{ color: 'var(--ak-gold)', fontWeight: 700, marginInlineEnd: 'var(--ak-space-2)' }}>الدليل {i + 1}.</span>
+                    {c}
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
 
-            {aiNote && (
-              <div className="mb-4 p-2 rounded text-muted" style={{ background: 'rgba(212,175,55,0.1)', border: '1px solid rgba(212,175,55,0.4)' }}>
-                {aiNote}
-              </div>
-            )}
-
-            {scenarioText && (
-              <div className="mb-4">
-                <h4 className="cinematic-glow mb-1">القصة (سرية للمضيف):</h4>
-                <div style={{ backgroundColor: 'rgba(0,0,0,0.5)', padding: '1rem', borderRadius: '4px', fontSize: '0.9rem', marginBottom: '1rem', whiteSpace: 'pre-wrap' }}>
-                  {scenarioText}
-                </div>
-
-                {clues.length > 0 && (
-                  <div className="mb-4">
-                    <h4 className="golden-text mb-1">🔍 الأدلة الثلاثة:</h4>
-                    <ol style={{ paddingInlineStart: '1.2rem' }}>
-                      {clues.map((c, i) => (
-                        <li key={i} style={{ marginBottom: '0.4rem' }}>{c}</li>
-                      ))}
-                    </ol>
-                  </div>
-                )}
-
-                {/* Raw archive is debug data — collapsed by default. */}
-                <div className="mb-4">
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
-                    onClick={() => setShowRawArchive(s => !s)}
-                  >
-                    {showRawArchive ? 'إخفاء بيانات الأرشيف' : 'عرض بيانات الأرشيف (للمطورين)'}
-                  </button>
-                  {showRawArchive && (
-                    <>
-                      <h4 className="golden-text mt-2 mb-1">🔴 الأرشيف المختوم (PROTOCOL ZERO)</h4>
-                      <div className="text-muted" style={{ wordWrap: 'break-word', fontSize: '0.75rem', backgroundColor: '#330000', padding: '0.5rem', border: '1px solid var(--accent-red)' }}>
-                        {base64Archive.slice(0, 200)}{base64Archive.length > 200 ? '…' : ''}
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <div className="mt-4">
-                  <button
-                    className="btn-primary"
-                    onClick={finalizeScenario}
-                    disabled={sealing !== 'idle'}
-                    style={sealing === 'sealing' ? { opacity: 0.85, cursor: 'wait' } : null}
-                  >
-                    {buttonLabel}
-                  </button>
-                </div>
+          <div style={{ marginTop: 'var(--ak-space-4)' }}>
+            <AkButton
+              variant="ghost"
+              onClick={() => setShowRawArchive(s => !s)}
+              style={{ padding: '0.5rem 0.85rem', minHeight: 'auto' }}
+            >
+              {showRawArchive ? 'إخفاء بيانات الأرشيف' : 'عرض بيانات الأرشيف (للمطورين)'}
+            </AkButton>
+            {showRawArchive && (
+              <div style={{
+                marginTop: 'var(--ak-space-3)',
+                padding: 'var(--ak-space-3)',
+                background: 'var(--ak-crimson-bg-muted)',
+                border: '1px solid var(--ak-border-red)',
+                borderRadius: 'var(--ak-radius-md)',
+                font: 'var(--ak-t-mono)',
+                fontSize: '0.78rem',
+                color: 'var(--ak-text-on-danger)',
+                wordBreak: 'break-all',
+                direction: 'ltr',
+                textAlign: 'left',
+              }}>
+                PROTOCOL_ZERO_HASH:<br />
+                {base64Archive.slice(0, 200)}{base64Archive.length > 200 ? '…' : ''}
               </div>
             )}
           </div>
-        )}
+        </section>
+      )}
 
-        {activeTab === 'drafts' && <p className="text-muted">لا يوجد مسودات حالياً.</p>}
-        {activeTab === 'market' && <p className="text-muted">تحميل السيناريوهات المجتمعية...</p>}
-      </div>
+      {/* Seal action */}
+      {scenarioText && (
+        <div style={{ position: 'sticky', bottom: 0, padding: 'var(--ak-space-4) 0', background: 'linear-gradient(to top, var(--ak-bg-deep) 70%, transparent)' }}>
+          <AkButton
+            variant="primary"
+            onClick={finalizeScenario}
+            disabled={sealing !== 'idle'}
+            style={{ width: '100%', padding: '1.1rem', fontSize: '1.1rem' }}
+          >
+            {sealLabel}
+          </AkButton>
+        </div>
+      )}
     </div>
   );
 }

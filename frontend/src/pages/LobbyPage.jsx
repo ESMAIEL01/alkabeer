@@ -3,7 +3,13 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { socket, connectSocket, setActiveRoomId, clearActiveRoomId, emitWithAck } from '../services/socket';
 import { api, getToken, getStoredUser, clearSession } from '../services/api';
+import AkButton from '../components/AkButton';
 
+/**
+ * LobbyPage — two-step setup (gameplay-mode → host-type) then the active-room
+ * waiting view. Game logic and socket events are unchanged from prior commits;
+ * only visual layout is redesigned to follow the Mafiozo Design System.
+ */
 export default function LobbyPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -16,32 +22,23 @@ export default function LobbyPage() {
   const [players, setPlayers] = useState([]);
   const [error, setError] = useState('');
   const [roomMode, setRoomMode] = useState('HUMAN');
-  // Role-reveal mode: 'normal' (every player knows their role) or
-  // 'blind' (عمياني — players know only their character + suspicious detail,
-  // not whether they are the mafiozo).
-  const [roleRevealMode, setRoleRevealMode] = useState(null);   // null until user picks
+  const [roleRevealMode, setRoleRevealMode] = useState(null); // 'normal' | 'blind' | null
   const [creatorId, setCreatorId] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
 
-  // Arabic label for the chosen reveal mode (used in the active-room badge).
   const revealLabel = roleRevealMode === 'blind' ? 'عمياني' : roleRevealMode === 'normal' ? 'عادي' : '';
 
   useEffect(() => {
     const token = getToken();
     const u = getStoredUser();
-    if (!token || !u) {
-      navigate('/');
-      return;
-    }
+    if (!token || !u) { navigate('/'); return; }
     setUser(u);
     connectSocket(token, u);
-    // Wipe any stale active-room from a previous session — entering the
-    // lobby is the only place where it's safe to forget the room.
     clearActiveRoomId();
 
     socket.on('room_update', (data) => {
       setActiveRoom(data.id);
-      setActiveRoomId(data.id);                 // persist for HostDashboard / GameBoard
+      setActiveRoomId(data.id);
       setPlayers(data.players);
       setRoomMode(data.mode);
       setCreatorId(data.creatorId);
@@ -74,7 +71,7 @@ export default function LobbyPage() {
     socket.emit('create_room', { mode, roleRevealMode }, (response) => {
       if (response && response.success) {
         setActiveRoom(response.roomId);
-        setActiveRoomId(response.roomId);       // persist
+        setActiveRoomId(response.roomId);
         window.history.replaceState(null, '', '/lobby');
       } else {
         setError('فشل في إنشاء الغرفة السريّة.');
@@ -85,11 +82,10 @@ export default function LobbyPage() {
   const handleJoinRoom = (code) => {
     const joinCode = code || roomCode;
     if (!joinCode) return;
-
     socket.emit('join_room', { roomId: joinCode }, (response) => {
       if (response && response.success) {
         setActiveRoom(response.roomId);
-        setActiveRoomId(response.roomId);       // persist
+        setActiveRoomId(response.roomId);
       } else {
         setError((response && response.message) || 'الغرفة غير موجودة أو تم قفلها.');
       }
@@ -98,10 +94,7 @@ export default function LobbyPage() {
 
   const handleStartGame = async () => {
     if (roomMode === 'AI') {
-      if (!activeRoom) {
-        setError('الغرفة مش جاهزة لسه. دقيقة وحاول تاني.');
-        return;
-      }
+      if (!activeRoom) { setError('الغرفة مش جاهزة لسه. دقيقة وحاول تاني.'); return; }
       setAiLoading(true);
       setError('');
       try {
@@ -115,25 +108,16 @@ export default function LobbyPage() {
           throw new Error('الأرشيف رجع ناقص. حاول تاني.');
         }
         if (data.source === 'fallback' && data.note) {
-          // Soft warning: fallback scenario is still playable.
           console.warn('[ai] fallback scenario:', data.note);
         }
-
-        // Server-confirmed finalize. Navigate only after success.
         const ack = await emitWithAck('finalize_archive', {
           roomId: activeRoom,
           archive: data.archive_b64,
           raw: data.scenario,
           clues: data.clues,
         }, 8_000);
-
-        if (!ack || !ack.success) {
-          throw new Error((ack && ack.error) || 'تعذّر ختم الأرشيف.');
-        }
-
+        if (!ack || !ack.success) throw new Error((ack && ack.error) || 'تعذّر ختم الأرشيف.');
         setActiveRoomId(ack.roomId || activeRoom);
-        // Notify other players the game is starting (best-effort, server will
-        // also emit full_state_update which everyone in the room receives).
         socket.emit('start_game_setup', { roomId: ack.roomId || activeRoom });
         navigate(`/game/${ack.roomId || activeRoom}`);
       } catch (err) {
@@ -142,13 +126,7 @@ export default function LobbyPage() {
         setAiLoading(false);
       }
     } else {
-      // Human host: persist room id and route to the dashboard for manual
-      // archive crafting. Navigation to /game/:roomId happens from there
-      // after the host clicks "ختم الأرشيف وبدء اللعبة".
-      if (!activeRoom) {
-        setError('الغرفة مش جاهزة لسه.');
-        return;
-      }
+      if (!activeRoom) { setError('الغرفة مش جاهزة لسه.'); return; }
       setActiveRoomId(activeRoom);
       socket.emit('start_game_setup', { roomId: activeRoom });
       navigate('/host-dashboard');
@@ -158,203 +136,175 @@ export default function LobbyPage() {
   if (!user) return <div className="container items-center justify-center cinematic-glow">يتم فك التشفير...</div>;
 
   const roomLink = `${window.location.origin}/lobby?room=${activeRoom}`;
+  const initial = (n) => (n || '?').trim().charAt(0).toUpperCase();
 
   return (
-    <div className="container mt-4 animate-fade-in">
-      <header className="flex justify-between items-center mb-6 p-4 rounded-xl" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', backdropFilter: 'var(--glass-blur)' }}>
-        <div className="flex flex-col">
-          <h2 className="golden-text" style={{ fontSize: '1.8rem', margin: 0 }}>المحقق: {user.username}</h2>
-          {user.isGuest && <span className="text-muted" style={{ fontSize: '0.9rem'}}>هوية مؤقتة (ضيف)</span>}
+    <div className="s-lobby">
+      {/* Header */}
+      <header className="s-lobby-header">
+        <div className="who">
+          <span className="who-name">المحقق: {user.username}</span>
+          {user.isGuest && <span className="who-tag">هوية مؤقتة (ضيف)</span>}
         </div>
-        <div className="flex gap-4">
-          <button className="btn-secondary" onClick={() => navigate('/explain')} style={{ padding: '0.5rem 1rem' }}>القوانين 📜</button>
-          <button className="btn-secondary" onClick={() => { clearSession(); navigate('/'); }} style={{ padding: '0.5rem 1rem', borderColor: 'var(--accent-red)', color: 'var(--accent-red)' }}>انسحاب 🚪</button>
+        <div className="actions">
+          <AkButton variant="ghost" onClick={() => navigate('/explain')}>القوانين</AkButton>
+          <AkButton variant="ghost" onClick={() => { clearSession(); navigate('/'); }}>انسحاب</AkButton>
         </div>
       </header>
 
       {!activeRoom ? (
-        <div className="card max-w-md mx-auto text-center mt-4">
-          <h1 className="cinematic-glow mb-6" style={{ fontSize: '2.5rem' }}>الساحة المظلمة</h1>
+        <>
+          {error && <div className="s-auth-error">⚠ {error}</div>}
 
-          {error && <div className="mb-4 p-2 rounded text-main" style={{ background: 'rgba(229,9,20,0.2)', border: '1px solid var(--accent-red)' }}>{error}</div>}
-
-          {/* ======================== STEP 1: REVEAL MODE ======================== */}
+          {/* STEP 1: gameplay reveal mode */}
           {!roleRevealMode && (
-            <div className="animate-fade-in">
-              <div className="mb-4" style={{ textAlign: 'center' }}>
-                <p className="text-muted mb-1" style={{ fontSize: '0.85rem', letterSpacing: '2px' }}>الخطوة الأولى</p>
-                <h3 className="golden-text" style={{ fontSize: '1.5rem' }}>اختار طريقة كشف الأدوار</h3>
+            <section className="animate-fade-in">
+              <div style={{ textAlign: 'center', marginBottom: 'var(--ak-space-4)' }}>
+                <span className="s-lobby-step-label">Step 01</span>
+                <div className="s-lobby-step-title">اختار طريقة كشف الأدوار</div>
               </div>
-              <div className="flex flex-col gap-3 mb-2" style={{ textAlign: 'right' }}>
+              <div className="s-lobby-mode-grid">
                 <button
                   type="button"
+                  className="s-lobby-mode-card gold"
                   onClick={() => setRoleRevealMode('normal')}
-                  className="btn-secondary"
-                  style={{
-                    padding: '1.1rem 1rem',
-                    fontSize: '1rem',
-                    borderColor: 'var(--accent-gold)',
-                    textAlign: 'right',
-                  }}
                 >
-                  <div className="golden-text" style={{ fontWeight: 800, fontSize: '1.15rem', marginBottom: '0.35rem' }}>عادي</div>
-                  <div className="text-muted" style={{ fontSize: '0.9rem', lineHeight: 1.55 }}>
-                    كل لاعب يعرف شخصيته ودوره السري قبل بداية التحقيق.
-                  </div>
+                  <h3 className="mode-title">عادي</h3>
+                  <p className="mode-desc">كل لاعب يعرف شخصيته ودوره السري قبل بداية التحقيق.</p>
                 </button>
                 <button
                   type="button"
+                  className="s-lobby-mode-card danger"
                   onClick={() => setRoleRevealMode('blind')}
-                  className="btn-secondary"
-                  style={{
-                    padding: '1.1rem 1rem',
-                    fontSize: '1rem',
-                    borderColor: 'var(--accent-red)',
-                    textAlign: 'right',
-                  }}
                 >
-                  <div style={{ fontWeight: 800, fontSize: '1.15rem', marginBottom: '0.35rem', color: 'var(--accent-red)' }}>عمياني</div>
-                  <div className="text-muted" style={{ fontSize: '0.9rem', lineHeight: 1.55 }}>
-                    كل لاعب يعرف وظيفته وتفصيلته المريبة فقط، لكن لا يعرف هل هو المافيوزو أم لا.
-                  </div>
+                  <h3 className="mode-title">عمياني</h3>
+                  <p className="mode-desc">كل لاعب يعرف وظيفته وتفصيلته المريبة فقط. الحقيقة الكاملة بتظهر في الكشف النهائي.</p>
                 </button>
               </div>
-            </div>
+            </section>
           )}
 
-          {/* ======================== STEP 2: HOST TYPE ======================== */}
+          {/* STEP 2: host type */}
           {roleRevealMode && (
-            <div className="animate-fade-in">
-              {/* Selected mode badge with "change selection" link */}
-              <div className="mb-5 p-3 rounded-lg" style={{
-                background: 'rgba(0,0,0,0.4)',
-                border: `1px solid ${roleRevealMode === 'blind' ? 'rgba(229,9,20,0.6)' : 'var(--accent-gold)'}`,
-                textAlign: 'right',
-              }}>
-                <div className="flex justify-between items-center" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <div>
-                    <div className="text-muted" style={{ fontSize: '0.75rem', letterSpacing: '1.5px' }}>طور كشف الأدوار</div>
-                    <div className={roleRevealMode === 'blind' ? '' : 'golden-text'} style={{
-                      fontSize: '1.15rem',
-                      fontWeight: 800,
-                      color: roleRevealMode === 'blind' ? 'var(--accent-red)' : undefined,
-                    }}>
-                      {revealLabel}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setRoleRevealMode(null)}
-                    className="btn-secondary"
-                    style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', width: 'auto' }}
-                  >
-                    تغيير الاختيار
-                  </button>
+            <section className="animate-fade-in">
+              <div className={`s-lobby-mode-badge${roleRevealMode === 'blind' ? ' danger' : ''}`}>
+                <div>
+                  <div className="label">طور كشف الأدوار</div>
+                  <div className="value">{revealLabel}</div>
                 </div>
+                <AkButton variant="ghost" onClick={() => setRoleRevealMode(null)}>تغيير الاختيار</AkButton>
               </div>
 
-              <div className="mb-4" style={{ textAlign: 'center' }}>
-                <p className="text-muted mb-1" style={{ fontSize: '0.85rem', letterSpacing: '2px' }}>الخطوة الثانية</p>
-                <h3 className="golden-text" style={{ fontSize: '1.5rem' }}>اختار نوع المضيف</h3>
+              <div style={{ textAlign: 'center', marginBottom: 'var(--ak-space-4)' }}>
+                <span className="s-lobby-step-label">Step 02</span>
+                <div className="s-lobby-step-title">اختار نوع المضيف</div>
               </div>
-              <div className="flex flex-col gap-3 mb-2">
+
+              <div className="s-lobby-mode-grid">
                 <button
-                  className="btn-primary"
+                  type="button"
+                  className="s-lobby-mode-card gold"
                   onClick={() => handleCreateRoom('HUMAN')}
-                  style={{ fontSize: '1.15rem', padding: '1.1rem' }}
                 >
-                  <div>مضيف بشري 👤</div>
-                  <div style={{ fontSize: '0.78rem', opacity: 0.85, fontWeight: 400, marginTop: '0.2rem' }}>إنت اللي بتكتب الأرشيف وبتدير الجلسة.</div>
+                  <h3 className="mode-title">مضيف بشري</h3>
+                  <p className="mode-desc">إنت اللي بتكتب الأرشيف وبتدير الجلسة بصوتك.</p>
                 </button>
                 <button
-                  className="btn-primary"
+                  type="button"
+                  className="s-lobby-mode-card gold"
                   onClick={() => handleCreateRoom('AI')}
-                  style={{ fontSize: '1.15rem', padding: '1.1rem', background: 'linear-gradient(135deg, #1f1c2c, #928DAB)' }}
                 >
-                  <div>الكبير الاصطناعي 🤖</div>
-                  <div style={{ fontSize: '0.78rem', opacity: 0.9, fontWeight: 400, marginTop: '0.2rem' }}>الذكاء بيكتب القصة، وإنت بتتحكم في الجلسة.</div>
+                  <h3 className="mode-title">الكبير الاصطناعي</h3>
+                  <p className="mode-desc">الذكاء بيكتب القصة، وإنت بتتحكم في الجلسة.</p>
                 </button>
               </div>
-            </div>
+            </section>
           )}
 
+          {/* Join existing */}
           <div className="divider"></div>
-          
-          <div className="mt-4">
-            <h3 className="text-muted mb-4 font-normal">أو اقتحم غرفة قائمة</h3>
-            <input 
-              type="text" 
-              placeholder="شفرة الغرفة (مثال: M4F1A)" 
-              className="input-field text-center font-bold"
-              style={{ fontSize: '1.5rem', letterSpacing: '2px' }}
+          <section style={{ textAlign: 'center' }}>
+            <h3 className="s-lobby-step-label" style={{ marginBottom: 'var(--ak-space-3)' }}>أو ادخل غرفة قائمة</h3>
+            <input
+              type="text"
+              placeholder="شفرة الغرفة"
+              className="s-auth-field"
+              style={{ textAlign: 'center', font: '700 1.5rem/1 var(--ak-font-mono)', letterSpacing: '8px', maxWidth: '320px', margin: '0 auto' }}
               value={roomCode}
               onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
             />
-            <button className="btn-secondary mt-2" onClick={() => handleJoinRoom()} disabled={!roomCode}>
-              انضم للتحقيق 🔍
-            </button>
-          </div>
-        </div>
+            <div style={{ marginTop: 'var(--ak-space-3)' }}>
+              <AkButton variant="ghost" onClick={() => handleJoinRoom()} disabled={!roomCode}>
+                انضم للتحقيق
+              </AkButton>
+            </div>
+          </section>
+        </>
       ) : (
-        <div className="flex flex-wrap gap-6 justify-center mt-4">
-          {/* Room Details & Access Card */}
-          <div className="card text-center" style={{ flex: '1 1 350px', maxWidth: '450px' }}>
-            <h2 className="cinematic-glow mb-2" style={{ fontSize: '2rem' }}>مقر التحقيق</h2>
-            <p className="golden-text mb-2" style={{ fontSize: '2.5rem', letterSpacing: '4px' }}>{activeRoom}</p>
-            {revealLabel && (
-              <p className="mb-4" style={{ fontSize: '0.95rem' }}>
-                <span className="text-muted">طور كشف الأدوار:</span>{' '}
-                <span style={{
-                  color: roleRevealMode === 'blind' ? 'var(--accent-red)' : 'var(--accent-gold)',
-                  fontWeight: 700,
-                }}>{revealLabel}</span>
-              </p>
-            )}
-
-            <p className="text-muted mb-4">شارك هذا الختم العالي السرية لدعوة اللاعبين</p>
-            
-            <div className="qr-container bg-white p-4 rounded-xl mx-auto mb-6 flex justify-center items-center" style={{ width: 'fit-content', boxShadow: '0 0 20px rgba(255,255,255,0.1)' }}>
-              <QRCodeSVG value={roomLink} size={180} />
-            </div>
-
-            <div className="mb-4 text-left" dir="ltr">
-              <input type="text" readOnly value={roomLink} className="input-field text-center mb-0" style={{ fontSize: '0.9rem', color: '#888' }} onClick={e => e.target.select()} />
-            </div>
-          </div>
-
-          {/* Players Roster Card */}
-          <div className="card" style={{ flex: '1 1 400px', maxWidth: '600px', display: 'flex', flexDirection: 'column' }}>
-            <h3 className="golden-text mb-4" style={{ borderBottom: '1px solid var(--border-subtle)', paddingBottom: '1rem' }}>
-              المشتبه بهم المتواجدون ({players.length})
-            </h3>
-            
-            <ul className="player-list flex-1" style={{ overflowY: 'auto', maxHeight: '350px' }}>
-              {players.length === 0 ? <p className="text-muted text-center mt-4">لا يوجد أحد هنا بعد...</p> : null}
-              {players.map(p => (
-                <li key={p.id} className="player-item">
-                  <div className="flex items-center gap-4">
-                    <span style={{ fontSize: '1.5rem' }}>{p.isHost ? '🎩' : '🕵️'}</span>
-                    <span style={{ fontSize: '1.2rem', fontWeight: p.id === user.id ? '800' : 'normal', color: p.id === user.id ? 'var(--text-main)' : '#ccc' }}>
-                      {p.username} {p.id === user.id && '(أنت)'}
-                    </span>
-                  </div>
-                  {p.isHost && <span className="status-badge status-host">الكبير</span>}
-                </li>
+        <div className="s-lobby-room-shell">
+          {/* Room access card */}
+          <section className="ak-card ak-card-surface" style={{ textAlign: 'center' }}>
+            <span className="s-lobby-step-label">Room Code</span>
+            <div className="s-lobby-roomcode" style={{ margin: 'var(--ak-space-3) auto var(--ak-space-4)' }}>
+              {String(activeRoom).split('').map((ch, i) => (
+                <div key={i} className="ch">{ch}</div>
               ))}
-            </ul>
-
-            <div className="mt-6 pt-4" style={{ borderTop: '1px solid var(--border-subtle)' }}>
-              {players.find(p => p.id === user.id)?.isHost || (roomMode === 'AI' && creatorId === user.id) ? (
-                <button className="btn-primary pulse-animation" onClick={handleStartGame} disabled={aiLoading}>
-                  {aiLoading ? 'الكبير يكتب الأرشيف... ⏳' : (roomMode === 'AI' ? 'صناعة القصة بالذكاء وبدء اللعبة 🤖' : 'انتقال لغرفة صياغة الأرشيف 📂')}
-                </button>
-              ) : (
-                <div className="text-center p-4 rounded-lg" style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid var(--border-subtle)' }}>
-                  <p className="golden-text pulse-animation" style={{ margin: 0, fontSize: '1.1rem' }}>⏳ بانتظار الكبير لختم الأرشيف وبدء اللعبة...</p>
-                </div>
-              )}
             </div>
-          </div>
+            {revealLabel && (
+              <div style={{ marginBottom: 'var(--ak-space-4)' }}>
+                <span style={{ color: 'var(--ak-text-muted)', font: 'var(--ak-t-caption)' }}>طور: </span>
+                <span style={{ color: roleRevealMode === 'blind' ? 'var(--ak-crimson-stage)' : 'var(--ak-gold)', fontWeight: 700 }}>{revealLabel}</span>
+              </div>
+            )}
+            <p className="auth-sub">شارك الكود أو الرابط لدعوة اللاعبين</p>
+            <div style={{ background: '#fff', padding: 'var(--ak-space-3)', borderRadius: 'var(--ak-radius-md)', display: 'inline-block', marginBottom: 'var(--ak-space-3)' }}>
+              <QRCodeSVG value={roomLink} size={160} />
+            </div>
+            <input
+              type="text"
+              readOnly
+              value={roomLink}
+              className="s-auth-field"
+              style={{ font: 'var(--ak-t-mono)', fontSize: '0.85rem', textAlign: 'center', direction: 'ltr' }}
+              onClick={e => e.target.select()}
+            />
+          </section>
+
+          {/* Players + start */}
+          <section className="ak-card ak-card-surface">
+            <span className="s-lobby-step-label">المشتبه بهم ({players.length})</span>
+            <div className="s-lobby-roster" style={{ marginTop: 'var(--ak-space-3)', marginBottom: 'var(--ak-space-4)' }}>
+              {players.length === 0 && <p className="auth-sub">لا يوجد أحد هنا بعد...</p>}
+              {players.map(p => (
+                <div key={p.id} className={`s-lobby-seat${p.isHost ? ' host' : ''}`}>
+                  <div className="av">{initial(p.username)}</div>
+                  <div>
+                    <div className="nm">{p.username}{p.id === user.id ? ' (أنت)' : ''}</div>
+                    <div className="tag">{p.isHost ? 'المضيف' : 'مشتبه'}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {(players.find(p => p.id === user.id)?.isHost) || (roomMode === 'AI' && creatorId === user.id) ? (
+              <AkButton
+                variant="primary"
+                onClick={handleStartGame}
+                disabled={aiLoading}
+                style={{ width: '100%', padding: '1rem', fontSize: '1.05rem' }}
+              >
+                {aiLoading
+                  ? 'الكبير يكتب الأرشيف...'
+                  : roomMode === 'AI'
+                  ? 'صناعة القصة بالذكاء وبدء اللعبة'
+                  : 'انتقال لغرفة صياغة الأرشيف'}
+              </AkButton>
+            ) : (
+              <div className="s-auth-error" style={{ background: 'rgba(212,175,55,0.08)', border: '1px solid var(--ak-border-gold)', color: 'var(--ak-gold)' }}>
+                بانتظار الكبير لختم الأرشيف وبدء اللعبة...
+              </div>
+            )}
+          </section>
         </div>
       )}
     </div>

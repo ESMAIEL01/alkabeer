@@ -533,103 +533,96 @@ export default function GameBoard() {
     return (
       <>
       <ConnectionBanner status={connectionStatus} />
-      <div className="container mt-2 animate-fade-in" style={{ maxWidth: '720px' }}>
-        <div className="flex justify-between items-center mb-4 p-3 rounded-xl" style={{ background: 'rgba(0,0,0,0.6)', borderBottom: '1px solid var(--accent-gold)' }}>
-          <h3 className="golden-text" style={{ margin: 0, fontSize: '1.2rem' }}>هويتك في التحقيق</h3>
-          <div className="text-muted" style={{ fontSize: '1rem', fontFamily: 'monospace' }}>
-            ⏳ 00:{Math.max(0, timer).toString().padStart(2, '0')}
+      {amIHost ? (
+        // -------- Host view: full overview, never reveals hidden roles --
+        <div style={{ maxWidth: '900px', margin: '0 auto', padding: 'var(--ak-space-5)' }}>
+          <div style={{ textAlign: 'center', marginBottom: 'var(--ak-space-5)' }}>
+            <span className="ak-overline">Role Distribution · Round 0</span>
+            <h1 style={{ margin: 'var(--ak-space-2) 0 var(--ak-space-2)' }}>تم توزيع الشخصيات</h1>
+            <p style={{ color: 'var(--ak-text-muted)', fontFamily: 'var(--ak-font-mono)', direction: 'ltr' }}>
+              00:{Math.max(0, timer).toString().padStart(2, '0')}
+            </p>
+            <p style={{ color: 'var(--ak-text-muted)', maxWidth: '560px', margin: '0 auto' }}>
+              راجع التوزيع بسرعة. الأدوار الخفية محفوظة، اللاعبين شايفين بطاقاتهم بس.
+            </p>
+          </div>
+
+          <div className="host-overview-grid">
+            {publicCards.map(c => (
+              <div key={c.playerId} className="ak-card ak-card-surface" style={{ padding: 'var(--ak-space-4)' }}>
+                <div style={{ color: 'var(--ak-gold)', font: 'var(--ak-t-h4)', marginBottom: 'var(--ak-space-1)' }}>{c.username}</div>
+                <div style={{ marginBottom: 'var(--ak-space-2)' }}>
+                  {c.storyCharacterName}
+                  <span style={{ color: 'var(--ak-text-muted)' }}> — {c.storyCharacterRole}</span>
+                </div>
+                <div style={{ color: 'var(--ak-text-muted)', font: 'var(--ak-t-body-sm)', fontStyle: 'italic' }}>
+                  !!{c.suspiciousDetail}!!
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: 'var(--ak-space-3)', justifyContent: 'center', flexWrap: 'wrap', marginTop: 'var(--ak-space-5)' }}>
+            <button className="ak-btn ak-btn-primary" onClick={() => handleHostAction('start_first_clue')} style={{ minWidth: '260px' }}>
+              ابدأ الجولة الأولى
+            </button>
+            <button className="ak-btn ak-btn-ghost" onClick={confirmEndSession}>إنهاء الجلسة</button>
+          </div>
+          {hostError && (
+            <div className="s-auth-error" style={{ marginTop: 'var(--ak-space-3)', maxWidth: '480px', marginInline: 'auto' }}>⚠ {hostError}</div>
+          )}
+        </div>
+      ) : (
+        // -------- Player view: private role card -----------------------
+        <div className="s-reveal">
+          <div className="s-reveal-shell">
+            <div className="s-reveal-timer">00:{Math.max(0, timer).toString().padStart(2, '0')}</div>
+
+            {!roleCard ? (
+              <div className="role-card animate-fade-in" style={{ minHeight: '380px', justifyContent: 'center', textAlign: 'center' }}>
+                <span className="ov">Sealing</span>
+                <div className="seal pulse-animation" aria-hidden>كـ</div>
+                <h3 className="character-name" style={{ font: 'var(--ak-t-h3)' }}>الكبير بيوزع البطاقات</h3>
+                <p className="character-role">استنى لحظة...</p>
+              </div>
+            ) : (
+              <div className={`role-card animate-fade-in${isBlind ? ' blind' : ''}`}>
+                <span className="ov">Your Identity</span>
+                <div className="seal" aria-hidden>
+                  {isBlind ? '?' : (roleCard.storyCharacterName || '?').trim().charAt(0)}
+                </div>
+                <div>
+                  <h3 className="character-name">{roleCard.storyCharacterName}</h3>
+                  <p className="character-role">{roleCard.storyCharacterRole}</p>
+                </div>
+
+                <div className="role-section">
+                  <span className="label">التفصيلة المريبة</span>
+                  <div className="value">!!{roleCard.suspiciousDetail}!!</div>
+                </div>
+
+                {!isBlind && roleCard.gameRole && (
+                  <div className={`secret-banner${roleCard.gameRole === 'mafiozo' ? '' : roleCard.gameRole === 'obvious_suspect' ? ' gold' : ' muted'}`}>
+                    <span className="label-en">Hidden Identity</span>
+                    <h3>{roleCard.roleLabelArabic}</h3>
+                    {roleCard.objective && <p>{roleCard.objective}</p>}
+                  </div>
+                )}
+
+                {isBlind && (
+                  <div className="secret-banner">
+                    <span className="label-en">Blind Mode</span>
+                    <h3>الحقيقة مش كاملة عند حد</h3>
+                    <p>{roleCard.objective || 'راقب، اسأل، ودافع عن نفسك. الحقيقة الكاملة بتظهر في الكشف النهائي.'}</p>
+                  </div>
+                )}
+
+                <p className="warning">⚠ {roleCard.warning || 'ممنوع تكشف بطاقتك للاعبين التانيين.'}</p>
+              </div>
+            )}
           </div>
         </div>
-
-        {amIHost ? (
-          // ---- Host view: overview, never sees other players' game roles --
-          <div className="card p-4 animate-fade-in">
-            <h2 className="cinematic-glow mb-2 text-center">تم توزيع الشخصيات</h2>
-            <p className="text-muted text-center mb-4">اقرأ الجدول وراقب اللعبة. ممنوع تكشف الأدوار الخفية.</p>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.75rem' }}>
-              {publicCards.map(c => (
-                <div key={c.playerId} className="card" style={{ padding: '0.9rem', background: 'rgba(0,0,0,0.4)' }}>
-                  <div className="golden-text" style={{ fontSize: '1rem', fontWeight: 700 }}>{c.username}</div>
-                  <div style={{ fontSize: '0.95rem', marginTop: '0.25rem' }}>
-                    🎭 {c.storyCharacterName} <span className="text-muted">— {c.storyCharacterRole}</span>
-                  </div>
-                  <div className="text-muted" style={{ fontSize: '0.8rem', marginTop: '0.4rem', fontStyle: 'italic' }}>
-                    !!{c.suspiciousDetail}!!
-                  </div>
-                </div>
-              ))}
-            </div>
-            <p className="text-muted text-center mt-4" style={{ fontSize: '0.85rem' }}>
-              المرحلة الجاية: عرض عام للشخصيات على كل اللاعبين، وبعدها أول دليل.
-            </p>
-            <div className="flex justify-center gap-3 mt-4" style={{ flexWrap: 'wrap' }}>
-              <button className="btn-primary" onClick={() => handleHostAction('start_first_clue')} style={{ width: 'auto', flex: '1 1 200px' }}>
-                ابدأ الجولة الأولى ⏭️
-              </button>
-              <button className="btn-secondary" onClick={confirmEndSession} style={{ width: 'auto', flex: '0 1 140px' }}>
-                إنهاء الجلسة
-              </button>
-            </div>
-            {hostError && (
-              <div className="mt-3 p-2 rounded text-center" style={{ background: 'rgba(229,9,20,0.18)', border: '1px solid var(--accent-red)' }}>⚠️ {hostError}</div>
-            )}
-          </div>
-        ) : !roleCard ? (
-          // ---- Player view, card not yet received -----------------------
-          <div className="card text-center p-6 animate-fade-in">
-            <div className="pulse-animation" style={{ fontSize: '3.5rem' }}>🎴</div>
-            <h2 className="cinematic-glow mt-2">الكبير بيوزع البطاقات...</h2>
-            <p className="text-muted mt-2">استنى لحظة.</p>
-          </div>
-        ) : (
-          // ---- Player view, private card --------------------------------
-          <div className="card p-5 animate-fade-in role-card">
-            {/* Story-character banner */}
-            <div className="text-center mb-4">
-              <p className="text-muted" style={{ fontSize: '0.85rem', letterSpacing: '2px' }}>أنت تلعب بشخصية</p>
-              <h1 className="golden-text" style={{ fontSize: '2.4rem', margin: '0.25rem 0 0.4rem' }}>
-                {roleCard.storyCharacterName}
-              </h1>
-              <p className="text-main" style={{ fontSize: '1rem' }}>{roleCard.storyCharacterRole}</p>
-            </div>
-
-            {/* Suspicious detail */}
-            <div className="mb-4 p-3 rounded-lg" style={{ background: 'rgba(0,0,0,0.45)', border: '1px solid var(--border-subtle)' }}>
-              <div className="text-muted mb-1" style={{ fontSize: '0.8rem', letterSpacing: '1.5px' }}>التفصيلة المريبة</div>
-              <p style={{ margin: 0, fontStyle: 'italic', fontSize: '1rem' }}>!!{roleCard.suspiciousDetail}!!</p>
-            </div>
-
-            {/* Hidden role — NORMAL MODE ONLY */}
-            {!isBlind && roleCard.gameRole && (
-              <div className="mb-4 p-3 rounded-lg cinematic-glow" style={{
-                background: roleCard.gameRole === 'mafiozo' ? 'rgba(229,9,20,0.15)' : roleCard.gameRole === 'obvious_suspect' ? 'rgba(212,175,55,0.12)' : 'rgba(255,255,255,0.04)',
-                border: `1px solid ${roleCard.gameRole === 'mafiozo' ? 'var(--accent-red)' : 'var(--accent-gold)'}`,
-              }}>
-                <div className="text-muted mb-1" style={{ fontSize: '0.8rem', letterSpacing: '1.5px' }}>هويتك السرية</div>
-                <p style={{ margin: 0, fontSize: '1.4rem', fontWeight: 800 }}>
-                  {roleCard.roleLabelArabic}
-                </p>
-                <p style={{ margin: '0.5rem 0 0', fontSize: '0.95rem' }}>{roleCard.objective}</p>
-              </div>
-            )}
-
-            {/* Blind-mode notice */}
-            {isBlind && (
-              <div className="mb-4 p-3 rounded-lg" style={{ background: 'rgba(229,9,20,0.1)', border: '1px solid rgba(229,9,20,0.4)' }}>
-                <p className="cinematic-glow mb-1" style={{ margin: 0, fontSize: '1.05rem' }}>طور عمياني</p>
-                <p className="text-muted" style={{ margin: 0, fontSize: '0.9rem' }}>
-                  أنت تعرف وظيفتك وتفصيلتك المريبة فقط. الحقيقة الكاملة هتظهر في النهاية.
-                </p>
-                {roleCard.objective && (
-                  <p style={{ margin: '0.4rem 0 0', fontSize: '0.95rem' }}>{roleCard.objective}</p>
-                )}
-              </div>
-            )}
-
-            <p className="text-muted text-center" style={{ fontSize: '0.8rem' }}>⚠️ {roleCard.warning || 'ممنوع تكشف بطاقتك للاعبين التانيين.'}</p>
-          </div>
-        )}
-      </div>
+      )}
       </>
     );
   }
@@ -639,32 +632,35 @@ export default function GameBoard() {
     return (
       <>
       <ConnectionBanner status={connectionStatus} />
-      <div className="container mt-2 animate-fade-in" style={{ maxWidth: '1100px' }}>
-        <div className="text-center mb-4">
-          <h2 className="cinematic-glow" style={{ fontSize: '2.2rem' }}>الشخصيات على الطاولة</h2>
-          <p className="text-muted mt-1">قدامكم {timer} ثواني تحفظوا مين مين، وبعدها التحقيق يبدأ.</p>
+      <div className="s-public animate-fade-in">
+        <div className="s-public-head">
+          <span className="ak-overline">Round 0 · Setup</span>
+          <h1>الشخصيات على الطاولة</h1>
+          <p style={{ color: 'var(--ak-text-muted)', maxWidth: '560px', margin: '0 auto var(--ak-space-2)' }}>
+            قدامكم وقت قصير تحفظوا مين مين، وبعدها التحقيق يبدأ.
+          </p>
+          <span className="countdown">00:{Math.max(0, timer).toString().padStart(2, '0')}</span>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem' }}>
+
+        <div className="s-public-grid">
           {publicCards.map(c => (
-            <div key={c.playerId} className="card animate-fade-in" style={{ padding: '1rem' }}>
-              <div className="golden-text" style={{ fontSize: '1.1rem', fontWeight: 700 }}>{c.username}</div>
-              <div style={{ fontSize: '1rem', marginTop: '0.4rem' }}>
-                🎭 {c.storyCharacterName}
-                <span className="text-muted"> — {c.storyCharacterRole}</span>
+            <div key={c.playerId} className="s-public-card animate-fade-in">
+              <div className="player-name">{c.username}</div>
+              <div className="character">
+                {c.storyCharacterName}<span className="role"> — {c.storyCharacterRole}</span>
               </div>
-              <div className="text-muted" style={{ fontSize: '0.85rem', marginTop: '0.6rem', fontStyle: 'italic' }}>
-                !!{c.suspiciousDetail}!!
-              </div>
+              <div className="detail">!!{c.suspiciousDetail}!!</div>
             </div>
           ))}
         </div>
+
         {amIHost && (
-          <div className="text-center mt-5">
-            <button className="btn-primary" onClick={() => handleHostAction('skip_public_overview')} style={{ maxWidth: '320px', margin: '0 auto' }}>
-              ابدأ الدليل الأول دلوقتي ⏭️
+          <div style={{ textAlign: 'center', marginTop: 'var(--ak-space-5)' }}>
+            <button className="ak-btn ak-btn-primary" onClick={() => handleHostAction('skip_public_overview')} style={{ minWidth: '260px' }}>
+              ابدأ الدليل الأول
             </button>
             {hostError && (
-              <div className="mt-3 p-2 rounded mx-auto" style={{ background: 'rgba(229,9,20,0.18)', border: '1px solid var(--accent-red)', maxWidth: '420px' }}>⚠️ {hostError}</div>
+              <div className="s-auth-error" style={{ marginTop: 'var(--ak-space-3)', maxWidth: '480px', marginInline: 'auto' }}>⚠ {hostError}</div>
             )}
           </div>
         )}
