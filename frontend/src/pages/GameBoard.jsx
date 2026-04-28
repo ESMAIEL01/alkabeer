@@ -751,6 +751,10 @@ export default function GameBoard() {
   }
 
   // ----- PUBLIC_CHARACTER_OVERVIEW: 10 s public summary -------------------
+  // FixPack v2 / Commit 2: this screen renders for ALL connected clients
+  // (host AND non-host). The phase auto-advances after 10s via the server
+  // timer; the host's "skip" button is OPTIONAL and only shortens the wait.
+  // Non-host clients NEVER need a host action to see this phase.
   if (gameState === 'PUBLIC_CHARACTER_OVERVIEW') {
     return (
       <>
@@ -779,8 +783,13 @@ export default function GameBoard() {
 
         {amIHost && (
           <div style={{ textAlign: 'center', marginTop: 'var(--ak-space-5)' }}>
-            <button className="ak-btn ak-btn-primary" onClick={() => handleHostAction('skip_public_overview')} style={{ minWidth: '260px' }}>
-              ابدأ الدليل الأول
+            <button
+              className="ak-btn ak-btn-ghost"
+              onClick={() => handleHostAction('skip_public_overview')}
+              style={{ minWidth: '260px' }}
+              title="اختياري — العرض ينتهي تلقائيًا بعد 10 ثوان"
+            >
+              تخطّي العرض (اختياري)
             </button>
             {hostError && (
               <div className="s-auth-error" style={{ marginTop: 'var(--ak-space-3)', maxWidth: '480px', marginInline: 'auto' }}>⚠ {hostError}</div>
