@@ -17,8 +17,16 @@ const {
   LIMITS,
 } = require('./profile-helpers');
 const ai = require('../services/ai');
+const { logEvent } = require('../services/analytics');
 
 const router = express.Router();
+
+// Fire-and-forget event helper. Never throws, never blocks.
+function fireEvent(args) {
+  try {
+    Promise.resolve(logEvent(args)).catch(() => {});
+  } catch { /* swallow */ }
+}
 
 router.get('/me', authRequired, async (req, res, next) => {
   try {
@@ -70,6 +78,15 @@ router.put('/me', authRequired, async (req, res, next) => {
     );
 
     const { rows } = await query('SELECT * FROM user_profiles WHERE user_id = $1', [req.user.id]);
+    // F1: profile.updated — count of fields the caller actually intended to
+    // change (after validation). NEVER carries the new values themselves.
+    const fieldsChanged =
+      ['displayName', 'avatarUrl', 'bio'].filter(k => normalized[k] !== null).length;
+    fireEvent({
+      eventType: 'profile.updated',
+      userId: req.user.id,
+      payload: { fieldsChanged },
+    });
     return res.json({ profile: mapProfileRow(rows[0]) });
   } catch (err) {
     return next(err);
@@ -111,8 +128,21 @@ router.post('/bio/ai', authRequired, aiLimiter, async (req, res, next) => {
     if (!result || !result.bio) {
       // writeProfileBio always returns at least a fallback bio; this is
       // belt-and-suspenders.
+      fireEvent({
+        eventType: 'profile.bio_ai_requested',
+        userId: req.user.id,
+        payload: { source: 'unavailable', ok: false },
+      });
       return res.status(503).json({ error: 'الكبير ما قدرش يكتب الآن. حاول تاني بعد لحظات.' });
     }
+    // F1: profile.bio_ai_requested — provenance label + ok boolean only.
+    // NEVER the rawIdea, NEVER the generated bio body. The dedicated
+    // ai_generation_logs row already tracks latency/model/validator_reason.
+    fireEvent({
+      eventType: 'profile.bio_ai_requested',
+      userId: req.user.id,
+      payload: { source: result.source || 'fallback', ok: true },
+    });
     return res.json({ bio: result.bio, source: result.source || 'fallback' });
   } catch (err) {
     return next(err);

@@ -4,8 +4,16 @@ const jwt = require('jsonwebtoken');
 
 const config = require('../config/env');
 const { query } = require('../database');
+const { logEvent } = require('../services/analytics');
 
 const router = express.Router();
+
+// Fire-and-forget event helper. Never throws, never blocks the response.
+function fireEvent(args) {
+  try {
+    Promise.resolve(logEvent(args)).catch(() => {});
+  } catch { /* swallow */ }
+}
 
 const USERNAME_RE = /^[a-zA-Z0-9_؀-ۿ]{3,24}$/; // letters, digits, underscore, Arabic
 const PASSWORD_MIN = 8;
@@ -46,6 +54,7 @@ router.post('/register', async (req, res) => {
     );
     const user = rows[0];
     const token = signUserToken(user, false);
+    fireEvent({ eventType: 'auth.user_registered', userId: user.id, payload: {} });
     return res.status(201).json({ token, user: publicUser(user, false) });
   } catch (err) {
     if (err && err.code === '23505') {
@@ -81,6 +90,7 @@ router.post('/login', async (req, res) => {
     }
 
     const token = signUserToken(row, false);
+    fireEvent({ eventType: 'auth.user_login', userId: row.id, payload: {} });
     return res.json({ token, user: publicUser(row, false) });
   } catch (err) {
     console.error('login error:', err);
@@ -109,6 +119,7 @@ router.post('/guest', async (req, res) => {
       );
       const user = rows[0];
       const token = signUserToken(user, true);
+      fireEvent({ eventType: 'auth.guest_created', userId: user.id, payload: {} });
       return res.json({ token, user: publicUser(user, true) });
     } catch (err) {
       if (err && err.code === '23505') {

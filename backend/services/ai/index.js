@@ -32,7 +32,7 @@ const {
   validateBio,
 } = require('./validators');
 const { buildFallbackBio } = require('./bio-fallback');
-const { logAiGeneration } = require('../analytics');
+const { logAiGeneration, logEvent } = require('../analytics');
 
 // ---------------------------------------------------------------------------
 // Telemetry helpers — tiny, internal, fire-and-forget.
@@ -56,11 +56,34 @@ function classifyProviderError(err) {
 /**
  * Fire-and-forget wrapper. The default logger never rejects, but the .catch
  * is defensive against future changes.
+ *
+ * Also mirrors a minimal 'ai.call' event into analytics_events (F1) so the
+ * admin dashboard's events browser can correlate AI usage with sessions
+ * without joining ai_generation_logs separately. The mirrored payload is a
+ * strict subset of what's already in ai_generation_logs — no prompts, no
+ * responses, no archive bodies.
  */
 function logAi(args) {
   try {
     const p = logAiGeneration(args);
     if (p && typeof p.catch === 'function') p.catch(() => {});
+  } catch { /* swallow */ }
+  try {
+    const a = args || {};
+    const ev = logEvent({
+      eventType: 'ai.call',
+      userId: Number.isFinite(a.userId) ? a.userId : null,
+      gameId: a.gameId || null,
+      payload: {
+        task: typeof a.task === 'string' ? a.task : 'unknown',
+        source: typeof a.source === 'string' ? a.source : 'unknown',
+        model: typeof a.model === 'string' ? a.model : null,
+        ok: !!a.ok,
+        latencyMs: Number.isFinite(a.latencyMs) ? Math.max(0, Math.trunc(a.latencyMs)) : null,
+        validatorReason: typeof a.validatorReason === 'string' ? a.validatorReason : null,
+      },
+    });
+    if (ev && typeof ev.catch === 'function') ev.catch(() => {});
   } catch { /* swallow */ }
 }
 

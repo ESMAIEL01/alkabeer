@@ -23,8 +23,16 @@ const {
   buildCallerSummary,
   sanitizeVotingHistory,
 } = require('./archive-helpers');
+const { logEvent } = require('../services/analytics');
 
 const router = express.Router();
+
+// Fire-and-forget event helper. Never throws, never blocks.
+function fireEvent(args) {
+  try {
+    Promise.resolve(logEvent(args)).catch(() => {});
+  } catch { /* swallow */ }
+}
 
 router.get('/:gameId', authRequired, async (req, res, next) => {
   const gameId = req.params && req.params.gameId ? String(req.params.gameId) : null;
@@ -61,11 +69,25 @@ router.get('/:gameId', authRequired, async (req, res, next) => {
         && (r.user_id === req.user.id || String(r.user_id) === String(req.user.id))
     );
 
+    // F1: archive.replay_opened. Outcome label + round count + admin flag.
+    // The participants check has already passed; this is a readership signal
+    // for analytics, never an identity payload.
+    const sanitizedVoting = sanitizeVotingHistory(session.voting_history);
+    fireEvent({
+      eventType: 'archive.replay_opened',
+      userId: req.user.id,
+      gameId: gameId,
+      payload: {
+        outcome: typeof session.outcome === 'string' ? session.outcome : 'unknown',
+        rounds: Array.isArray(sanitizedVoting) ? sanitizedVoting.length : 0,
+        asAdmin: !!req.user.isAdmin,
+      },
+    });
     return res.json({
       session: mapSessionRow(session),
       caller: buildCallerSummary(callerRow),
       participants: participantRows.map(mapParticipantRow).filter(Boolean),
-      votingHistory: sanitizeVotingHistory(session.voting_history),
+      votingHistory: sanitizedVoting,
       // finalReveal is permitted in full only because phase === FINAL_REVEAL
       // for this archived game (it would not exist otherwise — gate already
       // applied during persistSessionAndStats). Frontend may render the

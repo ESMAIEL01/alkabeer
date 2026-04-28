@@ -13,6 +13,28 @@ function getAi() {
   return _ai;
 }
 
+// F1 — privacy-safe analytics events. Lazy-required for the same reason as
+// the AI module. Wrapped in fireEvent(...) so calls are always non-blocking
+// and never throw, even if the analytics module fails to load (test harness
+// without DB) or the DB write fails.
+let _analytics = null;
+function getAnalytics() {
+  if (_analytics !== null) return _analytics;
+  try {
+    _analytics = require('../services/analytics');
+  } catch (_) {
+    _analytics = false;
+  }
+  return _analytics;
+}
+function fireEvent(args) {
+  try {
+    const a = getAnalytics();
+    if (!a || typeof a.logEvent !== 'function') return;
+    Promise.resolve(a.logEvent(args)).catch(() => { /* swallow */ });
+  } catch { /* swallow */ }
+}
+
 /**
  * GameManager — multiplayer state machine for Mafiozo.
  *
@@ -343,6 +365,24 @@ class GameManager {
           createdAt: new Date().toISOString(),
         });
 
+        // F1: privacy-safe session.created event. Carries config metadata
+        // (counts only) and the host's user id. NEVER carries the host
+        // username, the AI host persona, the archive, or any identity.
+        const cfgN = cfgResult.normalized || {};
+        fireEvent({
+          eventType: 'session.created',
+          userId: socket.userId,
+          gameId: roomId,
+          payload: {
+            mode,
+            roleRevealMode,
+            isCustom: !!cfgN.isCustom,
+            playerCount: Number.isFinite(cfgN.playerCount) ? cfgN.playerCount : null,
+            mafiozoCount: Number.isFinite(cfgN.mafiozoCount) ? cfgN.mafiozoCount : null,
+            clueCount: Number.isFinite(cfgN.clueCount) ? cfgN.clueCount : null,
+          },
+        });
+
         this.joinRoom(socket, roomId, mode === 'HUMAN');
         safeCb({ success: true, roomId, config: cfgResult.normalized });
       });
@@ -489,6 +529,23 @@ class GameManager {
         this.broadcastFullState(roomId);
         this.startRoomTimer(roomId);
 
+        // F1: privacy-safe session.archive_sealed event. Carries the
+        // archive provenance label (gemini/openrouter/fallback when the
+        // host route resolved it; AI source not always known here) and
+        // config counts only. Never the archive body, never identities.
+        fireEvent({
+          eventType: 'session.archive_sealed',
+          userId: socket.userId,
+          gameId: roomId,
+          payload: {
+            archiveSource: typeof decoded.source === 'string' ? decoded.source : 'unknown',
+            isCustom: !!cfg.isCustom,
+            playerCount: Number.isFinite(cfg.playerCount) ? cfg.playerCount : null,
+            mafiozoCount: Number.isFinite(cfg.mafiozoCount) ? cfg.mafiozoCount : null,
+            clueCount: Number.isFinite(cfg.clueCount) ? cfg.clueCount : null,
+          },
+        });
+
         return safeAck({ success: true, roomId, phase: 'ROLE_REVEAL', roleRevealMode: lobby.roleRevealMode });
       });
 
@@ -541,6 +598,21 @@ class GameManager {
         lobby.gameData.votes[voter.id] = canonicalTarget;
         socket.emit('vote_registered', { userId: voter.id, targetId: canonicalTarget });
         this.emitVotingProgress(roomId);
+
+        // F1: privacy-safe vote.cast event. NEVER carries voter id, target
+        // id, or username — only targetKind ('player' | 'skip') and the
+        // current round (clueIndex+1). Voter user id goes in the user_id
+        // column, which is per-row admin-visible but allow-listed off all
+        // public surfaces.
+        fireEvent({
+          eventType: 'vote.cast',
+          userId: voter.id,
+          gameId: roomId,
+          payload: {
+            targetKind: canonicalTarget === 'skip' ? 'skip' : 'player',
+            round: (Number.isFinite(lobby.gameData.clueIndex) ? lobby.gameData.clueIndex : 0) + 1,
+          },
+        });
 
         // Early close: if every voting PARTICIPANT (alive or eliminated)
         // has cast a vote, end immediately. Eliminated jurors count too.
@@ -727,6 +799,17 @@ class GameManager {
 
         if (participants.length > 0 && ready >= participants.length) {
           this.stopRoomTimer(lobby);
+          // F1: feature.ready_to_vote_used — every participant readied up.
+          fireEvent({
+            eventType: 'feature.ready_to_vote_used',
+            userId: socket.userId,
+            gameId: roomId,
+            payload: {
+              round: (Number.isFinite(lobby.gameData.clueIndex) ? lobby.gameData.clueIndex : 0) + 1,
+              eligibleCount: participants.length,
+              readyCount: ready,
+            },
+          });
           this.enterPhase(lobby, 'VOTING', 30);
           this.startRoomTimer(roomId);
         }
@@ -781,6 +864,19 @@ class GameManager {
           activated = true;
           secondsAdded = 15;
           this.io.to(roomId).emit('timer_update', lobby.gameData.timer);
+          // F1: feature.vote_extension_activated. Counters only.
+          fireEvent({
+            eventType: 'feature.vote_extension_activated',
+            userId: socket.userId,
+            gameId: roomId,
+            payload: {
+              round: (Number.isFinite(lobby.gameData.clueIndex) ? lobby.gameData.clueIndex : 0) + 1,
+              eligibleCount: participants.length,
+              requestedCount: requested,
+              requiredCount: required,
+              secondsAdded,
+            },
+          });
         }
         this.io.to(roomId).emit('vote_extension_progress', {
           requested,
@@ -993,8 +1089,22 @@ class GameManager {
    */
   enterPhase(lobby, phase, durationSeconds) {
     if (!lobby || !lobby.gameData) return;
+    const previousPhase = lobby.gameData.phase || null;
     lobby.gameData.phase = phase;
     lobby.gameData.timer = durationSeconds;
+
+    // F1: privacy-safe session.phase_transition event. Counters only.
+    fireEvent({
+      eventType: 'session.phase_transition',
+      userId: Number.isFinite(lobby.creatorId) ? lobby.creatorId : null,
+      gameId: lobby.id,
+      payload: {
+        phase,
+        previousPhase,
+        round: (Number.isFinite(lobby.gameData.clueIndex) ? lobby.gameData.clueIndex : 0) + 1,
+        durationSeconds: Number.isFinite(durationSeconds) ? durationSeconds : null,
+      },
+    });
     if (phase === 'CLUE_REVEAL') {
       // Per-round readiness reset. Broadcast a zeroed progress so any client
       // that missed the previous reset shows the correct count. Total counts
@@ -1039,6 +1149,16 @@ class GameManager {
       } catch (err) {
         console.error('[reveal] buildFinalReveal failed:', err && err.message);
         lobby.gameData.finalReveal = this.buildSafeMinimalReveal(lobby);
+        fireEvent({
+          eventType: 'error.phase_machine',
+          userId: Number.isFinite(lobby.creatorId) ? lobby.creatorId : null,
+          gameId: lobby.id,
+          payload: {
+            phase: 'FINAL_REVEAL',
+            kind: 'buildFinalReveal_failed',
+            note: (err && err.message ? String(err.message) : 'unknown').slice(0, 200),
+          },
+        });
       }
       this.broadcastFullState(lobby.id);
       // C3: optional AI polish — fire and forget. Deterministic reveal
@@ -1049,6 +1169,27 @@ class GameManager {
       // never blocks gameplay; idempotent (ON CONFLICT DO NOTHING on the
       // session row gates the participants + stats writes too).
       this.persistSessionAndStats(lobby).catch(() => { /* swallow */ });
+      // F1: privacy-safe session.ended event. Counters + outcome label only.
+      const cfgEnded = lobby.config || {};
+      const startedAt = lobby.createdAt ? Date.parse(lobby.createdAt) : null;
+      const durationSec = (Number.isFinite(startedAt))
+        ? Math.max(0, Math.round((Date.now() - startedAt) / 1000))
+        : null;
+      const totalRounds = Array.isArray(lobby.gameData.clues) ? lobby.gameData.clues.length : null;
+      fireEvent({
+        eventType: 'session.ended',
+        userId: Number.isFinite(lobby.creatorId) ? lobby.creatorId : null,
+        gameId: lobby.id,
+        payload: {
+          outcome: lobby.gameData.outcome || 'unknown',
+          rounds: totalRounds,
+          durationSec,
+          isCustom: !!cfgEnded.isCustom,
+          playerCount: Number.isFinite(cfgEnded.playerCount) ? cfgEnded.playerCount : null,
+          mafiozoCount: Number.isFinite(cfgEnded.mafiozoCount) ? cfgEnded.mafiozoCount : null,
+          clueCount: Number.isFinite(cfgEnded.clueCount) ? cfgEnded.clueCount : null,
+        },
+      });
       return;
     }
     this.broadcastFullState(lobby.id);
@@ -1219,6 +1360,23 @@ class GameManager {
     lobby.gameData.lastVoteResult = voteResult;
 
     this.io.to(roomId).emit('vote_result', voteResult);
+
+    // F1: vote.early_close event when the vote ended ahead of timer (every
+    // participant voted, or host force-closed). Counters only — never the
+    // tally itself, never identities.
+    if (reason === 'all_voted' || reason === 'host') {
+      fireEvent({
+        eventType: 'vote.early_close',
+        userId: Number.isFinite(lobby.creatorId) ? lobby.creatorId : null,
+        gameId: roomId,
+        payload: {
+          reason,
+          round,
+          eligibleCount: participants.length,
+          votedCount: voteResult.votedCount,
+        },
+      });
+    }
 
     // C2: optional AI polish — fire and forget. The deterministic vote_result
     // already shipped above; this only adds an optional 'vote_result_flavor'
