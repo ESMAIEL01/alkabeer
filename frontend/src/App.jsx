@@ -8,6 +8,7 @@ import GameBoard from './pages/GameBoard';
 import PostGameReport from './pages/PostGameReport';
 import ProfilePage from './pages/ProfilePage';
 import ArchiveReplay from './pages/ArchiveReplay';
+import AdminDashboard from './pages/AdminDashboard';
 
 function App() {
   const token = localStorage.getItem('mafToken');
@@ -24,6 +25,9 @@ function App() {
           <Route path="/report" element={<PostGameReport />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/archive/:gameId" element={<ArchiveReplay />} />
+          {/* F4: admin dashboard. Page-level guard checks /api/auth/me.user.isAdmin
+              and bounces non-admins with the documented Arabic 403 copy. */}
+          <Route path="/admin" element={<AdminDashboard />} />
         </Routes>
       </div>
     </Router>
