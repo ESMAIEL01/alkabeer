@@ -6,6 +6,73 @@ import { api, getToken, getStoredUser, clearSession } from '../services/api';
 import AkButton from '../components/AkButton';
 
 /**
+ * AiHostReadyPanel (FixPack v2 / Commit 3) — quorum panel for AI Host rooms.
+ * Shows ready/total + custom-seat error + the per-player "Ready" toggle.
+ * Visible to EVERY suspect player; no creator-only path.
+ */
+function AiHostReadyPanel({ progress, imReady, busy, onToggle, error, amISuspect }) {
+  const ready = (progress && Number.isFinite(progress.ready)) ? progress.ready : 0;
+  const total = (progress && Number.isFinite(progress.total)) ? progress.total : 0;
+  const required = (progress && Number.isFinite(progress.required)) ? progress.required : 3;
+  const minSuspects = (progress && Number.isFinite(progress.minSuspects)) ? progress.minSuspects : 3;
+  const enoughSuspects = !!(progress && progress.enoughSuspects);
+  const customSeatGate = !progress || progress.customSeatGate !== false;
+  const customSeatError = progress && progress.customSeatError;
+  const inProgress = !!(progress && progress.inProgress) || busy;
+
+  // Top status line.
+  let statusLine;
+  if (inProgress) {
+    statusLine = 'الكبير بيبني الأرشيف...';
+  } else if (!enoughSuspects) {
+    statusLine = `لازم ${minSuspects} لاعبين على الأقل عشان تبدأ اللعبة. (الموجود: ${total})`;
+  } else if (!customSeatGate) {
+    statusLine = customSeatError || 'الإعداد المخصص يحتاج عدد لاعبين بالضبط. لسه ناقص.';
+  } else {
+    statusLine = `جاهزون ${ready} / ${required}`;
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--ak-space-3)' }}>
+      <div
+        style={{
+          padding: 'var(--ak-space-3)',
+          textAlign: 'center',
+          color: 'var(--ak-gold)',
+          background: 'rgba(212,175,55,0.08)',
+          border: '1px solid var(--ak-border-gold)',
+          borderRadius: 'var(--ak-radius-md, 6px)',
+          font: 'var(--ak-t-body, inherit)',
+          fontWeight: 600,
+        }}
+        aria-live="polite"
+      >
+        {statusLine}
+      </div>
+
+      {amISuspect && !inProgress && (
+        <AkButton
+          variant={imReady ? 'ghost' : 'primary'}
+          onClick={onToggle}
+          disabled={busy || !enoughSuspects || !customSeatGate}
+          style={{ width: '100%', padding: '1rem', fontSize: '1.05rem' }}
+        >
+          {imReady ? 'إلغاء الاستعداد' : 'جاهز لبدء اللعبة'}
+        </AkButton>
+      )}
+
+      {inProgress && (
+        <div className="shimmer" style={{ height: '3rem' }} aria-hidden="true" />
+      )}
+
+      {error && (
+        <div className="s-auth-error">⚠ {error}</div>
+      )}
+    </div>
+  );
+}
+
+/**
  * LobbyPage — two-step setup (gameplay-mode → host-type) then the active-room
  * waiting view. Game logic and socket events are unchanged from prior commits;
  * only visual layout is redesigned to follow the Mafiozo Design System.
@@ -25,6 +92,14 @@ export default function LobbyPage() {
   const [roleRevealMode, setRoleRevealMode] = useState(null); // 'normal' | 'blind' | null
   const [creatorId, setCreatorId] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
+
+  // FixPack v2 / Commit 3: AI Host ready-quorum UI state.
+  // Server broadcasts ai_host_ready_progress { ready, total, required,
+  // minSuspects, customSeatGate, customSeatError, canStart, inProgress }.
+  const [aiReadyProgress, setAiReadyProgress] = useState(null);
+  const [imReadyForAi, setImReadyForAi] = useState(false);
+  const [aiHostBusy, setAiHostBusy] = useState(false);
+  const [aiHostError, setAiHostError] = useState('');
 
   // E4: Custom Mode toggles. Default 'افتراضي'; switching to 'مخصص' reveals
   // three number inputs. Config travels through create_room as
@@ -69,6 +144,20 @@ export default function LobbyPage() {
       }
     });
 
+    // FixPack v2 / Commit 3 — AI Host ready quorum events.
+    socket.on('ai_host_ready_progress', (p) => {
+      if (p && typeof p === 'object') setAiReadyProgress(p);
+    });
+    socket.on('ai_host_starting', () => {
+      setAiHostBusy(true);
+      setAiHostError('');
+    });
+    socket.on('ai_host_failed', (data) => {
+      setAiHostBusy(false);
+      setImReadyForAi(false);
+      setAiHostError((data && data.error) || 'تعذّر بدء اللعبة. حاولوا تاني.');
+    });
+
     if (roomIdFromUrl && !activeRoom) {
       handleJoinRoom(roomIdFromUrl);
     }
@@ -76,6 +165,9 @@ export default function LobbyPage() {
     return () => {
       socket.off('room_update');
       socket.off('game_started');
+      socket.off('ai_host_ready_progress');
+      socket.off('ai_host_starting');
+      socket.off('ai_host_failed');
     };
   }, [navigate]);
 
@@ -128,42 +220,37 @@ export default function LobbyPage() {
 
   const handleStartGame = async () => {
     if (roomMode === 'AI') {
-      if (!activeRoom) { setError('الغرفة مش جاهزة لسه. دقيقة وحاول تاني.'); return; }
-      setAiLoading(true);
-      setError('');
-      try {
-        const data = await api.post('/api/scenarios/ai-generate', {
-          idea: 'جريمة عشوائية مشوقة',
-          players: players.length || 5,
-          mood: 'مكس',
-          difficulty: 'متوسط',
-        });
-        if (!data || !data.archive_b64 || !data.scenario) {
-          throw new Error('الأرشيف رجع ناقص. حاول تاني.');
-        }
-        if (data.source === 'fallback' && data.note) {
-          console.warn('[ai] fallback scenario:', data.note);
-        }
-        const ack = await emitWithAck('finalize_archive', {
-          roomId: activeRoom,
-          archive: data.archive_b64,
-          raw: data.scenario,
-          clues: data.clues,
-        }, 8_000);
-        if (!ack || !ack.success) throw new Error((ack && ack.error) || 'تعذّر ختم الأرشيف.');
-        setActiveRoomId(ack.roomId || activeRoom);
-        socket.emit('start_game_setup', { roomId: ack.roomId || activeRoom });
-        navigate(`/game/${ack.roomId || activeRoom}`);
-      } catch (err) {
-        setError(err.message || 'فشل في الذكاء الاصطناعي');
-      } finally {
-        setAiLoading(false);
-      }
+      // FixPack v2 / Commit 3: AI Host rooms NEVER use a single creator
+      // button. Use the ready-quorum flow instead. This branch is kept
+      // only for the "بدء" legacy path.
+      handleAiToggleReady();
+      return;
+    }
+    if (!activeRoom) { setError('الغرفة مش جاهزة لسه.'); return; }
+    setActiveRoomId(activeRoom);
+    socket.emit('start_game_setup', { roomId: activeRoom });
+    navigate('/host-dashboard');
+  };
+
+  // FixPack v2 / Commit 3 — toggle this player's "ready" signal in an
+  // AI Host room. Server-side validates everything; we just send the
+  // toggle and let the broadcast update aiReadyProgress.
+  const handleAiToggleReady = () => {
+    if (!activeRoom) return;
+    if (aiHostBusy) return;
+    setAiHostError('');
+    if (imReadyForAi) {
+      socket.emit('ai_host_unready', { roomId: activeRoom }, () => {
+        setImReadyForAi(false);
+      });
     } else {
-      if (!activeRoom) { setError('الغرفة مش جاهزة لسه.'); return; }
-      setActiveRoomId(activeRoom);
-      socket.emit('start_game_setup', { roomId: activeRoom });
-      navigate('/host-dashboard');
+      socket.emit('ai_host_ready', { roomId: activeRoom }, (resp) => {
+        if (resp && resp.success) {
+          setImReadyForAi(true);
+        } else {
+          setAiHostError((resp && resp.error) || 'تعذّر تسجيل استعدادك. حاول تاني.');
+        }
+      });
     }
   };
 
@@ -387,22 +474,29 @@ export default function LobbyPage() {
               ))}
             </div>
 
-            {(players.find(p => p.id === user.id)?.isHost) || (roomMode === 'AI' && creatorId === user.id) ? (
+            {/* FixPack v2 / Commit 3 — AI Host rooms use a ready-quorum panel
+                visible to EVERY suspect player. No single-creator button. */}
+            {roomMode === 'AI' ? (
+              <AiHostReadyPanel
+                progress={aiReadyProgress}
+                imReady={imReadyForAi}
+                busy={aiHostBusy}
+                onToggle={handleAiToggleReady}
+                error={aiHostError}
+                amISuspect={!!players.find(p => p.id === user.id)}
+              />
+            ) : (players.find(p => p.id === user.id)?.isHost) ? (
               <AkButton
                 variant="primary"
                 onClick={handleStartGame}
                 disabled={aiLoading}
                 style={{ width: '100%', padding: '1rem', fontSize: '1.05rem' }}
               >
-                {aiLoading
-                  ? 'الكبير يكتب الأرشيف...'
-                  : roomMode === 'AI'
-                  ? 'صناعة القصة بالذكاء وبدء اللعبة'
-                  : 'انتقال لغرفة صياغة الأرشيف'}
+                {aiLoading ? 'يتم التجهيز...' : 'انتقال لغرفة صياغة الأرشيف'}
               </AkButton>
             ) : (
               <div className="s-auth-error" style={{ background: 'rgba(212,175,55,0.08)', border: '1px solid var(--ak-border-gold)', color: 'var(--ak-gold)' }}>
-                بانتظار الكبير لختم الأرشيف وبدء اللعبة...
+                بانتظار المضيف لختم الأرشيف وبدء اللعبة...
               </div>
             )}
           </section>

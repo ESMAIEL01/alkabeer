@@ -429,6 +429,10 @@ class GameManager {
           state: 'LOBBY',
           gameData: null,
           createdAt: new Date().toISOString(),
+          // FixPack v2 / Commit 3: AI Host ready quorum state. Only used in
+          // AI mode; ignored by Human Host rooms.
+          aiReadyPlayers: new Set(),
+          aiStartInProgress: false,
         });
 
         // F1: privacy-safe session.created event. Carries config metadata
@@ -494,6 +498,85 @@ class GameManager {
           // because the round-trip is sub-millisecond there.
           socket.to(roomId).emit('game_started', { id: roomId });
         }
+      });
+
+      // ---------------------------------------------------------------------
+      // FixPack v2 / Commit 3 — AI Host ready quorum.
+      //
+      // AI Host rooms have NO human host pressing a seal button. Instead,
+      // any suspect player can press "ready"; once 3+ are ready (and any
+      // custom playerCount is satisfied), the server generates the archive
+      // automatically and enters ROLE_REVEAL. Race-safe via the
+      // aiStartInProgress flag — a concurrent third click cannot trigger
+      // duplicate generation.
+      // ---------------------------------------------------------------------
+      socket.on('ai_host_ready', (data, ack) => {
+        const safeAck = typeof ack === 'function' ? ack : () => {};
+        const { roomId } = data || {};
+        const lobby = this.lobbies.get(roomId);
+        if (!lobby) {
+          return safeAck({ success: false, error: 'الغرفة مش موجودة.' });
+        }
+        if (lobby.mode !== 'AI') {
+          return safeAck({ success: false, error: 'هذا الزر متاح فقط في غرف الكبير الاصطناعي.' });
+        }
+        if (lobby.state !== 'LOBBY') {
+          return safeAck({ success: false, error: 'اللعبة بدأت بالفعل.' });
+        }
+        if (!socket.userId) {
+          return safeAck({ success: false, error: 'لازم تسجّل دخولك الأول.' });
+        }
+        // Player must be a real suspect in the lobby (not host, not phantom).
+        const me = getPlayerById(lobby, socket.userId);
+        if (!me || me.isHost || !me.id || !me.username) {
+          return safeAck({ success: false, error: 'لازم تكون لاعب مشارك في الغرفة.' });
+        }
+
+        // Idempotent toggle: if already ready, just echo progress; otherwise add.
+        if (!lobby.aiReadyPlayers) lobby.aiReadyPlayers = new Set();
+        const wasReady = lobby.aiReadyPlayers.has(me.id);
+        if (!wasReady) lobby.aiReadyPlayers.add(me.id);
+
+        // Compute progress + threshold AFTER the add.
+        const progress = this._computeAiReadyProgress(lobby);
+        this.io.to(roomId).emit('ai_host_ready_progress', progress);
+        safeAck({ success: true, ...progress });
+
+        // Check quorum + start (race-safe via aiStartInProgress).
+        if (progress.canStart && !lobby.aiStartInProgress) {
+          lobby.aiStartInProgress = true;
+          this.io.to(roomId).emit('ai_host_starting', { roomId });
+          // Fire-and-forget; the helper handles its own errors and broadcasts
+          // a final 'ai_host_failed' event on unrecoverable failure.
+          Promise.resolve(this._aiHostGenerateAndStart(lobby))
+            .catch((err) => {
+              console.warn('[ai-host] generate-and-start failed:', err && err.message);
+              lobby.aiStartInProgress = false;
+              this.io.to(roomId).emit('ai_host_failed', {
+                error: 'تعذّر بدء اللعبة. حاولوا تاني بعد لحظة.',
+              });
+            });
+        }
+      });
+
+      // Player explicitly cancels their ready signal (rare, but supported).
+      socket.on('ai_host_unready', (data, ack) => {
+        const safeAck = typeof ack === 'function' ? ack : () => {};
+        const { roomId } = data || {};
+        const lobby = this.lobbies.get(roomId);
+        if (!lobby || lobby.mode !== 'AI' || lobby.state !== 'LOBBY') {
+          return safeAck({ success: false });
+        }
+        if (lobby.aiStartInProgress) {
+          // Once generation started, ready signals are locked.
+          return safeAck({ success: false, error: 'الكبير بدأ يبني الأرشيف بالفعل.' });
+        }
+        if (lobby.aiReadyPlayers && socket.userId) {
+          lobby.aiReadyPlayers.delete(socket.userId);
+        }
+        const progress = this._computeAiReadyProgress(lobby);
+        this.io.to(roomId).emit('ai_host_ready_progress', progress);
+        safeAck({ success: true, ...progress });
       });
 
       socket.on('finalize_archive', (data, ack) => {
@@ -2346,6 +2429,189 @@ class GameManager {
 
   generateRoomId() {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
+  }
+
+  // -------------------------------------------------------------------------
+  // FixPack v2 / Commit 3 — AI Host ready quorum helpers.
+  //
+  // Public surface (used by ai_host_ready / ai_host_unready handlers):
+  //   _computeAiReadyProgress(lobby) → progress payload
+  //   _requiredReadyCount(lobby)     → integer threshold for "canStart"
+  //   _aiHostGenerateAndStart(lobby) → server-side archive + ROLE_REVEAL
+  // -------------------------------------------------------------------------
+
+  /**
+   * Quorum threshold:
+   *   - 3 minimum (the user-spec "at least 3 players must press start")
+   *   - In Custom Mode, the suspect count must ALSO equal config.playerCount.
+   *     We surface that as a separate `customSeatGate` boolean so the UI
+   *     can show a clearer message ("you need exactly 5 players first").
+   */
+  _requiredReadyCount(lobby) {
+    return 3;
+  }
+
+  /**
+   * Progress payload broadcast on every ready/unready toggle. All counts
+   * only — no identities, no player ids, no usernames.
+   */
+  _computeAiReadyProgress(lobby) {
+    const suspects = getSuspectPlayers(lobby);
+    const required = this._requiredReadyCount(lobby);
+    const minSuspects = required;
+    const ready = lobby.aiReadyPlayers ? lobby.aiReadyPlayers.size : 0;
+
+    // Custom Mode: the suspect-seat gate must pass before quorum is even
+    // meaningful. Use the existing validateCustomStartCount helper so the
+    // copy stays consistent with finalize_archive.
+    const startGate = validateCustomStartCount(lobby);
+    const customSeatGate = startGate.ok;
+
+    const enoughSuspects = suspects.length >= minSuspects;
+    const enoughReady = ready >= required;
+    const canStart = enoughSuspects && enoughReady && customSeatGate &&
+                     !lobby.aiStartInProgress && lobby.state === 'LOBBY';
+
+    return {
+      ready,
+      total: suspects.length,
+      required,
+      minSuspects,
+      enoughSuspects,
+      enoughReady,
+      customSeatGate,
+      customSeatError: customSeatGate ? null : (startGate.error || null),
+      canStart,
+      inProgress: !!lobby.aiStartInProgress,
+    };
+  }
+
+  /**
+   * Server-side AI archive generation + ROLE_REVEAL transition. Called once
+   * per lobby after quorum is reached. Race-safe via lobby.aiStartInProgress.
+   *
+   * Privacy:
+   *   - The generated archive flows through the same code path as
+   *     finalize_archive (assignRoles + buildPrivateRoleCard + broadcast),
+   *     so the existing privacy invariants (no gameRole on broadcast,
+   *     private role cards per-socket only) all apply.
+   *   - On failure: deterministic fallback (services/ai already returns one)
+   *     so the game ALWAYS starts.
+   */
+  async _aiHostGenerateAndStart(lobby) {
+    const roomId = lobby.id;
+    try {
+      const ai = getAi();
+      if (!ai || typeof ai.generateSealedArchive !== 'function') {
+        // No AI module — use the built-in deterministic fallback directly.
+        // We still want the game to start.
+        const fb = ai && ai._buildFallbackArchive
+          ? ai._buildFallbackArchive(this._aiInputForLobby(lobby))
+          : null;
+        if (!fb) throw new Error('ai_module_unavailable');
+        return this._aiHostFinalize(lobby, fb, 'fallback');
+      }
+      const aiInput = this._aiInputForLobby(lobby);
+      const result = await ai.generateSealedArchive(aiInput);
+      if (!result || !result.archive) {
+        throw new Error('archive_missing');
+      }
+      return this._aiHostFinalize(lobby, result.archive, result.source || 'unknown');
+    } catch (err) {
+      console.warn('[ai-host] _aiHostGenerateAndStart failed:', err && err.message);
+      lobby.aiStartInProgress = false;
+      this.io.to(roomId).emit('ai_host_failed', {
+        error: 'تعذّر بدء اللعبة. حاولوا تاني بعد لحظة.',
+      });
+    }
+  }
+
+  /**
+   * Build the AI input payload from the lobby's config + state.
+   */
+  _aiInputForLobby(lobby) {
+    const cfg = resolveLobbyConfig(lobby);
+    return {
+      idea: 'جريمة مشوقة في القاهرة الكلاسيكية',
+      players: cfg.playerCount || getCurrentSuspectCount(lobby) || 5,
+      mood: 'مكس',
+      difficulty: 'متوسط',
+      clueCount: cfg.clueCount,
+      mafiozoCount: cfg.mafiozoCount,
+    };
+  }
+
+  /**
+   * Apply the generated archive to the lobby exactly the way the
+   * finalize_archive socket handler does. Single point of mutation so
+   * the AI Host path and Human Host path produce identical lobby shape.
+   */
+  _aiHostFinalize(lobby, archive, source) {
+    const roomId = lobby.id;
+    const cfg = resolveLobbyConfig(lobby);
+    const expectedClueCount = cfg.clueCount;
+
+    // Reuse the same archive shape the Human Host path produces.
+    const eligible = getSuspectPlayers(lobby);
+    const { roleAssignments, publicCharacterCards } = this.assignRoles(eligible, archive, cfg);
+
+    // Resolve final clue list (same priority as finalize_archive).
+    const archiveClues = Array.isArray(archive.clues) ? archive.clues : [];
+    const finalClues = archiveClues.length === expectedClueCount
+      ? archiveClues
+      : Array.from({ length: expectedClueCount }, (_, i) => archiveClues[i] || `دليل ${i + 1}...`);
+
+    // Encode archive for storage parity with the Human Host path.
+    const archiveBase64 = Buffer.from(JSON.stringify(archive), 'utf8').toString('base64');
+
+    lobby.state = 'IN_GAME';
+    lobby.gameData = {
+      archiveBase64,
+      rawScenario: typeof archive.story === 'string' ? archive.story : '',
+      decodedArchive: archive,
+      clues: finalClues,
+      clueIndex: 0,
+      phase: 'ROLE_REVEAL',
+      timer: 30,
+      interval: null,
+      isPaused: false,
+      votes: {},
+      roleRevealMode: lobby.roleRevealMode,
+      roleAssignments,
+      publicCharacterCards,
+      votingHistory: [],
+      eliminatedIds: [],
+      outcome: null,
+      lastVoteResult: null,
+    };
+
+    // Send each suspect their PRIVATE role card (same channel as Human Host).
+    for (const card of Object.values(roleAssignments)) {
+      const player = lobby.players.get(card.playerId);
+      if (!player || !player.socketId) continue;
+      this.io.to(player.socketId).emit('your_role_card', this.buildPrivateRoleCard(lobby, card));
+    }
+
+    // Broadcast public state + tell every client to navigate to /game/<roomId>.
+    this.broadcastFullState(roomId);
+    this.io.to(roomId).emit('game_started', { id: roomId });
+    this.startRoomTimer(roomId);
+
+    // Telemetry parity with finalize_archive.
+    fireEvent({
+      eventType: 'session.archive_sealed',
+      userId: lobby.creatorId,
+      gameId: roomId,
+      payload: {
+        archiveSource: typeof source === 'string' ? source : 'unknown',
+        isCustom: !!cfg.isCustom,
+        playerCount: Number.isFinite(cfg.playerCount) ? cfg.playerCount : null,
+        mafiozoCount: Number.isFinite(cfg.mafiozoCount) ? cfg.mafiozoCount : null,
+        clueCount: Number.isFinite(cfg.clueCount) ? cfg.clueCount : null,
+      },
+    });
+
+    return { ok: true };
   }
 
   joinRoom(socket, roomId, isHost = false) {
