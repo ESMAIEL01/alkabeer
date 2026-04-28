@@ -10,12 +10,27 @@ import AkButton from '../components/AkButton';
  * Shows ready/total + custom-seat error + the per-player "Ready" toggle.
  * Visible to EVERY suspect player; no creator-only path.
  */
-function AiHostReadyPanel({ progress, imReady, busy, onToggle, error, amISuspect }) {
-  const ready = (progress && Number.isFinite(progress.ready)) ? progress.ready : 0;
-  const total = (progress && Number.isFinite(progress.total)) ? progress.total : 0;
+function AiHostReadyPanel({ progress, imReady, busy, onToggle, error, amISuspect, visibleSuspectCount }) {
   const required = (progress && Number.isFinite(progress.required)) ? progress.required : 3;
   const minSuspects = (progress && Number.isFinite(progress.minSuspects)) ? progress.minSuspects : 3;
-  const enoughSuspects = !!(progress && progress.enoughSuspects);
+  const ready = (progress && Number.isFinite(progress.ready)) ? progress.ready : 0;
+
+  // FixPack v3 / Hotfix — derive an effective `total` so the panel never
+  // says "الموجود: 0" when suspects are visibly present in the roster.
+  // Backend total is preferred; if missing or smaller than the visible
+  // suspect count (e.g. the very first ai_host_ready_progress hasn't
+  // arrived yet on a freshly-joined client), fall back to the visible
+  // count. The visibleSuspectCount prop is computed by LobbyPage from
+  // its `players` state which arrives via the existing room_update.
+  const backendTotal = (progress && Number.isFinite(progress.total)) ? progress.total : 0;
+  const visibleTotal = Number.isFinite(visibleSuspectCount) ? visibleSuspectCount : 0;
+  const total = Math.max(backendTotal, visibleTotal);
+
+  // Same fallback for the "enoughSuspects" gate — if the backend hasn't
+  // reported yet but the client can already see ≥ minSuspects players,
+  // the start button should not be disabled spuriously.
+  const enoughSuspects = (progress && progress.enoughSuspects) || total >= minSuspects;
+
   const customSeatGate = !progress || progress.customSeatGate !== false;
   const customSeatError = progress && progress.customSeatError;
   const inProgress = !!(progress && progress.inProgress) || busy;
@@ -25,12 +40,22 @@ function AiHostReadyPanel({ progress, imReady, busy, onToggle, error, amISuspect
   if (inProgress) {
     statusLine = 'الكبير بيبني الأرشيف...';
   } else if (!enoughSuspects) {
-    statusLine = `لازم ${minSuspects} لاعبين على الأقل عشان تبدأ اللعبة. (الموجود: ${total})`;
+    statusLine = `لازم ${minSuspects} لاعبين على الأقل عشان تبدأ اللعبة. الموجود الآن: ${total}.`;
   } else if (!customSeatGate) {
     statusLine = customSeatError || 'الإعداد المخصص يحتاج عدد لاعبين بالضبط. لسه ناقص.';
+  } else if (ready >= required) {
+    statusLine = 'الكل جاهز. الكبير هيبدأ القضية حالاً.';
+  } else if (ready > 0) {
+    statusLine = `الجاهزون: ${ready} / ${required}. اضغط جاهز عشان تبدأ.`;
   } else {
-    statusLine = `جاهزون ${ready} / ${required}`;
+    statusLine = 'اضغط جاهز، ولما 3 لاعبين يجهزوا الكبير هيبدأ القضية.';
   }
+
+  // Secondary line — always shows BOTH counts so the user understands
+  // the difference between "players present" and "players ready".
+  const secondaryLine = (!inProgress && enoughSuspects && customSeatGate)
+    ? `اللاعبون: ${total} • الجاهزون: ${ready} / ${required}`
+    : null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--ak-space-3)' }}>
@@ -48,6 +73,11 @@ function AiHostReadyPanel({ progress, imReady, busy, onToggle, error, amISuspect
         aria-live="polite"
       >
         {statusLine}
+        {secondaryLine && (
+          <div style={{ marginTop: 'var(--ak-space-2)', font: 'var(--ak-t-caption, inherit)', color: 'var(--ak-text-muted)' }}>
+            {secondaryLine}
+          </div>
+        )}
       </div>
 
       {amISuspect && !inProgress && (
@@ -59,6 +89,12 @@ function AiHostReadyPanel({ progress, imReady, busy, onToggle, error, amISuspect
         >
           {imReady ? 'إلغاء الاستعداد' : 'جاهز لبدء اللعبة'}
         </AkButton>
+      )}
+
+      {amISuspect && imReady && !inProgress && (
+        <div style={{ textAlign: 'center', font: 'var(--ak-t-caption, inherit)', color: 'var(--ak-text-muted)' }}>
+          ✓ تم تسجيل جاهزيتك
+        </div>
       )}
 
       {inProgress && (
@@ -134,6 +170,13 @@ export default function LobbyPage() {
       setPlayers(data.players);
       setRoomMode(data.mode);
       setCreatorId(data.creatorId);
+      // FixPack v3 / Hotfix — embedded ai-host ready progress so the
+      // panel reflects current suspects on the very first room_update,
+      // before any ready/unready click. Falls through gracefully for
+      // Human Host rooms (server sends null).
+      if (data && Object.prototype.hasOwnProperty.call(data, 'aiHostReadyProgress')) {
+        setAiReadyProgress(data.aiHostReadyProgress || null);
+      }
     });
 
     socket.on('game_started', (data) => {
@@ -486,6 +529,11 @@ export default function LobbyPage() {
                 onToggle={handleAiToggleReady}
                 error={aiHostError}
                 amISuspect={!!players.find(p => p.id === user.id)}
+                /* FixPack v3 / Hotfix — count of real non-host suspects
+                   visible in the roster. Used as a fallback for the
+                   panel's `total` so the UI never says "الموجود: 0"
+                   when players are clearly present. */
+                visibleSuspectCount={players.filter(p => p && p.id && p.username && !p.isHost).length}
               />
             ) : (players.find(p => p.id === user.id)?.isHost) ? (
               <AkButton

@@ -2459,6 +2459,17 @@ class GameManager {
     const suspects = getSuspectPlayers(lobby);
     const required = this._requiredReadyCount(lobby);
     const minSuspects = required;
+
+    // FixPack v3 / Hotfix — filter the ready Set against the CURRENT
+    // real-suspect ids. A stale id (player who left, or a phantom write)
+    // must not satisfy the quorum. We also opportunistically prune the
+    // Set in place so subsequent reads are O(1).
+    const validSuspectIds = new Set(suspects.map(p => p.id));
+    if (lobby.aiReadyPlayers && lobby.aiReadyPlayers.size > 0) {
+      for (const id of Array.from(lobby.aiReadyPlayers)) {
+        if (!validSuspectIds.has(id)) lobby.aiReadyPlayers.delete(id);
+      }
+    }
     const ready = lobby.aiReadyPlayers ? lobby.aiReadyPlayers.size : 0;
 
     // Custom Mode: the suspect-seat gate must pass before quorum is even
@@ -2643,14 +2654,33 @@ class GameManager {
 
     socket.currentRoom = roomId;
     this.io.to(roomId).emit('room_update', this.getRoomPublicData(roomId));
+
+    // FixPack v3 / Hotfix — AI Host ready count sync.
+    // The legacy code emitted ai_host_ready_progress only on
+    // ai_host_ready / ai_host_unready, so a fresh client viewing a
+    // room with N joined suspects would still see total=0 until
+    // someone clicked the button. Broadcast the recomputed progress
+    // on every roster change so the panel reflects reality.
+    if (lobby.mode === 'AI' && lobby.state === 'LOBBY') {
+      const progress = this._computeAiReadyProgress(lobby);
+      this.io.to(roomId).emit('ai_host_ready_progress', progress);
+    }
   }
 
   handleDisconnect(socket) {
-    if (socket.currentRoom) {
-      const lobby = this.lobbies.get(socket.currentRoom);
-      if (lobby && lobby.players.has(socket.userId)) {
-        // leave them inside for state reconnection
-      }
+    if (!socket || !socket.currentRoom) return;
+    const lobby = this.lobbies.get(socket.currentRoom);
+    if (!lobby) return;
+
+    // FixPack v3 / Hotfix — drop the disconnected user from the AI ready
+    // Set so a stale id can never satisfy the quorum. We deliberately
+    // leave the player record itself in lobby.players so a reconnect can
+    // resume seamlessly; only the volatile ready signal is cleaned up.
+    if (lobby.mode === 'AI' && lobby.state === 'LOBBY' && socket.userId
+        && lobby.aiReadyPlayers && lobby.aiReadyPlayers.has(socket.userId)) {
+      lobby.aiReadyPlayers.delete(socket.userId);
+      const progress = this._computeAiReadyProgress(lobby);
+      this.io.to(lobby.id).emit('ai_host_ready_progress', progress);
     }
   }
 
@@ -2662,6 +2692,12 @@ class GameManager {
       .map(p => ({
         id: p.id, username: p.username, isHost: p.isHost, isAlive: p.isAlive,
       }));
+    // FixPack v3 / Hotfix — embed ai-host ready progress so the room_update
+    // event is a single source of truth on every roster change. Default
+    // (Human Host) rooms get null so the field is always present.
+    const aiHostReadyProgress = (lobby.mode === 'AI' && lobby.state === 'LOBBY')
+      ? this._computeAiReadyProgress(lobby)
+      : null;
     return {
       id: lobby.id,
       state: lobby.state,
@@ -2669,6 +2705,7 @@ class GameManager {
       mode: lobby.mode,
       roleRevealMode: lobby.roleRevealMode || 'normal',
       creatorId: lobby.creatorId,
+      aiHostReadyProgress,
     };
   }
 }
@@ -2686,3 +2723,8 @@ module.exports._getCustomRequiredSuspectCount = getCustomRequiredSuspectCount;
 module.exports._validateCustomStartCount = validateCustomStartCount;
 module.exports._normalizeGameConfig = normalizeGameConfig;
 module.exports._maxMafiozoForPlayerCount = maxMafiozoForPlayerCount;
+// FixPack v3 / Hotfix — exposed so tests can pin the ready-progress
+// payload shape without standing up a real socket server.
+module.exports._computeAiReadyProgressOf = function(gm, lobby) {
+  return gm._computeAiReadyProgress(lobby);
+};
