@@ -1957,3 +1957,91 @@ h1, h2, h3, h4, h5, h6 {
   .s-history-meta { grid-template-columns: 1fr; }
   .s-stats-grid { grid-template-columns: 1fr 1fr; }
 }
+
+/* ===========================================================================
+ * Custom Mode (E4) — لوبي toggle + inputs + active-room badge.
+ * ======================================================================== */
+
+.s-custom-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ak-space-3);
+  padding: var(--ak-space-3);
+  border: 1px solid var(--ak-gold-soft);
+  border-radius: var(--ak-radius-md);
+  background: var(--ak-bg-stage);
+}
+
+.s-custom-toggle {
+  display: inline-flex;
+  align-self: center;
+  border: 1px solid var(--ak-gold-soft);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--ak-surface-1);
+}
+.s-custom-toggle-btn {
+  appearance: none;
+  background: transparent;
+  border: none;
+  padding: 0.55rem 1.2rem;
+  color: var(--ak-text-muted);
+  font: var(--ak-t-caption);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.s-custom-toggle-btn.active {
+  background: var(--ak-gold);
+  color: var(--ak-bg-deep);
+  font-weight: 700;
+}
+
+.s-custom-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--ak-space-3);
+}
+.s-custom-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.s-custom-field > span {
+  font: var(--ak-t-overline);
+  color: var(--ak-gold);
+  letter-spacing: var(--ak-tracking-x-wide);
+  text-transform: uppercase;
+}
+.s-custom-field input[type="number"] {
+  padding: 0.7rem 0.9rem;
+  background: var(--ak-surface-input);
+  border: 1px solid var(--ak-gold-soft);
+  border-radius: var(--ak-radius-md);
+  color: var(--ak-text-strong);
+  font: var(--ak-t-body);
+  text-align: center;
+}
+.s-custom-field input[type="number"]:focus {
+  outline: none;
+  border-color: var(--ak-crimson-stage);
+  box-shadow: 0 0 0 3px var(--ak-crimson-glow-soft);
+}
+.s-custom-field small {
+  color: var(--ak-text-muted);
+  font: var(--ak-t-caption);
+}
+
+.s-custom-room-badge {
+  display: inline-block;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  background: var(--ak-gold-tint);
+  border: 1px solid var(--ak-gold-soft);
+  color: var(--ak-gold);
+  font: var(--ak-t-caption);
+  font-weight: 600;
+}
+
+@media (max-width: 380px) {
+  .s-custom-fields { grid-template-columns: 1fr 1fr; }
+}

@@ -58,24 +58,57 @@ function looksLikePlaceholder(s) {
  * string useful for warn-level logs. Reasons include indices where applicable.
  *
  * Never logs the raw archive content — only the field/index that failed.
+ *
+ * E4: optional opts for Custom Mode:
+ *   { expectedClues, expectedMafiozos, expectedCharacters }
+ * Default opts preserve pre-E4 behavior (3 clues, 1 mafiozo, ≥2 chars).
+ *
+ * Multi-Mafiozo support: archive.mafiozos array (length === expectedMafiozos)
+ * is the preferred shape. The legacy singular archive.mafiozo string is
+ * accepted ONLY when expectedMafiozos === 1 (backwards compat with default
+ * archive prompts).
  */
-function validateArchive(a) {
+function validateArchive(a, opts = {}) {
   if (!a || typeof a !== 'object') return 'not an object';
+
+  const expectedClues      = Number.isFinite(opts.expectedClues)      ? opts.expectedClues      : 3;
+  const expectedMafiozos   = Number.isFinite(opts.expectedMafiozos)   ? opts.expectedMafiozos   : 1;
+  const expectedCharacters = Number.isFinite(opts.expectedCharacters) ? opts.expectedCharacters : null;
 
   // story
   if (typeof a.story !== 'string') return 'missing story';
   if (a.story.trim().length < 60) return 'story too short';
   if (!ARABIC_SCRIPT_RE.test(a.story)) return 'non-Arabic story';
 
-  // mafiozo / obvious_suspect
-  if (typeof a.mafiozo !== 'string' || !a.mafiozo.trim()) return 'missing mafiozo';
-  if (looksLikePlaceholder(a.mafiozo)) return 'mafiozo is placeholder text';
+  // Mafiozo identity. Two acceptable shapes:
+  //   1. archive.mafiozos = [{ name, role, suspicious_detail }, ...]
+  //      length must equal expectedMafiozos.
+  //   2. archive.mafiozo = "string" — only when expectedMafiozos === 1.
+  if (Array.isArray(a.mafiozos)) {
+    if (a.mafiozos.length !== expectedMafiozos) {
+      return `expected exactly ${expectedMafiozos} mafiozos, got ${a.mafiozos.length}`;
+    }
+    for (let i = 0; i < a.mafiozos.length; i++) {
+      const m = a.mafiozos[i];
+      if (!m || typeof m !== 'object') return `invalid mafiozo at index ${i}`;
+      if (typeof m.name !== 'string' || !m.name.trim()) return `missing name on mafiozo ${i}`;
+      if (looksLikePlaceholder(m.name)) return `placeholder mafiozo name at index ${i}`;
+    }
+  } else {
+    if (expectedMafiozos !== 1) {
+      return `expected ${expectedMafiozos} mafiozos in mafiozos array, got singular mafiozo string`;
+    }
+    if (typeof a.mafiozo !== 'string' || !a.mafiozo.trim()) return 'missing mafiozo';
+    if (looksLikePlaceholder(a.mafiozo)) return 'mafiozo is placeholder text';
+  }
+
+  // obvious_suspect (optional in custom mode but retained for default)
   if (typeof a.obvious_suspect !== 'string' || !a.obvious_suspect.trim()) return 'missing obvious_suspect';
   if (looksLikePlaceholder(a.obvious_suspect)) return 'obvious_suspect is placeholder text';
 
-  // clues — must be exactly 3, each a non-empty Arabic string, no placeholders
+  // clues — must be exactly expectedClues, each a non-empty Arabic string, no placeholders
   if (!Array.isArray(a.clues)) return 'clues is not an array';
-  if (a.clues.length !== 3) return `expected exactly 3 clues, got ${a.clues.length}`;
+  if (a.clues.length !== expectedClues) return `expected exactly ${expectedClues} clues, got ${a.clues.length}`;
   for (let i = 0; i < a.clues.length; i++) {
     const c = a.clues[i];
     if (c === null || c === undefined) return `null clue at index ${i}`;
@@ -85,9 +118,15 @@ function validateArchive(a) {
     if (!ARABIC_SCRIPT_RE.test(c)) return `non-Arabic clue at index ${i}`;
   }
 
-  // characters — at least 2, each must have a name+role
+  // characters — at least 2 by default, or exact count when supplied
   if (!Array.isArray(a.characters)) return 'characters is not an array';
-  if (a.characters.length < 2) return `need at least 2 characters, got ${a.characters.length}`;
+  if (expectedCharacters !== null) {
+    if (a.characters.length !== expectedCharacters) {
+      return `expected exactly ${expectedCharacters} characters, got ${a.characters.length}`;
+    }
+  } else if (a.characters.length < 2) {
+    return `need at least 2 characters, got ${a.characters.length}`;
+  }
   for (let i = 0; i < a.characters.length; i++) {
     const ch = a.characters[i];
     if (!ch || typeof ch !== 'object') return `invalid character at index ${i}`;

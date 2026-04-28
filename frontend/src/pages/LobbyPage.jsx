@@ -26,7 +26,24 @@ export default function LobbyPage() {
   const [creatorId, setCreatorId] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
 
+  // E4: Custom Mode toggles. Default 'افتراضي'; switching to 'مخصص' reveals
+  // three number inputs. Config travels through create_room as
+  // { config: {playerCount, mafiozoCount, clueCount, obviousSuspectEnabled} }
+  // or null for default mode.
+  const [isCustomMode, setIsCustomMode] = useState(false);
+  const [customPlayerCount, setCustomPlayerCount] = useState(5);
+  const [customMafiozoCount, setCustomMafiozoCount] = useState(1);
+  const [customClueCount, setCustomClueCount] = useState(3);
+  const [activeRoomConfig, setActiveRoomConfig] = useState(null);
+
+  // Clamp mafiozoCount whenever playerCount changes (max = floor((N-1)/2)).
+  useEffect(() => {
+    const maxM = Math.max(1, Math.floor((customPlayerCount - 1) / 2));
+    if (customMafiozoCount > maxM) setCustomMafiozoCount(maxM);
+  }, [customPlayerCount, customMafiozoCount]);
+
   const revealLabel = roleRevealMode === 'blind' ? 'عمياني' : roleRevealMode === 'normal' ? 'عادي' : '';
+  const customMafiozoMax = Math.max(1, Math.floor((customPlayerCount - 1) / 2));
 
   useEffect(() => {
     const token = getToken();
@@ -68,13 +85,30 @@ export default function LobbyPage() {
       return;
     }
     setError('');
-    socket.emit('create_room', { mode, roleRevealMode }, (response) => {
+    // E4: build the optional Custom Mode config payload.
+    const config = isCustomMode ? {
+      playerCount: customPlayerCount,
+      mafiozoCount: customMafiozoCount,
+      clueCount: customClueCount,
+      obviousSuspectEnabled: true,
+    } : null;
+    socket.emit('create_room', { mode, roleRevealMode, config }, (response) => {
       if (response && response.success) {
         setActiveRoom(response.roomId);
         setActiveRoomId(response.roomId);
+        setActiveRoomConfig(response.config || null);
+        // Cache config in sessionStorage so HostDashboard can read it on
+        // its own mount (separate page navigation drops React state).
+        try {
+          if (response.config) {
+            sessionStorage.setItem('mafActiveRoomConfig', JSON.stringify(response.config));
+          } else {
+            sessionStorage.removeItem('mafActiveRoomConfig');
+          }
+        } catch { /* ignore quota / private-mode failures */ }
         window.history.replaceState(null, '', '/lobby');
       } else {
-        setError('فشل في إنشاء الغرفة السريّة.');
+        setError((response && response.message) || 'فشل في إنشاء الغرفة السريّة.');
       }
     });
   };
@@ -195,6 +229,63 @@ export default function LobbyPage() {
                 <AkButton variant="ghost" onClick={() => setRoleRevealMode(null)}>تغيير الاختيار</AkButton>
               </div>
 
+              {/* E4: Custom Mode toggle + inputs */}
+              <div className="s-custom-block" style={{ marginBottom: 'var(--ak-space-4)' }}>
+                <div className="s-custom-toggle">
+                  <button
+                    type="button"
+                    className={`s-custom-toggle-btn${!isCustomMode ? ' active' : ''}`}
+                    onClick={() => setIsCustomMode(false)}
+                  >
+                    افتراضي
+                  </button>
+                  <button
+                    type="button"
+                    className={`s-custom-toggle-btn${isCustomMode ? ' active' : ''}`}
+                    onClick={() => setIsCustomMode(true)}
+                  >
+                    مخصص
+                  </button>
+                </div>
+                {isCustomMode && (
+                  <div className="s-custom-fields animate-fade-in">
+                    <label className="s-custom-field">
+                      <span>عدد اللاعبين</span>
+                      <input
+                        type="number"
+                        min={3}
+                        max={8}
+                        value={customPlayerCount}
+                        onChange={(e) => setCustomPlayerCount(Math.max(3, Math.min(8, parseInt(e.target.value, 10) || 3)))}
+                      />
+                      <small>عدد اللاعبين لا يشمل المضيف.</small>
+                    </label>
+                    <label className="s-custom-field">
+                      <span>عدد المافيوزو</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={customMafiozoMax}
+                        value={customMafiozoCount}
+                        onChange={(e) => setCustomMafiozoCount(Math.max(1, Math.min(customMafiozoMax, parseInt(e.target.value, 10) || 1)))}
+                      />
+                      <small>الحد الأقصى: {customMafiozoMax}</small>
+                    </label>
+                    <label className="s-custom-field">
+                      <span>عدد الأدلة</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={5}
+                        value={customClueCount}
+                        onChange={(e) => setCustomClueCount(Math.max(1, Math.min(5, parseInt(e.target.value, 10) || 3)))}
+                      />
+                      <small>عدد الأدلة = عدد جولات التصويت.</small>
+                    </label>
+                  </div>
+                )}
+              </div>
+
               <div style={{ textAlign: 'center', marginBottom: 'var(--ak-space-4)' }}>
                 <span className="s-lobby-step-label">Step 02</span>
                 <div className="s-lobby-step-title">اختار نوع المضيف</div>
@@ -251,9 +342,19 @@ export default function LobbyPage() {
               ))}
             </div>
             {revealLabel && (
-              <div style={{ marginBottom: 'var(--ak-space-4)' }}>
+              <div style={{ marginBottom: 'var(--ak-space-2)' }}>
                 <span style={{ color: 'var(--ak-text-muted)', font: 'var(--ak-t-caption)' }}>طور: </span>
                 <span style={{ color: roleRevealMode === 'blind' ? 'var(--ak-crimson-stage)' : 'var(--ak-gold)', fontWeight: 700 }}>{revealLabel}</span>
+              </div>
+            )}
+            {activeRoomConfig && activeRoomConfig.isCustom && (
+              <div style={{ marginBottom: 'var(--ak-space-4)' }}>
+                <span className="s-custom-room-badge">
+                  مخصص · {activeRoomConfig.playerCount} لاعبين · {activeRoomConfig.mafiozoCount} مافيوزو · {activeRoomConfig.clueCount} أدلة
+                </span>
+                <p style={{ color: 'var(--ak-text-muted)', font: 'var(--ak-t-caption)', marginTop: 'var(--ak-space-2)' }}>
+                  ابدأ الختم لما العدد يوصل {activeRoomConfig.playerCount} لاعبين.
+                </p>
               </div>
             )}
             <p className="auth-sub">شارك الكود أو الرابط لدعوة اللاعبين</p>

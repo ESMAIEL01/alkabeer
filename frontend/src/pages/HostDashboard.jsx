@@ -38,10 +38,23 @@ export default function HostDashboard() {
     setLoading(true);
     setError('');
     setAiNote('');
+    // E4: pull active-room config from sessionStorage (set by LobbyPage on
+    // create_room ack). Default mode → no config keys, server uses defaults.
+    let cfg = null;
+    try {
+      const raw = sessionStorage.getItem('mafActiveRoomConfig');
+      if (raw) cfg = JSON.parse(raw);
+    } catch { cfg = null; }
+    const customCounters = (cfg && cfg.isCustom) ? {
+      players: cfg.playerCount,
+      clueCount: cfg.clueCount,
+      mafiozoCount: cfg.mafiozoCount,
+    } : { players: 5 };
+
     try {
       const data = await api.post('/api/scenarios/ai-generate', {
         idea: prompt,
-        players: 5,
+        ...customCounters,
         difficulty: 'متوسط',
       });
       setScenarioText(data.scenario || '');

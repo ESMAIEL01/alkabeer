@@ -48,10 +48,44 @@ function shapeArchiveResponse(result) {
   };
 }
 
+/**
+ * E4: clamp + validate Custom Mode counters at the request boundary so
+ * the frontend cannot drive prompts / fallback past safe ranges. Returns
+ * { ok, errors, normalized } shape; always returns a normalized triple.
+ */
+function normalizeCustomCounters(body) {
+  const b = body || {};
+  const errors = [];
+  let players = Number.parseInt(b.players, 10);
+  let clueCount = Number.parseInt(b.clueCount, 10);
+  let mafiozoCount = Number.parseInt(b.mafiozoCount, 10);
+
+  if (!Number.isFinite(players)) players = 5;
+  if (players < 3 || players > 8) errors.push('عدد اللاعبين لازم يكون من 3 لـ 8.');
+
+  if (!Number.isFinite(clueCount)) clueCount = 3;
+  if (clueCount < 1 || clueCount > 5) errors.push('عدد الأدلة لازم يكون من 1 لـ 5.');
+
+  if (!Number.isFinite(mafiozoCount)) mafiozoCount = 1;
+  const mafiozoMax = Math.max(1, Math.floor((players - 1) / 2));
+  if (mafiozoCount < 1 || mafiozoCount > mafiozoMax) {
+    errors.push(`عدد المافيوزو لازم يكون من 1 لـ ${mafiozoMax}.`);
+  }
+
+  return { ok: errors.length === 0, errors, normalized: { players, clueCount, mafiozoCount } };
+}
+
 router.post('/ai-generate', async (req, res, next) => {
   try {
-    const { idea, players, mood, difficulty } = req.body || {};
-    const result = await ai.generateSealedArchive({ idea, players, mood, difficulty });
+    const { idea, mood, difficulty } = req.body || {};
+    const counters = normalizeCustomCounters(req.body);
+    if (!counters.ok) {
+      return res.status(400).json({ error: counters.errors[0] });
+    }
+    const { players, clueCount, mafiozoCount } = counters.normalized;
+    const result = await ai.generateSealedArchive({
+      idea, players, mood, difficulty, clueCount, mafiozoCount,
+    });
     const payload = shapeArchiveResponse(result);
 
     // Best-effort persist as a draft if we have an authenticated user.
@@ -84,14 +118,16 @@ router.post('/ai-generate', async (req, res, next) => {
 
 router.post('/ai-generate-three', async (req, res, next) => {
   try {
-    const { idea, players, mood, difficulty } = req.body || {};
+    const { idea, mood, difficulty } = req.body || {};
+    const counters = normalizeCustomCounters(req.body);
+    if (!counters.ok) return res.status(400).json({ error: counters.errors[0] });
+    const { players, clueCount, mafiozoCount } = counters.normalized;
     // Run three in parallel for the scenario picker (they're independent).
     const promises = [0, 1, 2].map(i =>
       ai.generateSealedArchive({
         idea: idea ? `${idea} (نسخة ${i + 1})` : undefined,
-        players,
-        mood,
-        difficulty,
+        players, clueCount, mafiozoCount,
+        mood, difficulty,
       })
     );
     const results = await Promise.all(promises);

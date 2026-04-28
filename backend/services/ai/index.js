@@ -91,6 +91,87 @@ const FALLBACK_ARCHIVE = {
 const FALLBACK_NOTE_AR = 'الكبير اشتغل بقصة احتياطية دلوقتي. خدمة الذكاء مش متاحة للحظات.';
 const FALLBACK_NARRATION = '...الكبير ساكت دلوقتي';
 
+// E4: deterministic per-config padding pool. Used when a custom config
+// requires more characters / clues than the static FALLBACK_ARCHIVE
+// provides. All entries are short, Arabic-script, no placeholders.
+const CHARACTER_PAD_POOL = [
+  { name: 'سلمى', role: 'الجارة', suspicious_detail: 'كانت بتسأل عن وقت الجريمة قبل ما حد يسأل.' },
+  { name: 'إبراهيم', role: 'سايس العمارة', suspicious_detail: 'دفتر التسجيل بتاعه فيه ساعتين ناقصين.' },
+  { name: 'نادر', role: 'الساعي', suspicious_detail: 'وصّل خطاب على غير العادة في وقت متأخر.' },
+  { name: 'ليلى', role: 'الطباخة', suspicious_detail: 'لقت كوباية كاسرة في المطبخ ما شافهاش حد بيستعملها.' },
+  { name: 'أحمد', role: 'الكاتب', suspicious_detail: 'دفتر يومياته صفحة الليلة كاملة ممسوحة.' },
+];
+const CLUE_PAD_POOL = [
+  'الباب الجانبي اتقفل من جوة، بس مفتاحه كان معاه واحد وبس في القصر.',
+  'فيه ساعة محسوب فيها صوت خطوات بطيئة بس مفيش كاميرا شافت حد.',
+  'ورقة صغيرة كُتب عليها رقم غريب اتلقت قدام مكتب الضحية.',
+  'ريحة دخان قهوة كانت متواجدة في غرفة قال صاحبها إنه ما خَطاش الناحية دي.',
+  'لمبة المكتب كانت لسه دفية، ومفيش حد قال إنه كان فيه ساعتها.',
+];
+
+/**
+ * E4: build a config-aware fallback archive. Default config returns the
+ * static FALLBACK_ARCHIVE bit-for-bit. Custom configs deterministically
+ * pad (or trim) characters + clues + mafiozos to match exact counts.
+ * The output is guaranteed to pass validateArchive(opts).
+ */
+function buildFallbackArchive(input) {
+  const i = input || {};
+  const playerCount  = Number.isFinite(i.players) ? i.players : (Number.isFinite(i.playerCount) ? i.playerCount : 4);
+  const clueCount    = Number.isFinite(i.clueCount) ? i.clueCount : 3;
+  const mafiozoCount = Number.isFinite(i.mafiozoCount) ? i.mafiozoCount : 1;
+
+  // Default-shaped request: return the static archive untouched. This
+  // preserves the pre-E4 wire shape (singular `mafiozo` string, 3 clues,
+  // 4 chars) for any caller still using default-mode generation.
+  if (clueCount === 3 && mafiozoCount === 1 && playerCount === 4) {
+    return FALLBACK_ARCHIVE;
+  }
+
+  // Build a custom-mode archive from the static seed + deterministic pads.
+  const baseChars = FALLBACK_ARCHIVE.characters.slice(0, Math.min(FALLBACK_ARCHIVE.characters.length, playerCount));
+  const characters = baseChars.slice();
+  for (let k = 0; characters.length < playerCount; k++) {
+    const tpl = CHARACTER_PAD_POOL[k % CHARACTER_PAD_POOL.length];
+    const suffix = k >= CHARACTER_PAD_POOL.length ? ` ${k + 1}` : '';
+    characters.push({
+      name: tpl.name + suffix,
+      role: tpl.role,
+      suspicious_detail: tpl.suspicious_detail,
+    });
+  }
+
+  const baseClues = FALLBACK_ARCHIVE.clues.slice(0, Math.min(FALLBACK_ARCHIVE.clues.length, clueCount));
+  const clues = baseClues.slice();
+  for (let k = 0; clues.length < clueCount; k++) {
+    clues.push(CLUE_PAD_POOL[k % CLUE_PAD_POOL.length]);
+  }
+  // If clueCount < 3 we may still have surplus from FALLBACK_ARCHIVE.clues.
+  clues.length = clueCount;
+
+  // Mafiozos: pull names from the character list as deterministic anchors.
+  const mafiozos = Array.from({ length: mafiozoCount }, (_, k) => {
+    const ch = characters[k] || characters[0];
+    return {
+      name: ch.name,
+      role: ch.role,
+      suspicious_detail: ch.suspicious_detail,
+    };
+  });
+
+  return {
+    title: FALLBACK_ARCHIVE.title,
+    story: FALLBACK_ARCHIVE.story,
+    mafiozos,
+    // Keep singular `mafiozo` field for downstream code that may still read
+    // it (assignRoles ignores this field; validateArchive accepts both).
+    mafiozo: mafiozos[0].name,
+    obvious_suspect: FALLBACK_ARCHIVE.obvious_suspect,
+    characters,
+    clues,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Internal: provider attempts. Each returns the parsed+validated archive on
 // success, or null on failure. They never throw.
@@ -106,6 +187,18 @@ const FALLBACK_NARRATION = '...الكبير ساكت دلوقتي';
  * @param {object} [opts]
  * @param {boolean} [opts.strict] - use the compact strict prompt (Flash fallback)
  */
+/**
+ * E4: archive validator opts derived from a generation input. Default mode
+ * keeps the pre-E4 contract (3 clues, 1 mafiozo, ≥2 chars). Custom mode
+ * (input.clueCount/mafiozoCount/players supplied) enforces exact counts.
+ */
+function deriveValidateOpts(input) {
+  const i = input || {};
+  const clueCount = Number.isFinite(i.clueCount) ? i.clueCount : 3;
+  const mafiozoCount = Number.isFinite(i.mafiozoCount) ? i.mafiozoCount : 1;
+  return { expectedClues: clueCount, expectedMafiozos: mafiozoCount };
+}
+
 async function tryGeminiArchive(input, modelName, { strict = false } = {}) {
   if (!config.gemini.apiKey) return null;
   if (!modelName) return null;
@@ -125,7 +218,7 @@ async function tryGeminiArchive(input, modelName, { strict = false } = {}) {
         latencyMs: Date.now() - start, ok: false, validatorReason: 'malformed_json' });
       return null;
     }
-    const err = validateArchive(parsed);
+    const err = validateArchive(parsed, deriveValidateOpts(input));
     if (err) {
       console.warn(`[ai] gemini(${modelName}) archive invalid (${err})`);
       logAi({ task: 'archive', source: 'gemini', model: modelName,
@@ -161,7 +254,7 @@ async function tryOpenRouterArchive(input) {
         latencyMs: Date.now() - start, ok: false, validatorReason: 'malformed_json' });
       return null;
     }
-    const err = validateArchive(parsed);
+    const err = validateArchive(parsed, deriveValidateOpts(input));
     if (err) {
       console.warn(`[ai] openrouter archive invalid (${err})`);
       logAi({ task: 'archive', source: 'openrouter', model: orModel,
@@ -280,10 +373,11 @@ async function generateSealedArchive(input = {}) {
     };
   }
 
-  // Rung 4: built-in static scenario
+  // Rung 4: built-in fallback archive (E4: config-aware).
   logAi({ task: 'archive_fallback', source: 'fallback', model: 'built-in',
     latencyMs: 0, ok: true, validatorReason: 'fallback_used' });
-  return { source: 'fallback', archive: FALLBACK_ARCHIVE, note: FALLBACK_NOTE_AR };
+  const archive = buildFallbackArchive(input);
+  return { source: 'fallback', archive, note: FALLBACK_NOTE_AR };
 }
 
 /**
@@ -470,4 +564,5 @@ module.exports = {
   // Test/diagnostic exports — not part of the route surface.
   _validateArchive: validateArchive,
   _fallbackArchive: FALLBACK_ARCHIVE,
+  _buildFallbackArchive: buildFallbackArchive,
 };
