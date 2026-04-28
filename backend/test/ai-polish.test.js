@@ -69,11 +69,14 @@ test('9. validatePolishLine clamps long output (rejects beyond NARRATION_MAX_LEN
 // validateFinalRevealPolish
 // ---------------------------------------------------------------------------
 
+// FixPack v3 / Commit 4 — bumped fixture lengths to satisfy the new
+// per-field MIN floors (heroSubtitle 12, caseClosingLine 16,
+// finalParagraph 60, epilogue 40).
 const VALID_POLISH_JSON = JSON.stringify({
   heroSubtitle: 'الستارة سقطت — والقضية اتقفلت بعد ليلة طويلة من الشكوك.',
-  caseClosingLine: 'الأرشيف اتختم. الحقيقة باقية والظل بقي ذاكرة.',
-  finalParagraph: 'في القاعة الباردة، كل دليل كان بيوصل لإجابة واحدة. الكبير صبر لحد ما الخيوط اتجمعت.',
-  epilogue: 'وفي السكون، الرواية تنامت لخاتمتها.',
+  caseClosingLine: 'الأرشيف اتختم. الحقيقة باقية والظل بقي ذاكرة في كل الزوايا.',
+  finalParagraph: 'في القاعة الباردة، كل دليل كان بيوصل لإجابة واحدة. الكبير صبر لحد ما الخيوط اتجمعت في نقطة واحدة عند الفجر، ثم بدأت القصة تكتب نفسها بنفسها.',
+  epilogue: 'وفي السكون، الرواية تنامت لخاتمتها بهدوء، والأرشيف صار يحفظ تفاصيلها لكل الليالي القادمة.',
 });
 
 test('10. validateFinalRevealPolish parses valid JSON and keeps optional fields', () => {
@@ -104,32 +107,37 @@ test('12. validateFinalRevealPolish drops oversized fields silently', () => {
 });
 
 test('13. validateFinalRevealPolish rejects markdown / code fences in any field', () => {
+  // FixPack v3 / Commit 4 — per-field MIN length added. Bumped the
+  // surviving epilogue past the new 40-char floor.
+  const cleanEpilogue = 'خاتمة عربية فيها معنى وملمح سينمائي يختم القضية بهدوء وثقة.';
   const out = validateFinalRevealPolish(JSON.stringify({
     heroSubtitle: '## عنوان كبير ممنوع',
     caseClosingLine: '```\nblock\n```',
     finalParagraph: '**bold not allowed** خاتمة عربية.',
-    epilogue: 'خاتمة عربية فيها معنى.',
+    epilogue: cleanEpilogue,
   }));
   // None of the markdown-tainted fields should pass; only epilogue survives.
   assert.ok(out);
   assert.equal('heroSubtitle' in out, false);
   assert.equal('caseClosingLine' in out, false);
   assert.equal('finalParagraph' in out, false);
-  assert.equal(out.epilogue, 'خاتمة عربية فيها معنى.');
+  assert.equal(out.epilogue, cleanEpilogue);
 });
 
 test('14. validateFinalRevealPolish rejects fields with AI disclaimers and hidden tokens', () => {
+  // FixPack v3 / Commit 4 — finalParagraph MIN bumped to 60.
+  const cleanParagraph = 'فقرة عربية نظيفة تمامًا ومن غير أي خرق للقواعد، تختم القضية بأسلوب نوار سينمائي رصين ومتسق.';
   const out = validateFinalRevealPolish(JSON.stringify({
     heroSubtitle: 'as an AI، الستارة سقطت اخيراً.',
     caseClosingLine: 'roleAssignments بقت واضحة دلوقتي.',
     epilogue: 'gameRole بقي ظاهر.',
-    finalParagraph: 'فقرة عربية نظيفة تماماً ومن غير أي خرق للقواعد.',
+    finalParagraph: cleanParagraph,
   }));
   assert.ok(out);
   assert.equal('heroSubtitle' in out, false);
   assert.equal('caseClosingLine' in out, false);
   assert.equal('epilogue' in out, false);
-  assert.equal(out.finalParagraph, 'فقرة عربية نظيفة تماماً ومن غير أي خرق للقواعد.');
+  assert.equal(out.finalParagraph, cleanParagraph);
 });
 
 test('15. validateFinalRevealPolish returns null when no field survives', () => {
@@ -143,9 +151,12 @@ test('15. validateFinalRevealPolish returns null when no field survives', () => 
 });
 
 test('16. validateFinalRevealPolish rejects English-dominant fields', () => {
+  // FixPack v3 / Commit 4 — finalParagraph MIN bumped from 0 → 60. The
+  // Arabic paragraph below is now 110+ chars so it sits above the new
+  // floor, while the English heroSubtitle stays English-dominant.
   const out = validateFinalRevealPolish(JSON.stringify({
     heroSubtitle: 'The curtain fell on the case tonight.',
-    finalParagraph: 'فقرة عربية نظيفة تماماً ومن غير أي خرق للقواعد.',
+    finalParagraph: 'فقرة عربية نظيفة تمامًا ومن غير أي خرق للقواعد، تتدفق بهدوء وتختم القضية بأسلوب نوار سينمائي مكتمل ومتسق دون مفاجآت.',
   }));
   assert.ok(out);
   assert.equal('heroSubtitle' in out, false, 'English-dominant subtitle dropped');

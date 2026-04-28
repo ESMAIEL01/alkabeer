@@ -86,36 +86,70 @@ function _escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Arabic Unicode block (basic + supplement). Used to detect whether a
+// single-word denylist token is "all-Arabic" so we can decide whether
+// to allow clitic-prefix matching.
+const ARABIC_LETTER_RE = /^[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]+$/;
+
 function _tokenRegex(needle) {
   if (_tokenCache.has(needle)) return _tokenCache.get(needle);
   const esc = _escapeRegex(needle);
-  // Match the token only when both sides are at a string boundary OR a
-  // non-letter character (per SAFE_BOUNDARY_CLASS). Using lookbehind /
-  // lookahead keeps the match zero-width on the boundary so consecutive
-  // matches don't shadow one another.
-  const re = new RegExp(`(?:^|${SAFE_BOUNDARY_CLASS})${esc}(?=$|${SAFE_BOUNDARY_CLASS})`, 'i');
+  let re;
+  // Long single-word Arabic tokens (≥5 chars) are likely distinctive
+  // enough that a clitic prefix (و, ف, ل, ك, ب, ال) should NOT prevent
+  // a hit. Example: "تعاويذ" must match in "وتعاويذ" too. The boundary
+  // on the LEFT becomes "non-letter | clitic"; the RIGHT stays strict
+  // so suffix collisions are still blocked.
+  if (ARABIC_LETTER_RE.test(needle) && needle.length >= 5) {
+    re = new RegExp(
+      `(?:^|${SAFE_BOUNDARY_CLASS}|[وفلكبا])${esc}(?=$|${SAFE_BOUNDARY_CLASS})`,
+      'i'
+    );
+  } else {
+    // Default: strict word boundary on both sides. Protects "بيرة" (beer,
+    // 4 chars) from false-positiving inside "كبيرة" (big).
+    re = new RegExp(
+      `(?:^|${SAFE_BOUNDARY_CLASS})${esc}(?=$|${SAFE_BOUNDARY_CLASS})`,
+      'i'
+    );
+  }
   _tokenCache.set(needle, re);
   return re;
 }
 
 /**
- * Test-helper: does the input contain ANY explicitly-denied token as a
- * standalone word? Tokens are matched with Unicode-aware word boundaries
- * so a short Arabic token like "بيرة" (beer) does NOT false-positive
- * inside a benign word like "كبيرة" (big).
+ * Test-helper: does the input contain ANY explicitly-denied token?
+ *
+ * Single-word tokens use a Unicode-aware word-boundary regex so
+ * "بيرة" (beer) does NOT false-positive inside "كبيرة" (big).
+ *
+ * Multi-word phrases (e.g. "عبادة الشيطان", "أعبد الظلام") use a plain
+ * substring match because Arabic clitic prefixes (و-, ف-, ل-) attach
+ * directly to the first word — boundary lookups would miss
+ * "وعبادة الشيطان" while still being too strict to be useful for
+ * phrase detection. The phrases are discriminative enough on their
+ * own that substring matching is safe.
  *
  * @param {string} text
  * @returns {{ hit: boolean, category?: string, token?: string }}
  */
 function containsForbiddenTerm(text) {
   if (typeof text !== 'string' || !text) return { hit: false };
+  const lower = text.toLowerCase();
   for (const [category, list] of Object.entries(SAFE_DENY_CATEGORIES)) {
     for (const t of list) {
       const needle = String(t || '').trim();
       if (!needle) continue;
-      const re = _tokenRegex(needle);
-      if (re.test(text)) {
-        return { hit: true, category, token: needle };
+      // Multi-word tokens → substring contains. Single-word tokens →
+      // boundary regex.
+      if (/\s/.test(needle)) {
+        if (lower.includes(needle.toLowerCase())) {
+          return { hit: true, category, token: needle };
+        }
+      } else {
+        if (_tokenRegex(needle).test(text)) {
+          return { hit: true, category, token: needle };
+        }
       }
     }
   }

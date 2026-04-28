@@ -437,34 +437,68 @@ function validatePolishLine(text, opts = {}) {
 
 // Final-reveal polish: AI returns a JSON object with optional fields. Each
 // field is short Arabic noir prose. We parse, then validate per field.
+//
+// FixPack v3 / Commit 4 — quality safeguards:
+//   * Per-field MIN length added (was max-only). Rejects empty-ish or
+//     one-word polish that doesn't add cinematic value.
+//   * Arabic-letter ratio raised from 60% → 80% (matches profile/identity).
+//   * Sharia-safe denylist applied per field.
+//   * Premium archive placeholder patterns rejected per field
+//     (no "الجملة 1" / "الشخص 1" leaks into the cinematic reveal).
+//   * Generic-template phrases rejected ("حدث شيء", "الحقيقة انكشفت", ...).
 const FINAL_REVEAL_FIELD_LIMITS = Object.freeze({
-  heroSubtitle: 240,
-  caseClosingLine: 260,
-  finalParagraph: 700,
-  epilogue: 500,
+  heroSubtitle:    { min: 12,  max: 240 },
+  caseClosingLine: { min: 16,  max: 260 },
+  finalParagraph:  { min: 60,  max: 700 },
+  epilogue:        { min: 40,  max: 500 },
 });
+
+const FINAL_REVEAL_GENERIC_PHRASES = Object.freeze([
+  'حدث شيء',
+  'الحقيقة انكشفت',
+  'شخص ما فعل',
+  'someone did',
+  'somebody is',
+]);
 
 /**
  * Validate AI final-reveal polish JSON. Returns an object containing only
  * the valid optional fields, or null if none survived.
+ *
+ * The Commit 4 quality gate is intentionally stricter than the Commit 1
+ * archive gate: final reveal is the cinematic payoff and a half-baked
+ * polish line ruins it. When all fields fail, the deterministic reveal
+ * already shipped to the client stays standing.
  */
 function validateFinalRevealPolish(text) {
-  if (typeof text !== 'string') return null;
-  const obj = safeJsonParse(text);
+  let obj = text;
+  if (typeof text === 'string') {
+    obj = safeJsonParse(text);
+  }
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
 
   const out = {};
-  for (const [field, maxLen] of Object.entries(FINAL_REVEAL_FIELD_LIMITS)) {
+  for (const [field, limits] of Object.entries(FINAL_REVEAL_FIELD_LIMITS)) {
     const v = obj[field];
     if (v === undefined || v === null) continue;
     if (typeof v !== 'string') continue;
-    let trimmed = v.replace(/```/g, '').trim();
+    let trimmed = v.replace(/```/g, '').replace(/[\r\n]+/g, ' ').trim();
     if (!trimmed) continue;
-    if (trimmed.length > maxLen) continue;
+    if (trimmed.length < limits.min || trimmed.length > limits.max) continue;
+
     // Reject markdown bold/heading variations and JSON fragments.
     if (/^#{1,6}\s/m.test(trimmed)) continue;
     if (/^\s*[*_]{2,}/m.test(trimmed)) continue;
     if (/^\s*[{\[]/.test(trimmed)) continue;
+
+    // Reject premium-archive placeholder patterns (so a polish field
+    // can't echo "الجملة 1 على كاملة" into the cinematic reveal).
+    let placeholderHit = false;
+    for (const re of ARCHIVE_PLACEHOLDER_PATTERNS) {
+      if (re.test(trimmed)) { placeholderHit = true; break; }
+    }
+    if (placeholderHit) continue;
+
     // Reject hidden-token / AI-disclaimer leakage.
     const lower = trimmed.toLowerCase();
     let blocked = false;
@@ -472,11 +506,23 @@ function validateFinalRevealPolish(text) {
       if (lower.includes(String(t).toLowerCase())) { blocked = true; break; }
     }
     if (blocked) continue;
-    // Arabic-dominant content guard (≥60% of letters Arabic script).
+
+    // Reject generic-template phrases that don't add story value.
+    let generic = false;
+    for (const phrase of FINAL_REVEAL_GENERIC_PHRASES) {
+      if (lower.includes(phrase.toLowerCase())) { generic = true; break; }
+    }
+    if (generic) continue;
+
+    // Sharia-safe denylist (alcohol / drugs / gambling / sexual /
+    // satanic_occult / blasphemy / profanity).
+    if (containsForbiddenTerm(trimmed).hit) continue;
+
+    // Arabic-dominant content guard (≥80% — was 60%).
     const letters = trimmed.match(/[\p{L}]/gu) || [];
     if (letters.length === 0) continue;
     const ar = letters.filter(ch => ARABIC_SCRIPT_RE.test(ch)).length;
-    if (ar / letters.length < 0.6) continue;
+    if (ar / letters.length < 0.8) continue;
 
     out[field] = trimmed;
   }
@@ -645,6 +691,7 @@ module.exports = {
   validateBio,
   validateIdentityInterviewOutput,
   FINAL_REVEAL_FIELD_LIMITS,
+  FINAL_REVEAL_GENERIC_PHRASES,
   IDENTITY_FIELD_LIMITS,
   ARCHIVE_QUALITY_LIMITS,
   ARCHIVE_PLACEHOLDER_PATTERNS,
