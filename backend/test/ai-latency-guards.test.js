@@ -226,12 +226,17 @@ test('FP3-C5.15 tryGeminiNarration forwards AI_TIMEOUTS.narration.perModelMs', (
   assert.match(block, /timeoutMs:\s*AI_TIMEOUTS\.narration\.perModelMs/);
 });
 
-test('FP3-C5.16 tryGeminiArchive forwards AI_TIMEOUTS.archive.perModelMs', () => {
+test('FP3-C5.16 tryGeminiArchive forwards a per-task timeoutMs', () => {
   const text = readSource('services/ai/index.js');
   const idx = text.indexOf('async function tryGeminiArchive');
   assert.ok(idx > 0);
   const block = text.slice(idx, text.indexOf('\n}\n', idx));
-  assert.match(block, /timeoutMs:\s*AI_TIMEOUTS\.archive\.perModelMs/);
+  // FixPack v3 / Latency hotfix — tryGeminiArchive now accepts a
+  // caller-supplied timeoutMs (typically deadline.clamp(perModelMs))
+  // and falls back to AI_TIMEOUTS.archive.perModelMs when not provided.
+  // Both contracts must be visible in the source.
+  assert.match(block, /timeoutMs[\s\S]*AI_TIMEOUTS\.archive\.perModelMs/);
+  assert.match(block, /Number\.isFinite\(timeoutMs\)/);
 });
 
 // ---------------------------------------------------------------------------

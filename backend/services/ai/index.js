@@ -85,18 +85,28 @@ function classifyProviderError(err) {
 // for ops and also re-exported as _AI_TIMEOUTS for test pinning.
 // ---------------------------------------------------------------------------
 const AI_TIMEOUTS = Object.freeze({
-  // FixPack v3 / Commit 3 — archive chain now has a hard 40 s aggregate
-  // cap (was: no cap). 4-model chain × 30 s could reach ~120 s before
-  // the deterministic fallback; 40 s lets one or two model attempts
-  // succeed and ALWAYS lands the premium fallback within the window
-  // host-perceives as "still loading" rather than "stuck".
-  archive:                 { perModelMs: 25_000, totalCapMs: 40_000 },
-  final_reveal_polish:     { perModelMs: 10_000, totalCapMs: 20_000 },
-  profile_identity:        { perModelMs: 10_000, totalCapMs: 20_000 },
-  profile_bio:             { perModelMs: 10_000, totalCapMs: 20_000 },
-  clue_transition_polish:  { perModelMs:  7_000, totalCapMs: 12_000 },
-  vote_result_polish:      { perModelMs:  7_000, totalCapMs: 12_000 },
-  narration:               { perModelMs:  8_000, totalCapMs: 14_000 },
+  // FixPack v3 / Latency hotfix — production observed 121 s archive
+  // generation even with the 40 s "cap" because the cap was checked
+  // BETWEEN rungs and each rung could still run a full 25 s. The new
+  // contract:
+  //   * perModelMs caps a single attempt.
+  //   * totalCapMs is the public deadline; generateSealedArchive races
+  //     the chain against this deadline and returns a pre-validated
+  //     premium fallback if the deadline expires.
+  //   * minAttemptMs is the smallest remaining budget that justifies
+  //     starting another model. Below it, the chain bails to the
+  //     fallback rather than spinning up a likely-to-be-cut-short call.
+  //   * Each model attempt receives min(perModelMs, remainingMs) so a
+  //     stuck rung CAN'T extend past the deadline.
+  // Tighter values keep the user experience inside the 40 s envelope
+  // even when 3 of 4 OpenRouter models are slow / weak / quota'd.
+  archive:                 { perModelMs: 12_000, totalCapMs: 40_000, minAttemptMs: 3_000 },
+  final_reveal_polish:     { perModelMs: 10_000, totalCapMs: 20_000, minAttemptMs: 2_000 },
+  profile_identity:        { perModelMs: 10_000, totalCapMs: 20_000, minAttemptMs: 2_000 },
+  profile_bio:             { perModelMs: 10_000, totalCapMs: 20_000, minAttemptMs: 2_000 },
+  clue_transition_polish:  { perModelMs:  7_000, totalCapMs: 12_000, minAttemptMs: 1_500 },
+  vote_result_polish:      { perModelMs:  7_000, totalCapMs: 12_000, minAttemptMs: 1_500 },
+  narration:               { perModelMs:  8_000, totalCapMs: 14_000, minAttemptMs: 1_500 },
 });
 
 /**
@@ -108,6 +118,43 @@ function getTaskTimeout(task) {
     return AI_TIMEOUTS[task];
   }
   return AI_TIMEOUTS.narration;
+}
+
+/**
+ * FixPack v3 / Latency hotfix — deadline helper.
+ *
+ * Wraps a wall-clock deadline so callers can:
+ *   - check remaining time at any point
+ *   - decide whether another attempt is worth starting
+ *   - clamp per-attempt timeouts to never exceed the deadline
+ *
+ * Returns a frozen-shaped object so the helper is cheap and immutable
+ * from the caller's perspective.
+ */
+function createDeadline(totalMs) {
+  const startedAt = Date.now();
+  const total = Number.isFinite(totalMs) && totalMs > 0 ? totalMs : 30_000;
+  const deadlineAt = startedAt + total;
+  return {
+    startedAt,
+    deadlineAt,
+    totalMs: total,
+    elapsedMs() { return Date.now() - startedAt; },
+    remainingMs() { return Math.max(0, deadlineAt - Date.now()); },
+    expired() { return Date.now() >= deadlineAt; },
+    canAttempt(minMs) {
+      const m = Number.isFinite(minMs) && minMs > 0 ? minMs : 0;
+      return (deadlineAt - Date.now()) >= m;
+    },
+    /** clamp(perModelMs) → min(perModelMs, remaining). Never returns 0. */
+    clamp(perModelMs) {
+      const remaining = Math.max(0, deadlineAt - Date.now());
+      const cap = Number.isFinite(perModelMs) && perModelMs > 0
+        ? Math.min(perModelMs, remaining)
+        : remaining;
+      return Math.max(1, cap);  // never 0; caller already gated via canAttempt
+    },
+  };
 }
 
 /**
@@ -217,7 +264,7 @@ function deriveValidateOpts(input) {
   };
 }
 
-async function tryGeminiArchive(input, modelName, { strict = false } = {}) {
+async function tryGeminiArchive(input, modelName, { strict = false, timeoutMs } = {}) {
   if (!config.gemini.apiKey) return null;
   if (!modelName) return null;
   const start = Date.now();
@@ -228,9 +275,12 @@ async function tryGeminiArchive(input, modelName, { strict = false } = {}) {
       json: true,
       temperature: strict ? 0.85 : 0.9,
       maxOutputTokens: config.gemini.archiveMaxOutputTokens,
-      // FixPack v3 / Commit 5: archive needs the longest budget but is
-      // still capped so a stuck Pro never holds the host indefinitely.
-      timeoutMs: AI_TIMEOUTS.archive.perModelMs,
+      // FixPack v3 / Latency hotfix — caller-supplied per-attempt cap
+      // (typically deadline.clamp(perModelMs)). Falls back to the
+      // task profile when not supplied so legacy callers still work.
+      timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0
+        ? timeoutMs
+        : AI_TIMEOUTS.archive.perModelMs,
     });
     const parsed = safeJsonParse(raw);
     if (!parsed) {
@@ -298,7 +348,7 @@ function classifyValidatorReason(reason) {
  * throws. Always logs ONE row per attempt — no prompt body, no response
  * body, no api keys; only model + source + ok + latency + validatorReason.
  */
-async function tryOpenRouterArchive(input, modelName) {
+async function tryOpenRouterArchive(input, modelName, { timeoutMs } = {}) {
   if (!openrouterConfigured()) return null;
   if (!modelName || typeof modelName !== 'string' || !modelName.trim()) return null;
   const orModel = modelName;
@@ -307,8 +357,12 @@ async function tryOpenRouterArchive(input, modelName) {
     const raw = await callOpenRouter({
       userPrompt: archivePromptStrict(input),
       json: true,
-      // FixPack v3 / Commit 3 — per-task timeout cap.
-      timeoutMs: AI_TIMEOUTS.archive.perModelMs,
+      // FixPack v3 / Latency hotfix — caller-supplied per-attempt cap
+      // (typically deadline.clamp(perModelMs)). Defaults to the task
+      // profile so any direct caller still gets a bounded attempt.
+      timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0
+        ? timeoutMs
+        : AI_TIMEOUTS.archive.perModelMs,
       temperature: 0.8,
       maxTokens: config.openrouter.archiveMaxTokens,
       modelName: orModel,
@@ -631,56 +685,107 @@ async function tryGeminiNarration(prompt, forbiddenTerms) {
  * env vars without touching code.
  */
 async function generateSealedArchive(input = {}) {
-  // FixPack v3 / Commit 3 — total chain budget. If any rung is going to
-  // start AFTER this many ms have elapsed since generation began, we
-  // stop the chain and use the deterministic premium fallback. The
-  // user perceives "still loading then cinematic case" rather than
-  // "stuck for two minutes". Per-model timeouts (set inside each rung
-  // helper) ensure no SINGLE model can hog the budget either.
-  const chainStart = Date.now();
-  const totalCapMs = AI_TIMEOUTS.archive.totalCapMs || 40_000;
-  const budgetExceeded = () => (Date.now() - chainStart) >= totalCapMs;
+  // FixPack v3 / Latency hotfix — deadline-driven generation.
+  //
+  // Production observed 121 s wall-clock generation even with the previous
+  // 40 s "totalCapMs" because the cap was checked BETWEEN rungs only and
+  // each rung could still run a full 25 s. The new contract:
+  //
+  //   1. Public deadline = AI_TIMEOUTS.archive.totalCapMs (40 s).
+  //   2. Pre-build the premium deterministic fallback at the very start.
+  //      It is always validated by construction (archive-fallback.js).
+  //   3. Run the chain INSIDE Promise.race against a deadline timer.
+  //      When the deadline fires, the race returns the fallback even if
+  //      a slow provider call is still in-flight.
+  //   4. Each provider attempt receives min(perModelMs, remainingMs) so a
+  //      stuck rung CANNOT extend past the deadline.
+  //   5. If remainingMs < minAttemptMs, skip the rung entirely.
+  //
+  // The fallback is selected when the chain genuinely fails OR when the
+  // deadline beats it. Either way, the returned archive passes the same
+  // quality gate as model output.
+  const deadline = createDeadline(AI_TIMEOUTS.archive.totalCapMs || 40_000);
+  const PER_MODEL = AI_TIMEOUTS.archive.perModelMs;
+  const MIN_ATTEMPT = AI_TIMEOUTS.archive.minAttemptMs;
 
-  // Rung 1: primary Gemini model with the full Architect prompt.
-  const primaryModel = config.gemini.archiveModel;
-  if (!budgetExceeded()) {
-    const fromPrimary = await tryGeminiArchive(input, primaryModel);
-    if (fromPrimary) return { source: 'gemini', model: primaryModel, archive: fromPrimary };
-  }
+  // Pre-build the validated premium fallback. archive-fallback.js
+  // guarantees by construction that this always passes schema + quality;
+  // we keep it ready so the deadline race has something to return.
+  const premiumFallback = buildFallbackArchive(input);
 
-  // Rung 2: internal Gemini fallback model — uses the STRICT compact prompt
-  // because Flash-class thinking models burn budget on the verbose prompt.
-  // Skip if identical to primary.
-  const fbModel = config.gemini.archiveFallbackModel;
-  if (!budgetExceeded() && fbModel && fbModel !== primaryModel) {
-    const fromFallback = await tryGeminiArchive(input, fbModel, { strict: true });
-    if (fromFallback) return { source: 'gemini', model: fbModel, archive: fromFallback };
-  }
-
-  // Rungs 3..N: OpenRouter chain (task-aware archiveModels list, with
-  // legacy fallbackModel/_MODEL_2/_MODEL_3 as the fallback chain).
-  for (const orModel of openrouterArchiveChain()) {
-    if (budgetExceeded()) {
-      logAi({ task: 'archive', source: 'openrouter', model: orModel,
-        latencyMs: 0, ok: false,
-        validatorReason: 'chain_cap_exceeded' });
-      break;
+  // The chain promise tries every viable rung in order, stopping on
+  // first success. On any provider failure the chain logs metadata and
+  // continues. If the chain finishes with no success, it resolves to
+  // null so the deadline-race fallback path takes over.
+  const chainPromise = (async () => {
+    // Rung 1: primary Gemini model.
+    const primaryModel = config.gemini.archiveModel;
+    if (deadline.canAttempt(MIN_ATTEMPT)) {
+      const fromPrimary = await tryGeminiArchive(input, primaryModel, {
+        timeoutMs: deadline.clamp(PER_MODEL),
+      });
+      if (fromPrimary) {
+        return { source: 'gemini', model: primaryModel, archive: fromPrimary };
+      }
     }
-    const fromOpenRouter = await tryOpenRouterArchive(input, orModel);
-    if (fromOpenRouter) {
-      return { source: 'openrouter', model: orModel, archive: fromOpenRouter };
+
+    // Rung 2: Gemini Flash strict.
+    const fbModel = config.gemini.archiveFallbackModel;
+    if (fbModel && fbModel !== primaryModel && deadline.canAttempt(MIN_ATTEMPT)) {
+      const fromFlash = await tryGeminiArchive(input, fbModel, {
+        strict: true,
+        timeoutMs: deadline.clamp(PER_MODEL),
+      });
+      if (fromFlash) {
+        return { source: 'gemini', model: fbModel, archive: fromFlash };
+      }
     }
+
+    // Rungs 3..N: OpenRouter chain (task-aware list).
+    for (const orModel of openrouterArchiveChain()) {
+      if (!deadline.canAttempt(MIN_ATTEMPT)) {
+        logAi({ task: 'archive', source: 'openrouter', model: orModel,
+          latencyMs: 0, ok: false,
+          validatorReason: 'chain_cap_exceeded' });
+        break;
+      }
+      const fromOpenRouter = await tryOpenRouterArchive(input, orModel, {
+        timeoutMs: deadline.clamp(PER_MODEL),
+      });
+      if (fromOpenRouter) {
+        return { source: 'openrouter', model: orModel, archive: fromOpenRouter };
+      }
+    }
+
+    return null;  // chain exhausted without a winner; let race resolve
+                  // to fallback below.
+  })();
+
+  // Deadline timer — resolves to a sentinel that signals "use fallback".
+  const DEADLINE_SENTINEL = Symbol('archive_deadline');
+  const deadlineTimer = new Promise((resolve) => {
+    setTimeout(() => resolve(DEADLINE_SENTINEL), deadline.totalMs).unref();
+  });
+
+  const winner = await Promise.race([chainPromise, deadlineTimer]);
+
+  if (winner && winner !== DEADLINE_SENTINEL && winner.archive) {
+    return winner;
   }
 
-  // FixPack v3 / Commit 3 — final rung: built-in premium fallback archive.
-  // The deterministic generator (archive-fallback.js) ALWAYS produces a
-  // playable archive that passes the new quality gate, even when every
-  // external provider fails OR when the chain budget was exceeded.
+  // Deadline expired OR chain exhausted → premium deterministic fallback.
+  // The fallback is always playable; no provider call has poisoned it
+  // because we constructed it independently at function entry.
+  const reason = winner === DEADLINE_SENTINEL ? 'chain_cap_exceeded' : 'fallback_used';
   logAi({ task: 'archive_fallback', source: 'fallback', model: 'built-in',
-    latencyMs: Date.now() - chainStart, ok: true,
-    validatorReason: budgetExceeded() ? 'chain_cap_exceeded' : 'fallback_used' });
-  const archive = buildFallbackArchive(input);
-  return { source: 'fallback', archive, note: FALLBACK_NOTE_AR };
+    latencyMs: deadline.elapsedMs(), ok: true,
+    validatorReason: reason });
+  return {
+    source: 'fallback',
+    model: 'premium-deterministic',
+    archive: premiumFallback,
+    note: FALLBACK_NOTE_AR,
+  };
 }
 
 /**
@@ -972,6 +1077,7 @@ module.exports = {
   _AI_TIMEOUTS: AI_TIMEOUTS,
   _classifyValidatorReason: classifyValidatorReason,
   _tryArchiveJsonRepair: tryArchiveJsonRepair,
+  _createDeadline: createDeadline,
   _getTaskTimeout: getTaskTimeout,
   _classifyProviderError: classifyProviderError,
 };

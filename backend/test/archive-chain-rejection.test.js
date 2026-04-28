@@ -106,17 +106,21 @@ test('CR.6 tryArchiveJsonRepair returns null for empty / non-string raw text (CI
 
 test('CR.7 services/ai/index.js generateSealedArchive enforces totalCapMs', () => {
   const text = readSource('services/ai/index.js');
-  // The chain runner must compute an `chainStart` timestamp and a
-  // `budgetExceeded` predicate, AND check it before each rung.
+  // FixPack v3 / Latency hotfix — the previous chainStart / budgetExceeded
+  // approach was replaced by a deadline-driven Promise.race. Pin the new
+  // contract: createDeadline + canAttempt + clamp + chain_cap_exceeded.
   const idx = text.indexOf('async function generateSealedArchive');
   assert.ok(idx > 0);
-  const body = text.slice(idx, idx + 2500);
-  assert.match(body, /chainStart\s*=\s*Date\.now\(\)/);
-  assert.match(body, /totalCapMs\s*=\s*AI_TIMEOUTS\.archive\.totalCapMs/);
-  assert.match(body, /budgetExceeded\s*=/);
-  // The OpenRouter loop must check the predicate before EACH rung.
-  assert.match(body, /if\s*\(\s*budgetExceeded\(\)\s*\)/);
-  // The cap-exceeded path must log a stable validatorReason tag.
+  const tail = text.slice(idx + 1);
+  const nextFnIdx = tail.search(/\nasync function /);
+  const body = tail.slice(0, nextFnIdx > 0 ? nextFnIdx : tail.length);
+  assert.match(body, /createDeadline\(\s*AI_TIMEOUTS\.archive\.totalCapMs/);
+  assert.match(body, /Promise\.race\(/);
+  // Each rung must gate on canAttempt before starting.
+  assert.match(body, /deadline\.canAttempt\(/);
+  // Per-attempt timeoutMs must be clamped against the remaining budget.
+  assert.match(body, /deadline\.clamp\(/);
+  // The cap-exceeded path must still log a stable validatorReason tag.
   assert.match(body, /chain_cap_exceeded/);
 });
 
