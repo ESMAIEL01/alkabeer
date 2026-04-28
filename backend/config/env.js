@@ -88,6 +88,11 @@ const config = Object.freeze({
     finalRevealModels: parseModelList(process.env.OPENROUTER_FINAL_REVEAL_MODELS),
     polishModels:      parseModelList(process.env.OPENROUTER_POLISH_MODELS),
     bioModels:         parseModelList(process.env.OPENROUTER_BIO_MODELS),
+    // FixPack v3 / Commit 3 — OPTIONAL JSON repair models (e.g. Qwen3
+    // Coder). Used ONLY when a primary archive call returns malformed
+    // JSON but the raw text looks repairable. Empty by default —
+    // operators opt-in by setting OPENROUTER_REPAIR_MODELS.
+    repairModels:      parseModelList(process.env.OPENROUTER_REPAIR_MODELS),
     timeoutMs: parseInt(process.env.OPENROUTER_TIMEOUT_MS || '30000', 10),
     // Output-token ceilings. Nemotron has no hidden thinking budget so all
     // tokens are visible output. A full Arabic JSON archive can need ~5K

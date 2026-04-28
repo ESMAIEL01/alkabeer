@@ -85,7 +85,12 @@ function classifyProviderError(err) {
 // for ops and also re-exported as _AI_TIMEOUTS for test pinning.
 // ---------------------------------------------------------------------------
 const AI_TIMEOUTS = Object.freeze({
-  archive:                 { perModelMs: 30_000, totalCapMs: null },     // null = no aggregate cap
+  // FixPack v3 / Commit 3 — archive chain now has a hard 40 s aggregate
+  // cap (was: no cap). 4-model chain × 30 s could reach ~120 s before
+  // the deterministic fallback; 40 s lets one or two model attempts
+  // succeed and ALWAYS lands the premium fallback within the window
+  // host-perceives as "still loading" rather than "stuck".
+  archive:                 { perModelMs: 25_000, totalCapMs: 40_000 },
   final_reveal_polish:     { perModelMs: 10_000, totalCapMs: 20_000 },
   profile_identity:        { perModelMs: 10_000, totalCapMs: 20_000 },
   profile_bio:             { perModelMs: 10_000, totalCapMs: 20_000 },
@@ -237,8 +242,13 @@ async function tryGeminiArchive(input, modelName, { strict = false } = {}) {
     const err = validateArchive(parsed, deriveValidateOpts(input));
     if (err) {
       console.warn(`[ai] gemini(${modelName}) archive invalid (${err})`);
+      // FixPack v3 / Commit 3 — pass the specific quality reason
+      // (weak_clue@2, placeholder_detected, username_like_name@1, etc.)
+      // through to analytics so admins can see WHY a model failed,
+      // not just that it failed. Reason string is short + stable.
       logAi({ task: 'archive', source: 'gemini', model: modelName,
-        latencyMs: Date.now() - start, ok: false, validatorReason: 'validator_rejected' });
+        latencyMs: Date.now() - start, ok: false,
+        validatorReason: classifyValidatorReason(err) });
       return null;
     }
     logAi({ task: 'archive', source: 'gemini', model: modelName,
@@ -250,6 +260,33 @@ async function tryGeminiArchive(input, modelName, { strict = false } = {}) {
       latencyMs: Date.now() - start, ok: false, validatorReason: classifyProviderError(err) });
     return null;
   }
+}
+
+/**
+ * FixPack v3 / Commit 3 — map a validator reason string to a stable
+ * short tag for analytics. Quality reasons from Commit 1 carry an "@N"
+ * suffix (e.g. "weak_clue@2"); this strips the index so admin queries
+ * group by category. Schema reasons pass through.
+ *
+ * Stable tags emitted (subset, expandable):
+ *   weak_clue | clue_too_short | clue_too_long | clues_too_similar |
+ *   weak_character_name | username_like_name | character_role_length |
+ *   weak_suspicious_detail | suspicious_detail_length |
+ *   weak_title | title_length | weak_story | story_length |
+ *   story_arabic_low | clue_arabic_low | weak_mafiozo_name |
+ *   weak_obvious_suspect | placeholder_detected |
+ *   schema_invalid (for any other unrecognized reason)
+ */
+function classifyValidatorReason(reason) {
+  if (typeof reason !== 'string' || !reason) return 'schema_invalid';
+  // Strip the optional "@N" or "@N,M" suffix from quality reasons.
+  const head = reason.split('@')[0];
+  // Schema reasons currently start with phrases like "missing", "expected",
+  // etc. — fold them into a single bucket so the catalog stays stable.
+  if (/^(weak_|clue_too_|clues_too_|username_|character_role_|suspicious_detail_|title_|story_|placeholder_|arabic_)/.test(head)) {
+    return head;
+  }
+  return 'schema_invalid';
 }
 
 /**
@@ -270,6 +307,8 @@ async function tryOpenRouterArchive(input, modelName) {
     const raw = await callOpenRouter({
       userPrompt: archivePromptStrict(input),
       json: true,
+      // FixPack v3 / Commit 3 — per-task timeout cap.
+      timeoutMs: AI_TIMEOUTS.archive.perModelMs,
       temperature: 0.8,
       maxTokens: config.openrouter.archiveMaxTokens,
       modelName: orModel,
@@ -284,8 +323,10 @@ async function tryOpenRouterArchive(input, modelName) {
     const err = validateArchive(parsed, deriveValidateOpts(input));
     if (err) {
       console.warn(`[ai] openrouter(${orModel}) archive invalid (${err})`);
+      // FixPack v3 / Commit 3 — emit the specific quality category.
       logAi({ task: 'archive', source: 'openrouter', model: orModel,
-        latencyMs: Date.now() - start, ok: false, validatorReason: 'validator_rejected' });
+        latencyMs: Date.now() - start, ok: false,
+        validatorReason: classifyValidatorReason(err) });
       return null;
     }
     logAi({ task: 'archive', source: 'openrouter', model: orModel,
@@ -297,6 +338,93 @@ async function tryOpenRouterArchive(input, modelName) {
       latencyMs: Date.now() - start, ok: false, validatorReason: classifyProviderError(err) });
     return null;
   }
+}
+
+/**
+ * FixPack v3 / Commit 3 — OPTIONAL JSON repair pass.
+ *
+ * Only fires when:
+ *   - OPENROUTER_REPAIR_MODELS is configured (env opt-in).
+ *   - OpenRouter is configured (otherwise no model to call).
+ *   - The caller has a malformed-but-non-empty raw text from a prior
+ *     model attempt that we want to coerce into valid JSON.
+ *
+ * Walks the configured repair models in order and returns the FIRST
+ * repaired+validated archive. Each attempt logs metadata-only via
+ * logAi under task='archive_repair'. The repair prompt explicitly
+ * forbids inventing missing story content; if the source is too far
+ * gone the repair model returns invalid output and we fall through.
+ */
+async function tryArchiveJsonRepair(rawText, input) {
+  if (typeof rawText !== 'string' || !rawText.trim()) return null;
+  if (!openrouterConfigured()) return null;
+  const repairModels = Array.isArray(config.openrouter.repairModels)
+    ? config.openrouter.repairModels
+    : [];
+  if (repairModels.length === 0) return null;
+
+  const opts = deriveValidateOpts(input);
+  const repairPrompt = [
+    'You are a strict JSON repair tool. Convert the input below into valid',
+    'archive JSON matching the documented schema. Do NOT invent missing',
+    'story content. If the input is mostly placeholder text or weak content,',
+    'return exactly the literal token "INVALID" instead of any JSON.',
+    'Return strict JSON only — no prose, no markdown, no code fences.',
+    '',
+    'Required schema:',
+    '{ "title": string, "story": string, "obvious_suspect": string,',
+    '  "characters": [{ "name": string, "role": string, "suspicious_detail": string }, ...],',
+    '  "clues": [string, ...],',
+    `  ${opts.expectedMafiozos === 1 ? '"mafiozo": string' : '"mafiozos": [{ "name": string, "role": string, "suspicious_detail": string }, ...]'}`,
+    '}',
+    '',
+    'Input:',
+    rawText.slice(0, 6000),
+  ].join('\n');
+
+  for (const orModel of repairModels) {
+    if (!orModel || typeof orModel !== 'string' || !orModel.trim()) continue;
+    const start = Date.now();
+    let raw;
+    try {
+      raw = await callOpenRouter({
+        userPrompt: repairPrompt,
+        json: true,
+        temperature: 0.1,                  // deterministic repair pass
+        maxTokens: config.openrouter.archiveMaxTokens,
+        modelName: orModel,
+        timeoutMs: AI_TIMEOUTS.archive.perModelMs,
+      });
+    } catch (err) {
+      logAi({ task: 'archive_repair', source: 'openrouter', model: orModel,
+        latencyMs: Date.now() - start, ok: false,
+        validatorReason: classifyProviderError(err) });
+      continue;
+    }
+    if (typeof raw === 'string' && raw.trim().toUpperCase() === 'INVALID') {
+      logAi({ task: 'archive_repair', source: 'openrouter', model: orModel,
+        latencyMs: Date.now() - start, ok: false,
+        validatorReason: 'repair_marked_invalid' });
+      continue;
+    }
+    const parsed = safeJsonParse(raw);
+    if (!parsed) {
+      logAi({ task: 'archive_repair', source: 'openrouter', model: orModel,
+        latencyMs: Date.now() - start, ok: false, validatorReason: 'malformed_json' });
+      continue;
+    }
+    const err = validateArchive(parsed, opts);
+    if (err) {
+      logAi({ task: 'archive_repair', source: 'openrouter', model: orModel,
+        latencyMs: Date.now() - start, ok: false,
+        validatorReason: classifyValidatorReason(err) });
+      continue;
+    }
+    logAi({ task: 'archive_repair', source: 'openrouter', model: orModel,
+      latencyMs: Date.now() - start, ok: true });
+    return { source: 'openrouter', model: orModel, archive: parsed };
+  }
+  return null;
 }
 
 /**
@@ -503,34 +631,54 @@ async function tryGeminiNarration(prompt, forbiddenTerms) {
  * env vars without touching code.
  */
 async function generateSealedArchive(input = {}) {
+  // FixPack v3 / Commit 3 — total chain budget. If any rung is going to
+  // start AFTER this many ms have elapsed since generation began, we
+  // stop the chain and use the deterministic premium fallback. The
+  // user perceives "still loading then cinematic case" rather than
+  // "stuck for two minutes". Per-model timeouts (set inside each rung
+  // helper) ensure no SINGLE model can hog the budget either.
+  const chainStart = Date.now();
+  const totalCapMs = AI_TIMEOUTS.archive.totalCapMs || 40_000;
+  const budgetExceeded = () => (Date.now() - chainStart) >= totalCapMs;
+
   // Rung 1: primary Gemini model with the full Architect prompt.
   const primaryModel = config.gemini.archiveModel;
-  const fromPrimary = await tryGeminiArchive(input, primaryModel);
-  if (fromPrimary) return { source: 'gemini', model: primaryModel, archive: fromPrimary };
+  if (!budgetExceeded()) {
+    const fromPrimary = await tryGeminiArchive(input, primaryModel);
+    if (fromPrimary) return { source: 'gemini', model: primaryModel, archive: fromPrimary };
+  }
 
   // Rung 2: internal Gemini fallback model — uses the STRICT compact prompt
   // because Flash-class thinking models burn budget on the verbose prompt.
   // Skip if identical to primary.
   const fbModel = config.gemini.archiveFallbackModel;
-  if (fbModel && fbModel !== primaryModel) {
+  if (!budgetExceeded() && fbModel && fbModel !== primaryModel) {
     const fromFallback = await tryGeminiArchive(input, fbModel, { strict: true });
     if (fromFallback) return { source: 'gemini', model: fbModel, archive: fromFallback };
   }
 
-  // Rungs 3..N: OpenRouter chain (primary + alternates). Empty/blank rungs
-  // are skipped silently inside tryOpenRouterArchive; the operator can
-  // tune the chain by setting OPENROUTER_FALLBACK_MODEL_2 /
-  // OPENROUTER_FALLBACK_MODEL_3 env vars.
+  // Rungs 3..N: OpenRouter chain (task-aware archiveModels list, with
+  // legacy fallbackModel/_MODEL_2/_MODEL_3 as the fallback chain).
   for (const orModel of openrouterArchiveChain()) {
+    if (budgetExceeded()) {
+      logAi({ task: 'archive', source: 'openrouter', model: orModel,
+        latencyMs: 0, ok: false,
+        validatorReason: 'chain_cap_exceeded' });
+      break;
+    }
     const fromOpenRouter = await tryOpenRouterArchive(input, orModel);
     if (fromOpenRouter) {
       return { source: 'openrouter', model: orModel, archive: fromOpenRouter };
     }
   }
 
-  // Final rung: built-in fallback archive (E4: config-aware).
+  // FixPack v3 / Commit 3 — final rung: built-in premium fallback archive.
+  // The deterministic generator (archive-fallback.js) ALWAYS produces a
+  // playable archive that passes the new quality gate, even when every
+  // external provider fails OR when the chain budget was exceeded.
   logAi({ task: 'archive_fallback', source: 'fallback', model: 'built-in',
-    latencyMs: 0, ok: true, validatorReason: 'fallback_used' });
+    latencyMs: Date.now() - chainStart, ok: true,
+    validatorReason: budgetExceeded() ? 'chain_cap_exceeded' : 'fallback_used' });
   const archive = buildFallbackArchive(input);
   return { source: 'fallback', archive, note: FALLBACK_NOTE_AR };
 }
@@ -822,6 +970,8 @@ module.exports = {
   _getOpenRouterModelsForTask: getOpenRouterModelsForTask,
   _tryOpenRouterModelChain: tryOpenRouterModelChain,
   _AI_TIMEOUTS: AI_TIMEOUTS,
+  _classifyValidatorReason: classifyValidatorReason,
+  _tryArchiveJsonRepair: tryArchiveJsonRepair,
   _getTaskTimeout: getTaskTimeout,
   _classifyProviderError: classifyProviderError,
 };
