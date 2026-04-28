@@ -1,10 +1,16 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, getStoredUser } from '../services/api';
 import AvatarMark from '../components/AvatarMark';
 import StatsGrid from '../components/StatsGrid';
 import MatchHistoryRow from '../components/MatchHistoryRow';
 import AkButton from '../components/AkButton';
+import {
+  getProfileInsight,
+  getRoleTendency,
+  formatRoleTendency,
+  formatStatLabel,
+} from '../lib/profileInsight';
 
 const HISTORY_PAGE_SIZE = 10;
 
@@ -78,6 +84,9 @@ export default function ProfilePage() {
   const [interviewBusy, setInterviewBusy] = useState(false);
   const [interviewError, setInterviewError] = useState('');
   const [interviewPreview, setInterviewPreview] = useState(null); // { bio, title, tone, motto, playStyleSummary, source }
+  // Commit 3: small confirmation toast after the user copies the bio
+  // into the draft so the action feels acknowledged without auto-saving.
+  const [interviewBioCopied, setInterviewBioCopied] = useState(false);
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -237,6 +246,9 @@ export default function ProfilePage() {
     // Open edit mode if not already, then copy the bio into the draft.
     // Title / tone / motto / playStyleSummary are PREVIEW-only — they are
     // intentionally not persisted (no schema for them in user_profiles).
+    // The preview stays visible after copying so the user can also copy
+    // the title / motto / playStyleSummary to clipboard if they want
+    // to keep them somewhere else.
     if (!editing) {
       beginEdit();
       setDraft(d => ({
@@ -248,13 +260,33 @@ export default function ProfilePage() {
     } else {
       setDraft(d => ({ ...d, bio: interviewPreview.bio }));
     }
-    setInterviewPreview(null);
     setInterviewError('');
+    setInterviewBioCopied(true);
+    // Auto-clear the toast after a few seconds. State-only, no DB.
+    setTimeout(() => setInterviewBioCopied(false), 3500);
   };
 
   const ignoreInterview = () => {
     setInterviewPreview(null);
     setInterviewError('');
+    setInterviewBioCopied(false);
+  };
+
+  // Commit 3 — copy a single field (title / motto / etc.) to clipboard.
+  // Best-effort: navigator.clipboard is gated by HTTPS and user gesture;
+  // when unavailable we silently no-op rather than spam the user.
+  const copyToClipboard = (text) => {
+    try {
+      if (typeof text !== 'string' || !text) return;
+      if (navigator && navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(() => {});
+      }
+    } catch { /* swallow */ }
+  };
+
+  // Commit 3 — clear avatar URL inline from the edit form.
+  const clearAvatar = () => {
+    setDraft(d => ({ ...d, avatarUrl: '' }));
   };
 
   const saveEdit = async (e) => {
@@ -290,6 +322,18 @@ export default function ProfilePage() {
   const pageNum = Math.floor(historyOffset / HISTORY_PAGE_SIZE) + 1;
   const totalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
 
+  // Commit 3 — derived: top-3 history rows for the prominent strip, and
+  // deterministic insight strings from the live stats snapshot.
+  const top3History = useMemo(
+    () => (Array.isArray(history) ? history.slice(0, 3) : []),
+    [history]
+  );
+  const insightLine = useMemo(() => getProfileInsight(stats), [stats]);
+  const roleTendencyLabel = useMemo(
+    () => formatRoleTendency(getRoleTendency(stats)),
+    [stats]
+  );
+
   if (!storedUser) {
     return (
       <div className="s-profile-empty">
@@ -323,14 +367,34 @@ export default function ProfilePage() {
           <p className="s-profile-username">
             <span className="ak-overline">@{user ? user.username : '—'}</span>
             {user && user.isGuest && <span className="s-profile-guest-tag">حساب ضيف</span>}
+            {!loading && stats && (
+              <span className="s-profile-tendency-tag">{roleTendencyLabel}</span>
+            )}
           </p>
           {profile && profile.bio && !editing && (
             <p className="s-profile-bio">{profile.bio}</p>
           )}
           {(!profile || !profile.bio) && !editing && (
             <p className="s-profile-bio s-profile-bio-empty">
-              لسه مفيش سيرة. اضغط "تعديل" واكتب سطرين عن نفسك.
+              لسه مفيش سيرة. اضغط "تعديل" واكتب سطرين عنك أو خلي الكبير يصيغ هويتك من قسم
+              "اصنع هويتك في Mafiozo" تحت.
             </p>
+          )}
+          {!loading && stats && (
+            <div className="s-profile-hero-chips" aria-label="ملخص سريع">
+              <span className="s-profile-chip">
+                <span className="s-profile-chip-label">مباريات</span>
+                <strong>{formatStatLabel(stats.gamesPlayed)}</strong>
+              </span>
+              <span className="s-profile-chip">
+                <span className="s-profile-chip-label">نسبة الانتصار</span>
+                <strong>{formatStatLabel(stats.winRate)}%</strong>
+              </span>
+              <span className="s-profile-chip">
+                <span className="s-profile-chip-label">جولات النجاة</span>
+                <strong>{formatStatLabel(stats.totalSurvivalRounds)}</strong>
+              </span>
+            </div>
           )}
         </div>
         <div className="s-profile-hero-cta">
@@ -356,17 +420,35 @@ export default function ProfilePage() {
               />
             </label>
             <label className="s-profile-field">
-              <span>رابط الصورة (https فقط)</span>
-              <input
-                type="url"
-                value={draft.avatarUrl}
-                onChange={(e) => setDraft(d => ({ ...d, avatarUrl: e.target.value }))}
-                placeholder="https://example.com/avatar.png"
-                maxLength={520}
-                inputMode="url"
-              />
+              <span>رابط صورة HTTPS</span>
+              <div className="s-profile-avatar-row">
+                <AvatarMark
+                  src={draft.avatarUrl}
+                  name={(draft.displayName || (user && user.username) || '')}
+                  size={64}
+                />
+                <input
+                  type="url"
+                  value={draft.avatarUrl}
+                  onChange={(e) => setDraft(d => ({ ...d, avatarUrl: e.target.value }))}
+                  placeholder="https://example.com/avatar.png"
+                  maxLength={520}
+                  inputMode="url"
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+                <AkButton
+                  variant="ghost"
+                  type="button"
+                  onClick={clearAvatar}
+                  disabled={saving || !draft.avatarUrl}
+                  style={{ whiteSpace: 'nowrap' }}
+                >
+                  مسح الصورة
+                </AkButton>
+              </div>
               <small style={{ color: 'var(--ak-text-muted)', font: 'var(--ak-t-caption)' }}>
-                اتركه فاضي عشان تمسح الصورة الحالية.
+                حط رابط صورة شخصية أو رمز يعبر عنك. لازم يبدأ بـ https://. اتركه فاضي وامسح
+                لو حابب ترجع لرمزك التلقائي.
               </small>
             </label>
             <label className="s-profile-field">
@@ -502,28 +584,70 @@ export default function ProfilePage() {
                   </span>
                 </div>
 
+                <p className="s-identity-preview-note">
+                  معاينة من جلسة الهوية. استخدم البايو للحفظ، وانسخ اللقب أو الشعار لو حبيت.
+                </p>
+
                 <div className="s-identity-preview-grid">
                   <div className="s-identity-preview-cell">
                     <span className="ak-overline">اللقب</span>
                     <p className="s-identity-preview-value">{interviewPreview.title}</p>
+                    <button
+                      type="button"
+                      className="s-identity-copy-btn"
+                      onClick={() => copyToClipboard(interviewPreview.title)}
+                      title="نسخ اللقب"
+                    >
+                      نسخ
+                    </button>
                   </div>
                   <div className="s-identity-preview-cell">
                     <span className="ak-overline">النبرة</span>
                     <p className="s-identity-preview-value">{interviewPreview.tone}</p>
+                    <button
+                      type="button"
+                      className="s-identity-copy-btn"
+                      onClick={() => copyToClipboard(interviewPreview.tone)}
+                      title="نسخ النبرة"
+                    >
+                      نسخ
+                    </button>
                   </div>
                   <div className="s-identity-preview-cell s-identity-preview-cell-wide">
                     <span className="ak-overline">الشعار</span>
                     <p className="s-identity-preview-value">«{interviewPreview.motto}»</p>
+                    <button
+                      type="button"
+                      className="s-identity-copy-btn"
+                      onClick={() => copyToClipboard(interviewPreview.motto)}
+                      title="نسخ الشعار"
+                    >
+                      نسخ
+                    </button>
                   </div>
                   <div className="s-identity-preview-cell s-identity-preview-cell-wide">
                     <span className="ak-overline">أسلوب اللعب</span>
                     <p className="s-identity-preview-value">{interviewPreview.playStyleSummary}</p>
+                    <button
+                      type="button"
+                      className="s-identity-copy-btn"
+                      onClick={() => copyToClipboard(interviewPreview.playStyleSummary)}
+                      title="نسخ أسلوب اللعب"
+                    >
+                      نسخ
+                    </button>
                   </div>
                   <div className="s-identity-preview-cell s-identity-preview-cell-wide">
                     <span className="ak-overline">السيرة المقترحة</span>
                     <p className="s-identity-preview-value">{interviewPreview.bio}</p>
                   </div>
                 </div>
+
+                {interviewBioCopied && (
+                  <div className="s-identity-toast" role="status">
+                    ✓ نسخت السيرة في حقل "سيرة قصيرة". اضغط "حفظ" لما تكون جاهز.
+                  </div>
+                )}
 
                 <div className="s-bio-ai-preview-actions">
                   <AkButton variant="primary" type="button" onClick={useInterviewBio} disabled={saving}>
@@ -542,17 +666,22 @@ export default function ProfilePage() {
         )}
       </section>
 
-      {/* Stats grid */}
+      {/* Stats grid + deterministic insight line (Commit 3) */}
       <section className="s-profile-section">
         <span className="ak-overline">Stats · إحصائيات</span>
         <h2 className="s-profile-section-title">الإحصائيات</h2>
         {loading
           ? <div className="shimmer" style={{ height: 140 }} aria-hidden />
-          : <StatsGrid stats={stats} />
+          : (
+            <>
+              <StatsGrid stats={stats} />
+              <p className="s-profile-insight" aria-live="polite">{insightLine}</p>
+            </>
+          )
         }
       </section>
 
-      {/* Match history */}
+      {/* Match history (Commit 3 — prominent recent-3 strip) */}
       <section className="s-profile-section">
         <div className="s-profile-section-head">
           <span className="ak-overline">History · سجل المباريات</span>
@@ -570,9 +699,9 @@ export default function ProfilePage() {
 
         {!historyLoading && history.length === 0 && !historyError && (
           <div className="s-profile-empty-state">
-            <p className="s-profile-empty-title">لا توجد مباريات محفوظة بعد</p>
+            <p className="s-profile-empty-title">الأرشيف فاضي لسه.</p>
             <p className="s-profile-empty-sub">
-              ابدأ لعبة كاملة لحد ما توصل للكشف النهائي عشان تظهر هنا.
+              العب أول قضية عشان تظهر شخصيتك الحقيقية.
             </p>
             <div style={{ marginTop: 'var(--ak-space-3)' }}>
               <AkButton variant="primary" onClick={() => navigate('/lobby')}>
@@ -584,8 +713,20 @@ export default function ProfilePage() {
 
         {!historyLoading && history.length > 0 && (
           <>
+            {historyOffset === 0 && top3History.length > 0 && (
+              <div className="s-history-recent">
+                <span className="ak-overline">آخر 3 قضايا</span>
+                <div className="s-history-list s-history-list-recent">
+                  {top3History.map(g => <MatchHistoryRow key={g.id} game={g} />)}
+                </div>
+                {history.length > top3History.length && (
+                  <span className="s-history-recent-divider" aria-hidden>·</span>
+                )}
+              </div>
+            )}
             <div className="s-history-list">
-              {history.map(g => <MatchHistoryRow key={g.id} game={g} />)}
+              {(historyOffset === 0 ? history.slice(top3History.length) : history)
+                .map(g => <MatchHistoryRow key={g.id} game={g} />)}
             </div>
             {historyTotal > HISTORY_PAGE_SIZE && (
               <div className="s-history-pager">
