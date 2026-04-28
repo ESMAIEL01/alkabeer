@@ -56,6 +56,55 @@ function classifyProviderError(err) {
   return 'provider_error';
 }
 
+// ---------------------------------------------------------------------------
+// FixPack v3 / Commit 5 — per-task AI latency caps.
+//
+// Tight per-task timeouts so a slow provider never blocks gameplay. Each
+// task carries a PER-MODEL timeout (single attempt) plus a TOTAL CHAIN
+// CAP that limits the total time spent walking a multi-model chain.
+//
+// Rationale by task:
+//   archive               — host blocks on this, so 30s per attempt;
+//                          chain cap not enforced (walking 4 models on
+//                          a stuck quota path can need 60–90s, and the
+//                          deterministic fallback always lands).
+//   final_reveal_polish   — fire-and-forget polish of the cinematic
+//                          screen; 10s per model, 20s chain cap.
+//   profile_identity      — user clicked a button; 10s per model, 20s
+//                          chain cap. Deterministic fallback if exceeded.
+//   profile_bio           — same.
+//   clue_transition       — must NOT block phase transition; 7s per
+//                          model, 12s chain cap.
+//   vote_result           — same.
+//   narration             — short prose on phase boundaries; 8s per
+//                          model, 14s chain cap.
+//
+// Values live here (NOT in env) because shipping a deploy that
+// accidentally raises a chain cap to "5 minutes" would be a worse
+// foot-gun than a hard-coded constant. The exact numbers are documented
+// for ops and also re-exported as _AI_TIMEOUTS for test pinning.
+// ---------------------------------------------------------------------------
+const AI_TIMEOUTS = Object.freeze({
+  archive:                 { perModelMs: 30_000, totalCapMs: null },     // null = no aggregate cap
+  final_reveal_polish:     { perModelMs: 10_000, totalCapMs: 20_000 },
+  profile_identity:        { perModelMs: 10_000, totalCapMs: 20_000 },
+  profile_bio:             { perModelMs: 10_000, totalCapMs: 20_000 },
+  clue_transition_polish:  { perModelMs:  7_000, totalCapMs: 12_000 },
+  vote_result_polish:      { perModelMs:  7_000, totalCapMs: 12_000 },
+  narration:               { perModelMs:  8_000, totalCapMs: 14_000 },
+});
+
+/**
+ * Resolve the timeout config for a given task LABEL. Unknown task labels
+ * fall back to the narration profile (a safe medium default).
+ */
+function getTaskTimeout(task) {
+  if (typeof task === 'string' && Object.prototype.hasOwnProperty.call(AI_TIMEOUTS, task)) {
+    return AI_TIMEOUTS[task];
+  }
+  return AI_TIMEOUTS.narration;
+}
+
 /**
  * Fire-and-forget wrapper. The default logger never rejects, but the .catch
  * is defensive against future changes.
@@ -236,6 +285,9 @@ async function tryGeminiArchive(input, modelName, { strict = false } = {}) {
       json: true,
       temperature: strict ? 0.85 : 0.9,
       maxOutputTokens: config.gemini.archiveMaxOutputTokens,
+      // FixPack v3 / Commit 5: archive needs the longest budget but is
+      // still capped so a stuck Pro never holds the host indefinitely.
+      timeoutMs: AI_TIMEOUTS.archive.perModelMs,
     });
     const parsed = safeJsonParse(raw);
     if (!parsed) {
@@ -374,6 +426,8 @@ async function tryOpenRouterModelChain({
   temperature = 0.85,
   maxTokens,
   models,
+  timeoutMs,        // FixPack v3 / Commit 5: per-attempt cap (override)
+  totalCapMs,       // FixPack v3 / Commit 5: chain-wide cap (override)
 } = {}) {
   if (!openrouterConfigured()) return null;
   if (typeof task !== 'string' || !task) return null;
@@ -384,8 +438,31 @@ async function tryOpenRouterModelChain({
     : getOpenRouterModelsForTask(task);
   if (!chain || chain.length === 0) return null;
 
-  for (const orModel of chain) {
+  // Resolve effective timeouts. Caller overrides win; otherwise look up
+  // the task's documented profile.
+  const taskTimeouts = getTaskTimeout(task);
+  const effectivePerModelMs = Number.isFinite(timeoutMs) && timeoutMs > 0
+    ? timeoutMs
+    : taskTimeouts.perModelMs;
+  const effectiveTotalCapMs = Number.isFinite(totalCapMs) && totalCapMs > 0
+    ? totalCapMs
+    : taskTimeouts.totalCapMs;
+
+  const chainStart = Date.now();
+  for (let i = 0; i < chain.length; i++) {
+    const orModel = chain[i];
     if (!orModel || typeof orModel !== 'string' || !orModel.trim()) continue;
+
+    // FixPack v3 / Commit 5: honour the chain-wide cap. If the previous
+    // model already burned through the budget, log the abort and stop
+    // instead of starting another (potentially slow) call.
+    if (effectiveTotalCapMs && (Date.now() - chainStart) >= effectiveTotalCapMs) {
+      logAi({ task, source: 'openrouter', model: orModel,
+        latencyMs: 0, ok: false,
+        validatorReason: 'chain_cap_exceeded' });
+      break;
+    }
+
     const start = Date.now();
     let raw;
     try {
@@ -395,6 +472,7 @@ async function tryOpenRouterModelChain({
         temperature,
         maxTokens,
         modelName: orModel,
+        timeoutMs: effectivePerModelMs,
       });
     } catch (err) {
       logAi({ task, source: 'openrouter', model: orModel,
@@ -432,6 +510,9 @@ async function tryGeminiNarration(prompt, forbiddenTerms) {
       json: false,
       temperature: 0.95,
       maxOutputTokens: config.gemini.narrationMaxOutputTokens,
+      // FixPack v3 / Commit 5: clamp Gemini narration to the documented
+      // per-task cap so a slow Flash response never holds up the phase.
+      timeoutMs: AI_TIMEOUTS.narration.perModelMs,
     });
     const cleaned = validateNarration(raw, { forbiddenTerms });
     if (!cleaned) {
@@ -572,6 +653,9 @@ async function tryGeminiPolish(prompt, validator, task, { json = false } = {}) {
       json,
       temperature: 0.95,
       maxOutputTokens: config.gemini.narrationMaxOutputTokens,
+      // FixPack v3 / Commit 5: per-task timeout cap. The polish path
+      // must not block phase transitions on a slow Flash response.
+      timeoutMs: getTaskTimeout(task).perModelMs,
     });
     const cleaned = validator(raw);
     if (!cleaned) {
@@ -799,4 +883,7 @@ module.exports = {
   _openrouterArchiveChain: openrouterArchiveChain,
   _getOpenRouterModelsForTask: getOpenRouterModelsForTask,
   _tryOpenRouterModelChain: tryOpenRouterModelChain,
+  _AI_TIMEOUTS: AI_TIMEOUTS,
+  _getTaskTimeout: getTaskTimeout,
+  _classifyProviderError: classifyProviderError,
 };

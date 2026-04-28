@@ -52,7 +52,7 @@ function withTimeout(promise, ms, label) {
  *   models this covers BOTH internal reasoning AND visible output — set
  *   generously for archive calls to avoid finishReason: MAX_TOKENS.
  */
-async function callGemini({ modelName, userPrompt, json = false, temperature = 0.85, maxOutputTokens }) {
+async function callGemini({ modelName, userPrompt, json = false, temperature = 0.85, maxOutputTokens, timeoutMs }) {
   const cap = Number.isFinite(maxOutputTokens) && maxOutputTokens > 0 ? maxOutputTokens : 2048;
   const model = client().getGenerativeModel({
     model: modelName,
@@ -74,7 +74,10 @@ async function callGemini({ modelName, userPrompt, json = false, temperature = 0
 
   const result = await withTimeout(
     model.generateContent(userPrompt),
-    config.gemini.timeoutMs,
+    // FixPack v3 / Commit 5: caller may pin a tighter per-task timeout.
+    Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? timeoutMs
+      : config.gemini.timeoutMs,
     `Gemini ${modelName}`
   );
 

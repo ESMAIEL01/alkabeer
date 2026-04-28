@@ -48,7 +48,7 @@ function withTimeout(promise, ms, label) {
  * @param {string} [opts.modelName]   - Override the configured fallback model
  * @returns {Promise<string>} raw assistant text
  */
-async function callOpenRouter({ userPrompt, json = false, temperature = 0.85, maxTokens, modelName } = {}) {
+async function callOpenRouter({ userPrompt, json = false, temperature = 0.85, maxTokens, modelName, timeoutMs } = {}) {
   if (!isConfigured()) {
     throw new Error('OpenRouter is not configured');
   }
@@ -90,7 +90,11 @@ async function callOpenRouter({ userPrompt, json = false, temperature = 0.85, ma
         },
         body: JSON.stringify(body),
       }),
-      config.openrouter.timeoutMs || 30_000,
+      // FixPack v3 / Commit 5: caller may pin a tighter per-task timeout.
+      // Falls back to the env-driven global when not supplied.
+      Number.isFinite(timeoutMs) && timeoutMs > 0
+        ? timeoutMs
+        : (config.openrouter.timeoutMs || 30_000),
       `OpenRouter ${model}`
     );
   } catch (err) {
