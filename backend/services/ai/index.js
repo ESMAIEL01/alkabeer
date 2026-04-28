@@ -140,112 +140,42 @@ function logAi(args) {
 }
 
 // ---------------------------------------------------------------------------
-// Built-in fallback content. The game must always be playable, even when
-// every external provider is down.
+// Built-in fallback content (FixPack v3 / Premium archive).
+//
+// The game must always be playable. The fallback archive is constructed
+// from curated noir pools so the output ALWAYS satisfies the Commit 1
+// quality gate: every title, role, suspicious_detail, and clue sits
+// inside the documented length windows; every character name is a real
+// Arabic name (no usernames, no underscores, no parens, no repeated
+// letters); clues are distinctive enough that no two are near-duplicates.
+//
+// Deterministic by construction: the same (players, clueCount,
+// mafiozoCount, idea) produces the same archive. A small seed hash over
+// the `idea` string rotates the pool offsets so different host ideas
+// yield different stories.
 // ---------------------------------------------------------------------------
-
-const FALLBACK_ARCHIVE = {
-  title: 'سرقة قصر البارون',
-  story:
-    'الجريمة حصلت في قصر البارون ميدو الساعة 2 الصبح. الضحية مدير البنك "أنور". المافيوزو الحقيقي هو المحاسب "كمال" — هادي وذكي ومحدش حاسس بيه. المشتبه الواضح هو الحارس "محمود" لأنه كان قريب من الخزنة في وقت الجريمة. كل الأدلة مصممة عشان تلبّس محمود لحد ما الدليل الثالث يكشف كمال.',
-  mafiozo: 'كمال (المحاسب)',
-  obvious_suspect: 'محمود (الحارس)',
-  characters: [
-    { name: 'محمود', role: 'الحارس', suspicious_detail: 'اتصرف على إنه ساهر طول الليل بس مفيش حد شافه عند البوابة.' },
-    { name: 'سارة', role: 'السكرتيرة', suspicious_detail: 'لقت الجثة أول واحدة وكانت لابسة معطف غريب.' },
-    { name: 'كمال', role: 'المحاسب', suspicious_detail: 'طلب تقرير عاجل قبل الجريمة بنص ساعة.' },
-    { name: 'فريد', role: 'المدير', suspicious_detail: 'كان متخانق مع الضحية إمبارح قدام الكل.' },
-  ],
-  clues: [
-    'كاميرا الباب الخلفي سجلت حد لابس بالطو غامق الساعة 1:30 — والحارس محمود كان لابس بالطو زيه.',
-    '٣ ناس بس كان معاهم مفتاح الخزنة: المحاسب كمال، المدير فريد، الحارس محمود... وواحد منهم كان صاحي الساعة 2.',
-    'كمال طلب "كوباية مية كبيرة" على مكتبه الساعة 9:05 — الكوباية ظهرت فاضية والحوض مبلول. شكله بيغسل حاجة من إيديه.',
-  ],
-};
 
 const FALLBACK_NOTE_AR = 'الكبير اشتغل بقصة احتياطية دلوقتي. خدمة الذكاء مش متاحة للحظات.';
 const FALLBACK_NARRATION = '...الكبير ساكت دلوقتي';
 
-// E4: deterministic per-config padding pool. Used when a custom config
-// requires more characters / clues than the static FALLBACK_ARCHIVE
-// provides. All entries are short, Arabic-script, no placeholders.
-const CHARACTER_PAD_POOL = [
-  { name: 'سلمى', role: 'الجارة', suspicious_detail: 'كانت بتسأل عن وقت الجريمة قبل ما حد يسأل.' },
-  { name: 'إبراهيم', role: 'سايس العمارة', suspicious_detail: 'دفتر التسجيل بتاعه فيه ساعتين ناقصين.' },
-  { name: 'نادر', role: 'الساعي', suspicious_detail: 'وصّل خطاب على غير العادة في وقت متأخر.' },
-  { name: 'ليلى', role: 'الطباخة', suspicious_detail: 'لقت كوباية كاسرة في المطبخ ما شافهاش حد بيستعملها.' },
-  { name: 'أحمد', role: 'الكاتب', suspicious_detail: 'دفتر يومياته صفحة الليلة كاملة ممسوحة.' },
-];
-const CLUE_PAD_POOL = [
-  'الباب الجانبي اتقفل من جوة، بس مفتاحه كان معاه واحد وبس في القصر.',
-  'فيه ساعة محسوب فيها صوت خطوات بطيئة بس مفيش كاميرا شافت حد.',
-  'ورقة صغيرة كُتب عليها رقم غريب اتلقت قدام مكتب الضحية.',
-  'ريحة دخان قهوة كانت متواجدة في غرفة قال صاحبها إنه ما خَطاش الناحية دي.',
-  'لمبة المكتب كانت لسه دفية، ومفيش حد قال إنه كان فيه ساعتها.',
-];
+// FixPack v3 / Commit 2 — pull the premium fallback builder from its
+// dep-free module. The pools below are kept in sync as a SOURCE OF
+// TRUTH for the prompt examples; the actual generator lives in
+// archive-fallback.js so unit tests can import it without booting
+// dotenv.
+const _archiveFallback = require('./archive-fallback');
 
-/**
- * E4: build a config-aware fallback archive. Default config returns the
- * static FALLBACK_ARCHIVE bit-for-bit. Custom configs deterministically
- * pad (or trim) characters + clues + mafiozos to match exact counts.
- * The output is guaranteed to pass validateArchive(opts).
- */
-function buildFallbackArchive(input) {
-  const i = input || {};
-  const playerCount  = Number.isFinite(i.players) ? i.players : (Number.isFinite(i.playerCount) ? i.playerCount : 4);
-  const clueCount    = Number.isFinite(i.clueCount) ? i.clueCount : 3;
-  const mafiozoCount = Number.isFinite(i.mafiozoCount) ? i.mafiozoCount : 1;
+// FixPack v3 / Commit 2 — premium fallback delegated to the dep-free
+// archive-fallback.js so unit tests can run locally without dotenv. The
+// pools (12 titles, 12 locations, 16 names, 16 roles, 16 details, 10
+// clues) are documented in archive-fallback.js — single source of truth.
+const buildFallbackArchive = _archiveFallback.buildFallbackArchive;
 
-  // Default-shaped request: return the static archive untouched. This
-  // preserves the pre-E4 wire shape (singular `mafiozo` string, 3 clues,
-  // 4 chars) for any caller still using default-mode generation.
-  if (clueCount === 3 && mafiozoCount === 1 && playerCount === 4) {
-    return FALLBACK_ARCHIVE;
-  }
-
-  // Build a custom-mode archive from the static seed + deterministic pads.
-  const baseChars = FALLBACK_ARCHIVE.characters.slice(0, Math.min(FALLBACK_ARCHIVE.characters.length, playerCount));
-  const characters = baseChars.slice();
-  for (let k = 0; characters.length < playerCount; k++) {
-    const tpl = CHARACTER_PAD_POOL[k % CHARACTER_PAD_POOL.length];
-    const suffix = k >= CHARACTER_PAD_POOL.length ? ` ${k + 1}` : '';
-    characters.push({
-      name: tpl.name + suffix,
-      role: tpl.role,
-      suspicious_detail: tpl.suspicious_detail,
-    });
-  }
-
-  const baseClues = FALLBACK_ARCHIVE.clues.slice(0, Math.min(FALLBACK_ARCHIVE.clues.length, clueCount));
-  const clues = baseClues.slice();
-  for (let k = 0; clues.length < clueCount; k++) {
-    clues.push(CLUE_PAD_POOL[k % CLUE_PAD_POOL.length]);
-  }
-  // If clueCount < 3 we may still have surplus from FALLBACK_ARCHIVE.clues.
-  clues.length = clueCount;
-
-  // Mafiozos: pull names from the character list as deterministic anchors.
-  const mafiozos = Array.from({ length: mafiozoCount }, (_, k) => {
-    const ch = characters[k] || characters[0];
-    return {
-      name: ch.name,
-      role: ch.role,
-      suspicious_detail: ch.suspicious_detail,
-    };
-  });
-
-  return {
-    title: FALLBACK_ARCHIVE.title,
-    story: FALLBACK_ARCHIVE.story,
-    mafiozos,
-    // Keep singular `mafiozo` field for downstream code that may still read
-    // it (assignRoles ignores this field; validateArchive accepts both).
-    mafiozo: mafiozos[0].name,
-    obvious_suspect: FALLBACK_ARCHIVE.obvious_suspect,
-    characters,
-    clues,
-  };
-}
+// Legacy compat — the FALLBACK_ARCHIVE constant was previously frozen at
+// module scope. The premium fallback is generated once at boot for the
+// default 4/3/1 shape; downstream callers may inspect it but should not
+// mutate the returned object.
+const FALLBACK_ARCHIVE = buildFallbackArchive({ players: 4, clueCount: 3, mafiozoCount: 1 });
 
 // ---------------------------------------------------------------------------
 // Internal: provider attempts. Each returns the parsed+validated archive on
