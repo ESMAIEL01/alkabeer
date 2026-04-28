@@ -23,6 +23,8 @@ const profileRoutes = require('./routes/profile');
 const statsRoutes = require('./routes/stats');
 const historyRoutes = require('./routes/history');
 const archiveRoutes = require('./routes/archive');
+const adminRoutes = require('./routes/admin');
+const { adminRequired } = require('./middleware/admin');
 const { authLimiter, aiLimiter } = require('./middleware/rateLimit');
 const GameManager = require('./game/GameManager');
 
@@ -89,6 +91,10 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/stats',   statsRoutes);
 app.use('/api/history', historyRoutes);
 app.use('/api/archive', archiveRoutes);
+// F3: admin metrics + raw events. The adminRequired middleware composes
+// authRequired → live DB is_admin lookup → 403 for non-admins (so every
+// /api/admin/* call is gated even before reaching the route file).
+app.use('/api/admin', adminRequired, adminRoutes);
 
 // 404 for unknown API routes
 app.use('/api', (_req, res) => {
