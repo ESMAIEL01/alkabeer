@@ -10,6 +10,10 @@
  *     body: { idea?, players?, mood?, difficulty? }
  *     -> { success, source, options: [3 archives] }   (used by the 3-scenario picker)
  *
+ *   POST /api/scenarios/premium-fallback
+ *     body: { idea?, players?, clueCount?, mafiozoCount? }
+ *     -> { success, source: "fallback", model: "premium-deterministic", scenario, ... }
+ *
  *   POST /api/scenarios/narrate     (auth optional)
  *     body: { phase, context }
  *     -> { success, line }
@@ -19,6 +23,9 @@
 const express = require('express');
 const ai = require('../services/ai');
 const { query } = require('../database');
+const { buildFallbackArchive } = require('../services/ai/archive-fallback');
+const { validateArchive } = require('../services/ai/validators');
+const { logAiGeneration } = require('../services/analytics');
 
 const router = express.Router();
 
@@ -110,6 +117,69 @@ router.post('/ai-generate', async (req, res, next) => {
       console.warn('draft persist failed:', e.message);
     }
 
+    return res.json(payload);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+/**
+ * Premium ready-made case generator. Reuses the deterministic premium
+ * fallback archive builder — no provider call, no env, no network. The
+ * output ALWAYS satisfies the same schema + quality validation that the
+ * AI chain output must satisfy, so the host can offer this as a fast
+ * "كبسة جاهزة" alternative when the AI route feels slow.
+ *
+ * Privacy contract: identical to /ai-generate. archive_b64 is host-only
+ * (returned for the host dashboard to seal). gameRole is never set by
+ * this route.
+ */
+router.post('/premium-fallback', async (req, res, next) => {
+  const start = Date.now();
+  try {
+    const { idea } = req.body || {};
+    const counters = normalizeCustomCounters(req.body);
+    if (!counters.ok) {
+      return res.status(400).json({ error: counters.errors[0] });
+    }
+    const { players, clueCount, mafiozoCount } = counters.normalized;
+    const archive = buildFallbackArchive({
+      idea: typeof idea === 'string' ? idea : '',
+      players, clueCount, mafiozoCount,
+    });
+    // Schema + quality gate. Premium fallback pools are sized so this
+    // never fails, but we still verify so a future tweak to the pools
+    // can't quietly slip past the gate.
+    const reason = validateArchive(archive, {
+      expectedClues: clueCount,
+      expectedMafiozos: mafiozoCount,
+      expectedCharacters: players,
+      enforceQuality: true,
+    });
+    if (reason) {
+      logAiGeneration({
+        task: 'archive_premium_fallback',
+        source: 'fallback',
+        model: 'premium-deterministic',
+        latencyMs: Date.now() - start,
+        ok: false,
+        validatorReason: reason,
+      }).catch(() => {});
+      return res.status(500).json({ error: 'تعذر تجهيز قضية جاهزة الآن، حاول مرة ثانية.' });
+    }
+    const payload = shapeArchiveResponse({
+      source: 'fallback',
+      model: 'premium-deterministic',
+      archive,
+    });
+    logAiGeneration({
+      task: 'archive_premium_fallback',
+      source: 'fallback',
+      model: 'premium-deterministic',
+      latencyMs: Date.now() - start,
+      ok: true,
+      validatorReason: null,
+    }).catch(() => {});
     return res.json(payload);
   } catch (err) {
     return next(err);

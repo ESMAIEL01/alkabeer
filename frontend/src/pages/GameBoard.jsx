@@ -25,6 +25,10 @@ function ConnectionBanner({ status }) {
 // No hard-coded "Player X won" lines.
 // =============================================================================
 function FinalRevealView({ data, aiPolish, fallbackOutcome, onNewGame, onBackToLobby }) {
+  const [shareCopied, setShareCopied] = useState(false);
+  const [shareError, setShareError] = useState(false);
+  const shareTextareaRef = useRef(null);
+
   // Recovery if the backend hasn't emitted the reveal yet (rare race / refresh).
   if (!data) {
     return (
@@ -55,13 +59,121 @@ function FinalRevealView({ data, aiPolish, fallbackOutcome, onNewGame, onBackToL
   const heroSubtitle = (polish && polish.heroSubtitle) || data.headline?.subtitle || null;
   const closingLine  = (polish && polish.caseClosingLine) || data.caseSummary?.closingLine || null;
 
+  // Resolve mafiozos array once — the rest of this view, the share card,
+  // and the summary stats all read from the same source of truth.
+  const mafiozosArr = Array.isArray(data.truth?.mafiozos) && data.truth.mafiozos.length > 0
+    ? data.truth.mafiozos
+    : (data.truth?.mafiozoUsername
+        ? [{
+            playerId:         data.truth.mafiozoPlayerId,
+            username:         data.truth.mafiozoUsername,
+            characterName:    data.truth.mafiozoCharacterName,
+            storyRole:        data.truth.mafiozoStoryRole,
+            suspiciousDetail: data.truth.mafiozoSuspiciousDetail,
+            explanation:      data.truth.mafiozoExplanation,
+            eliminatedAtRound: null,
+            survived: null,
+          }]
+        : []);
+
+  const playersArr = Array.isArray(data.players) ? data.players : [];
+  const cluesArr = Array.isArray(data.clues) ? data.clues : [];
+  const roundsCount = Array.isArray(data.votingTimeline) ? data.votingTimeline.length : 0;
+
+  // Deciding clue spotlight — prefer one explicitly tagged by the backend
+  // (typeLabel mentions "حاسم"); else fall back to the last clue, which
+  // is the one most likely to have closed the loop.
+  let decidingClue = null;
+  if (cluesArr.length > 0) {
+    decidingClue = cluesArr.find(c => typeof c.typeLabel === 'string' && /حاسم/.test(c.typeLabel))
+      || cluesArr[cluesArr.length - 1];
+  }
+
+  // Innocents block — surviving non-mafiozo, non-obvious-suspect players who
+  // helped close the case. Limit to 4 to keep the section scannable on mobile.
+  const innocents = playersArr
+    .filter(p => p.gameRole !== 'mafiozo' && p.gameRole !== 'obvious_suspect' && p.survived !== false)
+    .slice(0, 4);
+
+  // Stats for the at-a-glance row + the share card.
+  const stats = {
+    players:   playersArr.length || null,
+    clues:     cluesArr.length || null,
+    mafiozos:  mafiozosArr.length || null,
+    rounds:    roundsCount || null,
+  };
+
+  // --- Share card -----------------------------------------------------------
+  // Builds a copy-friendly Arabic summary. Pure DOM; no canvas, no upload, no
+  // image generation. The user can take a screenshot of the on-screen card.
+  function buildShareSummary() {
+    const lines = [];
+    lines.push('الكبير · مافيوزو');
+    if (data.winnerLabel) lines.push(`النتيجة: ${data.winnerLabel}`);
+    const caseTitle = data.caseSummary?.title || data.title || data.headline?.title;
+    if (caseTitle) lines.push(`القضية: ${caseTitle}`);
+    const statBits = [];
+    if (stats.players)  statBits.push(`لاعبين: ${stats.players}`);
+    if (stats.clues)    statBits.push(`أدلة: ${stats.clues}`);
+    if (stats.mafiozos) statBits.push(`مافيوزو: ${stats.mafiozos}`);
+    if (stats.rounds)   statBits.push(`جولات: ${stats.rounds}`);
+    if (statBits.length > 0) lines.push(statBits.join(' · '));
+    if (mafiozosArr.length > 0) {
+      const names = mafiozosArr.map(m => m.username).filter(Boolean).join('، ');
+      if (names) lines.push(`مافيوزو الجلسة: ${names}`);
+    }
+    if (closingLine) lines.push(closingLine);
+    return lines.join('\n');
+  }
+  const shareSummary = buildShareSummary();
+
+  async function handleCopyShare() {
+    setShareError(false);
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(shareSummary);
+      } else if (shareTextareaRef.current) {
+        shareTextareaRef.current.select();
+        const ok = document.execCommand && document.execCommand('copy');
+        if (!ok) throw new Error('copy-blocked');
+      } else {
+        throw new Error('clipboard-unsupported');
+      }
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2200);
+    } catch {
+      setShareError(true);
+      if (shareTextareaRef.current) {
+        shareTextareaRef.current.removeAttribute('readonly');
+        shareTextareaRef.current.focus();
+        shareTextareaRef.current.select();
+      }
+    }
+  }
+
   return (
     <div className="s-final animate-fade-in">
       {/* HERO ---------------------------------------------------------- */}
       <section className="s-final-hero final-reveal-section">
         <span className="winner-label">{data.winnerLabel}</span>
-        <h1 className={headlineCls}>{data.headline?.title || data.title}</h1>
-        {heroSubtitle && <p>{heroSubtitle}</p>}
+        <h1 className={`s-final-verdict ${headlineCls}`}>{data.headline?.title || data.title}</h1>
+        {heroSubtitle && <p className="s-final-verdict-sub">{heroSubtitle}</p>}
+        {(stats.players || stats.clues || stats.mafiozos || stats.rounds) && (
+          <ul className="s-final-stats" aria-label="ملخص الجلسة">
+            {stats.players != null && (
+              <li><span className="num">{stats.players}</span><span className="lbl">لاعبين</span></li>
+            )}
+            {stats.clues != null && (
+              <li><span className="num">{stats.clues}</span><span className="lbl">أدلة</span></li>
+            )}
+            {stats.mafiozos != null && (
+              <li><span className="num">{stats.mafiozos}</span><span className="lbl">مافيوزو</span></li>
+            )}
+            {stats.rounds != null && (
+              <li><span className="num">{stats.rounds}</span><span className="lbl">جولات</span></li>
+            )}
+          </ul>
+        )}
       </section>
 
       {/* CASE RECONSTRUCTION ------------------------------------------- */}
@@ -88,25 +200,8 @@ function FinalRevealView({ data, aiPolish, fallbackOutcome, onNewGame, onBackToL
       </section>
 
       {/* TRUTH (mafiozo reveal) — E3 multi-Mafiozo aware ---------------- */}
-      {data.truth && (() => {
-        // Prefer the new `mafiozos` array; fall back to legacy singular
-        // fields when the server hasn't sent the array (old cached payload).
-        const mafiozos = Array.isArray(data.truth.mafiozos) && data.truth.mafiozos.length > 0
-          ? data.truth.mafiozos
-          : (data.truth.mafiozoUsername
-              ? [{
-                  playerId:         data.truth.mafiozoPlayerId,
-                  username:         data.truth.mafiozoUsername,
-                  characterName:    data.truth.mafiozoCharacterName,
-                  storyRole:        data.truth.mafiozoStoryRole,
-                  suspiciousDetail: data.truth.mafiozoSuspiciousDetail,
-                  explanation:      data.truth.mafiozoExplanation,
-                  eliminatedAtRound: null,
-                  survived: null,
-                }]
-              : []);
-        if (mafiozos.length === 0) return null;
-        const isMulti = mafiozos.length > 1;
+      {mafiozosArr.length > 0 && (() => {
+        const isMulti = mafiozosArr.length > 1;
         return (
           <section className="s-final-section final-reveal-section">
             <span className="section-overline">
@@ -114,14 +209,19 @@ function FinalRevealView({ data, aiPolish, fallbackOutcome, onNewGame, onBackToL
             </span>
             {isMulti && (
               <p style={{ color: 'var(--ak-text-muted)', font: 'var(--ak-t-caption)', marginTop: 0, marginBottom: 'var(--ak-space-3)' }}>
-                الظل كان له أكتر من وجه — {mafiozos.length} مافيوزو شغّالين في نفس القضية.
+                الظل كان له أكتر من وجه — {mafiozosArr.length} مافيوزو شغّالين في نفس القضية.
               </p>
             )}
-            {mafiozos.map((m, i) => (
+            {mafiozosArr.map((m, i) => (
               <div key={m.playerId || i} className={`s-final-truth ${truthCls}`} style={isMulti ? { marginBottom: 'var(--ak-space-3)' } : null}>
                 <span style={{ font: 'var(--ak-t-overline)', color: 'var(--ak-gold)', letterSpacing: 'var(--ak-tracking-x-wide)', textTransform: 'uppercase', direction: 'ltr', display: 'block' }}>
-                  {isMulti ? `The Mafioso · ${i + 1}/${mafiozos.length}` : 'The Mafioso'}
+                  {isMulti ? `The Mafioso · ${i + 1}/${mafiozosArr.length}` : 'The Mafioso'}
                 </span>
+                {isMulti && (
+                  <span style={{ font: 'var(--ak-t-caption)', color: 'var(--ak-text-muted)', display: 'block', marginBottom: 'var(--ak-space-1)' }}>
+                    مافيوزو {i + 1} من {mafiozosArr.length}
+                  </span>
+                )}
                 <h3 className="accent-name">{m.username}</h3>
                 <p className="character-line">
                   شخصية <strong>{m.characterName}</strong>
@@ -148,6 +248,44 @@ function FinalRevealView({ data, aiPolish, fallbackOutcome, onNewGame, onBackToL
         );
       })()}
 
+      {/* DECIDING CLUE — single highlighted clue that closed the case --- */}
+      {decidingClue && (
+        <section className="s-final-section final-reveal-section">
+          <span className="section-overline">Decisive Thread · الخيط الحاسم</span>
+          <div className={`s-final-deciding ${tone === 'gold' ? 'gold' : 'crimson'}`}>
+            <span className="s-final-deciding-num">الدليل {decidingClue.index + 1}</span>
+            <blockquote>"{decidingClue.text}"</blockquote>
+            {decidingClue.realMeaning && (
+              <p className="s-final-deciding-real">{decidingClue.realMeaning}</p>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* INNOCENT EYES — investigators who helped close the case -------- */}
+      {innocents.length > 0 && (
+        <section className="s-final-section final-reveal-section">
+          <span className="section-overline">The Innocent Eyes · عيون شافت</span>
+          <p style={{ color: 'var(--ak-text-muted)', font: 'var(--ak-t-caption)', marginTop: 0, marginBottom: 'var(--ak-space-3)' }}>
+            مش كل مشتبه فيه كان مذنب. دول لاعبين ساعدوا في كشف الحقيقة.
+          </p>
+          <div className="s-final-innocents">
+            {innocents.map(p => (
+              <div key={p.playerId} className="s-final-innocent">
+                <div className="s-final-innocent-name">{p.username}</div>
+                <div className="s-final-innocent-char">
+                  {p.characterName}
+                  {p.storyRole && <span> — <span style={{ color: 'var(--ak-text-muted)' }}>{p.storyRole}</span></span>}
+                </div>
+                {p.suspiciousDetail && (
+                  <p className="s-final-innocent-det">{p.suspiciousDetail}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* OBVIOUS SUSPECT ---------------------------------------------- */}
       {data.obviousSuspect && (
         <section className="s-final-section final-reveal-section">
@@ -165,11 +303,11 @@ function FinalRevealView({ data, aiPolish, fallbackOutcome, onNewGame, onBackToL
       )}
 
       {/* PLAYER ROSTER ------------------------------------------------ */}
-      {Array.isArray(data.players) && data.players.length > 0 && (
+      {playersArr.length > 0 && (
         <section className="s-final-section final-reveal-section">
           <span className="section-overline">Players · اللاعبين والشخصيات</span>
           <div className="s-final-roster">
-            {data.players.map(p => {
+            {playersArr.map(p => {
               const variant = p.gameRole === 'mafiozo' ? 'mafiozo'
                             : p.gameRole === 'obvious_suspect' ? 'suspect'
                             : '';
@@ -192,11 +330,11 @@ function FinalRevealView({ data, aiPolish, fallbackOutcome, onNewGame, onBackToL
       )}
 
       {/* CLUE ANALYSIS ------------------------------------------------ */}
-      {Array.isArray(data.clues) && data.clues.length > 0 && (
+      {cluesArr.length > 0 && (
         <section className="s-final-section final-reveal-section">
           <span className="section-overline">Clue Analysis · قراءة الأدلة</span>
           <div className="s-final-clue-grid">
-            {data.clues.map(c => (
+            {cluesArr.map(c => (
               <div key={c.index} className="s-final-clue">
                 <div className="clue-head">
                   <span className="clue-num">الدليل {c.index + 1}</span>
@@ -271,6 +409,66 @@ function FinalRevealView({ data, aiPolish, fallbackOutcome, onNewGame, onBackToL
           </div>
         </section>
       )}
+
+      {/* SHARE CARD --------------------------------------------------- */}
+      <section className="s-final-section final-reveal-section">
+        <span className="section-overline">Share · شارك الجلسة</span>
+        <div className="s-final-share">
+          <div className="s-final-share-card" id="final-share-card" aria-label="ملخص الجلسة جاهز للمشاركة">
+            <div className="s-final-share-brand">
+              <span className="s-final-share-mark" aria-hidden="true">▲</span>
+              <span className="s-final-share-brand-text">الكبير · مافيوزو</span>
+            </div>
+            {data.winnerLabel && (
+              <div className={`s-final-share-verdict ${headlineCls}`}>{data.winnerLabel}</div>
+            )}
+            {(data.caseSummary?.title || data.title) && (
+              <div className="s-final-share-title">{data.caseSummary?.title || data.title}</div>
+            )}
+            <ul className="s-final-share-stats">
+              {stats.players != null  && <li><b>{stats.players}</b><span>لاعبين</span></li>}
+              {stats.clues != null    && <li><b>{stats.clues}</b><span>أدلة</span></li>}
+              {stats.mafiozos != null && <li><b>{stats.mafiozos}</b><span>مافيوزو</span></li>}
+              {stats.rounds != null   && <li><b>{stats.rounds}</b><span>جولات</span></li>}
+            </ul>
+            {mafiozosArr.length > 0 && (
+              <div className="s-final-share-mafiozo">
+                <span className="lbl">مافيوزو الجلسة</span>
+                <span className="val">{mafiozosArr.map(m => m.username).filter(Boolean).join('، ')}</span>
+              </div>
+            )}
+            {closingLine && <p className="s-final-share-closing">{closingLine}</p>}
+          </div>
+          <div className="s-final-share-actions">
+            <button
+              type="button"
+              className="ak-btn ak-btn-primary"
+              onClick={handleCopyShare}
+              aria-live="polite"
+            >
+              {shareCopied ? 'تم النسخ ✓' : 'نسخ ملخص النتيجة'}
+            </button>
+            <p className="s-final-share-screenshot">
+              التقط سكرينشوت للكارت من على الشاشة لو حابب تشاركه كصورة
+              <span aria-hidden="true"> · </span>
+              <span className="s-final-share-keys">Win+Shift+S / Cmd+Shift+4</span>
+            </p>
+            {shareError && (
+              <p className="s-final-share-fallback">
+                النسخ التلقائي اتمنع من المتصفح — انسخ الملخص يدويًا من المربع تحت.
+              </p>
+            )}
+            <textarea
+              ref={shareTextareaRef}
+              className="s-final-share-textarea"
+              readOnly
+              value={shareSummary}
+              rows={Math.min(8, Math.max(4, shareSummary.split('\n').length))}
+              aria-label="ملخص النتيجة كنص قابل للنسخ"
+            />
+          </div>
+        </div>
+      </section>
 
       {/* CTAS --------------------------------------------------------- */}
       <div className="s-final-cta">

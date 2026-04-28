@@ -688,6 +688,103 @@ h1, h2, h3, h4, h5, h6 {
   margin-bottom: var(--ak-space-2);
 }
 
+/* Generation actions — AI button + premium ready-made button stacked. */
+.s-host-gen-actions {
+  display: grid;
+  gap: var(--ak-space-2);
+  margin-top: var(--ak-space-3);
+}
+.s-host-gen-hint {
+  margin: 0;
+  font: var(--ak-t-caption);
+  color: var(--ak-text-muted);
+  text-align: center;
+  line-height: 1.5;
+}
+.s-host-ai-note {
+  margin-top: var(--ak-space-3);
+  padding: var(--ak-space-3);
+  background: var(--ak-gold-tint);
+  border: 1px solid var(--ak-border-gold-strong);
+  border-radius: var(--ak-radius-md);
+  color: var(--ak-text-muted);
+  font: var(--ak-t-caption);
+}
+
+/* Smart waiting card — replaces the simple loading shimmer. Calm, on-brand
+ * status surface that names what the host is waiting for, shows elapsed
+ * seconds, and surfaces the premium fallback as a fast alternative if the
+ * AI run feels slow. */
+.s-host-waiting {
+  position: relative;
+  margin-top: var(--ak-space-3);
+  padding: var(--ak-space-4);
+  background: linear-gradient(180deg, rgba(212,175,55,0.06) 0%, rgba(0,0,0,0.25) 100%);
+  border: 1px solid var(--ak-border-gold-strong);
+  border-radius: var(--ak-radius-md);
+  overflow: hidden;
+  isolation: isolate;
+}
+.s-host-waiting-glow {
+  position: absolute;
+  inset: -40% -10% auto auto;
+  width: 220px;
+  height: 220px;
+  background: radial-gradient(circle, rgba(212,175,55,0.25) 0%, transparent 65%);
+  filter: blur(4px);
+  pointer-events: none;
+  z-index: -1;
+  animation: s-host-waiting-pulse 4.2s ease-in-out infinite;
+}
+@keyframes s-host-waiting-pulse {
+  0%, 100% { opacity: 0.55; transform: translate3d(0,0,0) scale(1); }
+  50%      { opacity: 0.95; transform: translate3d(-12px,8px,0) scale(1.05); }
+}
+.s-host-waiting-line {
+  font: var(--ak-t-h3);
+  color: var(--ak-gold);
+  text-align: center;
+  letter-spacing: 0.01em;
+  text-shadow: 0 0 18px rgba(212,175,55,0.25);
+}
+.s-host-waiting-dots {
+  display: inline-block;
+  margin-inline-start: 0.25rem;
+  animation: s-host-waiting-dots 1.4s steps(4, end) infinite;
+}
+@keyframes s-host-waiting-dots {
+  0%   { opacity: 0.2; }
+  50%  { opacity: 1;   }
+  100% { opacity: 0.2; }
+}
+.s-host-waiting-meta {
+  margin-top: var(--ak-space-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ak-space-2);
+  font: var(--ak-t-caption);
+  color: var(--ak-text-muted);
+}
+.s-host-waiting-elapsed {
+  font: var(--ak-t-mono);
+  color: var(--ak-gold);
+  letter-spacing: var(--ak-tracking-x-wide, 0.08em);
+  font-variant-numeric: tabular-nums;
+}
+.s-host-waiting-sep { opacity: 0.5; }
+.s-host-waiting-hint {
+  margin-top: var(--ak-space-3);
+  padding: var(--ak-space-2) var(--ak-space-3);
+  background: var(--ak-surface-1);
+  border: 1px dashed var(--ak-border-gold-strong);
+  border-radius: var(--ak-radius-sm);
+  font: var(--ak-t-caption);
+  color: var(--ak-text-soft, var(--ak-text-muted));
+  text-align: center;
+  line-height: 1.6;
+}
+
 /* ===========================================================================
  * ROLE REVEAL — private card (player view)
  * Adapted from previews/06-screens.html `.s-reveal .card` and the
@@ -1412,6 +1509,272 @@ h1, h2, h3, h4, h5, h6 {
   justify-content: center;
   flex-wrap: wrap;
   margin-top: var(--ak-space-5);
+}
+
+/* Verdict headline — bigger, tighter, more dramatic than the base
+ * .s-final-hero h1. Inherits color via .gold/.crimson modifiers. */
+.s-final-verdict {
+  font: var(--ak-t-display);
+  font-weight: 800;
+  letter-spacing: var(--ak-tracking-tight, -0.01em);
+  line-height: 1.05;
+  margin: 0 0 var(--ak-space-3);
+}
+.s-final-verdict.gold    { color: var(--ak-gold); text-shadow: var(--ak-glow-gold-reveal); }
+.s-final-verdict.crimson { color: var(--ak-crimson-stage); text-shadow: var(--ak-glow-red-reveal); }
+.s-final-verdict-sub {
+  color: var(--ak-text-muted);
+  font: var(--ak-t-body-lg);
+  max-width: 720px;
+  margin: 0 auto var(--ak-space-4);
+  line-height: 1.6;
+}
+
+/* Stats row — at-a-glance counter strip on the hero. */
+.s-final-stats {
+  list-style: none;
+  margin: var(--ak-space-4) auto 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
+  gap: var(--ak-space-3);
+  max-width: 560px;
+}
+.s-final-stats li {
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-md);
+  padding: var(--ak-space-3) var(--ak-space-2);
+  text-align: center;
+  display: grid;
+  gap: 2px;
+}
+.s-final-stats .num {
+  font: var(--ak-t-h2);
+  color: var(--ak-gold);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.s-final-stats .lbl {
+  font: var(--ak-t-caption);
+  color: var(--ak-text-muted);
+  letter-spacing: var(--ak-tracking-wide);
+}
+
+/* Decisive thread — single highlighted clue. */
+.s-final-deciding {
+  background: linear-gradient(135deg, rgba(212,175,55,0.10), rgba(0,0,0,0.35));
+  border: 1px solid var(--ak-border-gold-strong);
+  border-inline-start: 4px solid var(--ak-gold);
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-5);
+  position: relative;
+}
+.s-final-deciding.crimson {
+  background: linear-gradient(135deg, rgba(229,9,20,0.10), rgba(0,0,0,0.35));
+  border-color: var(--ak-crimson-stage);
+  border-inline-start-color: var(--ak-crimson-stage);
+}
+.s-final-deciding-num {
+  font: var(--ak-t-overline);
+  color: var(--ak-gold);
+  letter-spacing: var(--ak-tracking-x-wide);
+  text-transform: uppercase;
+  display: inline-block;
+  margin-bottom: var(--ak-space-2);
+}
+.s-final-deciding.crimson .s-final-deciding-num { color: var(--ak-crimson-stage); }
+.s-final-deciding blockquote {
+  font: var(--ak-t-body-lg);
+  color: var(--ak-text-strong);
+  margin: 0 0 var(--ak-space-3);
+  line-height: 1.7;
+  font-style: italic;
+}
+.s-final-deciding-real {
+  font: var(--ak-t-body);
+  color: var(--ak-text-strong);
+  line-height: 1.7;
+  margin: 0;
+}
+
+/* Innocent eyes — supporting cast that helped close the case. */
+.s-final-innocents {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--ak-space-3);
+}
+.s-final-innocent {
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border-soft);
+  border-inline-start: 3px solid var(--ak-gold);
+  border-radius: var(--ak-radius-md);
+  padding: var(--ak-space-3) var(--ak-space-4);
+}
+.s-final-innocent-name {
+  font: var(--ak-t-h4);
+  color: var(--ak-text-strong);
+  margin-bottom: var(--ak-space-1);
+}
+.s-final-innocent-char {
+  font: var(--ak-t-caption);
+  color: var(--ak-text-muted);
+  margin-bottom: var(--ak-space-2);
+}
+.s-final-innocent-det {
+  font: var(--ak-t-body-sm);
+  color: var(--ak-text-main);
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* Share card + actions — DOM-only summary, copy-friendly text. */
+.s-final-share {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--ak-space-4);
+}
+.s-final-share-card {
+  background: linear-gradient(160deg, rgba(212,175,55,0.08) 0%, rgba(0,0,0,0.45) 100%);
+  border: 1px solid var(--ak-border-gold-strong);
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-5);
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.s-final-share-card::before {
+  content: '';
+  position: absolute;
+  inset: -50% auto auto -20%;
+  width: 280px;
+  height: 280px;
+  background: radial-gradient(circle, rgba(212,175,55,0.18) 0%, transparent 65%);
+  filter: blur(8px);
+  z-index: -1;
+}
+.s-final-share-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--ak-space-2);
+  margin-bottom: var(--ak-space-3);
+}
+.s-final-share-mark {
+  color: var(--ak-gold);
+  font-size: 1.4rem;
+  text-shadow: var(--ak-glow-gold-reveal);
+  line-height: 1;
+}
+.s-final-share-brand-text {
+  font: var(--ak-t-overline);
+  color: var(--ak-gold);
+  letter-spacing: var(--ak-tracking-x-wide);
+  text-transform: uppercase;
+}
+.s-final-share-verdict {
+  font: var(--ak-t-h2);
+  color: var(--ak-text-strong);
+  margin-bottom: var(--ak-space-2);
+}
+.s-final-share-verdict.gold    { color: var(--ak-gold); text-shadow: var(--ak-glow-gold-reveal); }
+.s-final-share-verdict.crimson { color: var(--ak-crimson-stage); text-shadow: var(--ak-glow-red-reveal); }
+.s-final-share-title {
+  font: var(--ak-t-h4);
+  color: var(--ak-text-strong);
+  margin-bottom: var(--ak-space-3);
+  line-height: 1.4;
+}
+.s-final-share-stats {
+  list-style: none;
+  margin: 0 0 var(--ak-space-3);
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+  gap: var(--ak-space-2);
+}
+.s-final-share-stats li {
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-sm);
+  padding: var(--ak-space-2);
+  text-align: center;
+  display: grid;
+  gap: 2px;
+}
+.s-final-share-stats b {
+  font: var(--ak-t-h4);
+  color: var(--ak-gold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.s-final-share-stats span {
+  font: var(--ak-t-caption);
+  color: var(--ak-text-muted);
+}
+.s-final-share-mafiozo {
+  background: var(--ak-surface-1);
+  border: 1px dashed var(--ak-border-gold-strong);
+  border-radius: var(--ak-radius-sm);
+  padding: var(--ak-space-2) var(--ak-space-3);
+  margin-bottom: var(--ak-space-3);
+  display: grid;
+  gap: 2px;
+}
+.s-final-share-mafiozo .lbl {
+  font: var(--ak-t-caption);
+  color: var(--ak-text-muted);
+  letter-spacing: var(--ak-tracking-wide);
+}
+.s-final-share-mafiozo .val {
+  font: var(--ak-t-body);
+  color: var(--ak-crimson-stage);
+  font-weight: 700;
+}
+.s-final-share-closing {
+  font: var(--ak-t-body);
+  color: var(--ak-gold);
+  font-style: italic;
+  line-height: 1.7;
+  margin: 0;
+}
+.s-final-share-actions {
+  display: grid;
+  gap: var(--ak-space-3);
+}
+.s-final-share-screenshot {
+  margin: 0;
+  font: var(--ak-t-caption);
+  color: var(--ak-text-muted);
+  text-align: center;
+  line-height: 1.6;
+}
+.s-final-share-keys {
+  font: var(--ak-t-mono);
+  color: var(--ak-gold);
+  direction: ltr;
+  letter-spacing: var(--ak-tracking-wide);
+}
+.s-final-share-fallback {
+  margin: 0;
+  font: var(--ak-t-caption);
+  color: var(--ak-crimson-stage);
+  text-align: center;
+}
+.s-final-share-textarea {
+  width: 100%;
+  background: var(--ak-surface-1);
+  color: var(--ak-text-main);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-md);
+  padding: var(--ak-space-3);
+  font: var(--ak-t-body-sm);
+  line-height: 1.7;
+  resize: vertical;
+}
+.s-final-share-textarea:focus {
+  outline: none;
+  border-color: var(--ak-gold);
+  box-shadow: var(--ak-glow-focus-ring);
 }
 
 /* Role-card reveal — applied to ROLE_REVEAL screen card */
