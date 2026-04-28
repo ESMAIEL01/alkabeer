@@ -87,26 +87,66 @@ function FinalRevealView({ data, aiPolish, fallbackOutcome, onNewGame, onBackToL
         </div>
       </section>
 
-      {/* TRUTH (mafiozo reveal) --------------------------------------- */}
-      {data.truth && (
-        <section className="s-final-section final-reveal-section">
-          <span className="section-overline">The Truth · الحقيقة</span>
-          <div className={`s-final-truth ${truthCls}`}>
-            <span style={{ font: 'var(--ak-t-overline)', color: 'var(--ak-gold)', letterSpacing: 'var(--ak-tracking-x-wide)', textTransform: 'uppercase', direction: 'ltr', display: 'block' }}>
-              The Mafioso
+      {/* TRUTH (mafiozo reveal) — E3 multi-Mafiozo aware ---------------- */}
+      {data.truth && (() => {
+        // Prefer the new `mafiozos` array; fall back to legacy singular
+        // fields when the server hasn't sent the array (old cached payload).
+        const mafiozos = Array.isArray(data.truth.mafiozos) && data.truth.mafiozos.length > 0
+          ? data.truth.mafiozos
+          : (data.truth.mafiozoUsername
+              ? [{
+                  playerId:         data.truth.mafiozoPlayerId,
+                  username:         data.truth.mafiozoUsername,
+                  characterName:    data.truth.mafiozoCharacterName,
+                  storyRole:        data.truth.mafiozoStoryRole,
+                  suspiciousDetail: data.truth.mafiozoSuspiciousDetail,
+                  explanation:      data.truth.mafiozoExplanation,
+                  eliminatedAtRound: null,
+                  survived: null,
+                }]
+              : []);
+        if (mafiozos.length === 0) return null;
+        const isMulti = mafiozos.length > 1;
+        return (
+          <section className="s-final-section final-reveal-section">
+            <span className="section-overline">
+              {isMulti ? 'The Mafiosos · المافيوزو' : 'The Truth · الحقيقة'}
             </span>
-            <h3 className="accent-name">{data.truth.mafiozoUsername}</h3>
-            <p className="character-line">
-              شخصية <strong>{data.truth.mafiozoCharacterName}</strong> — <span style={{ color: 'var(--ak-text-muted)' }}>{data.truth.mafiozoStoryRole}</span>
-            </p>
-            <div style={{ font: 'var(--ak-t-caption)', color: 'var(--ak-text-muted)', marginBottom: 'var(--ak-space-2)', letterSpacing: 'var(--ak-tracking-wide)' }}>
-              التفصيلة المريبة
-            </div>
-            <p className="detail">!!{data.truth.mafiozoSuspiciousDetail}!!</p>
-            <p className="explanation">{data.truth.mafiozoExplanation}</p>
-          </div>
-        </section>
-      )}
+            {isMulti && (
+              <p style={{ color: 'var(--ak-text-muted)', font: 'var(--ak-t-caption)', marginTop: 0, marginBottom: 'var(--ak-space-3)' }}>
+                الظل كان له أكتر من وجه — {mafiozos.length} مافيوزو شغّالين في نفس القضية.
+              </p>
+            )}
+            {mafiozos.map((m, i) => (
+              <div key={m.playerId || i} className={`s-final-truth ${truthCls}`} style={isMulti ? { marginBottom: 'var(--ak-space-3)' } : null}>
+                <span style={{ font: 'var(--ak-t-overline)', color: 'var(--ak-gold)', letterSpacing: 'var(--ak-tracking-x-wide)', textTransform: 'uppercase', direction: 'ltr', display: 'block' }}>
+                  {isMulti ? `The Mafioso · ${i + 1}/${mafiozos.length}` : 'The Mafioso'}
+                </span>
+                <h3 className="accent-name">{m.username}</h3>
+                <p className="character-line">
+                  شخصية <strong>{m.characterName}</strong>
+                  {m.storyRole && <> — <span style={{ color: 'var(--ak-text-muted)' }}>{m.storyRole}</span></>}
+                </p>
+                <div style={{ font: 'var(--ak-t-caption)', color: 'var(--ak-text-muted)', marginBottom: 'var(--ak-space-2)', letterSpacing: 'var(--ak-tracking-wide)' }}>
+                  التفصيلة المريبة
+                </div>
+                <p className="detail">!!{m.suspiciousDetail}!!</p>
+                <p className="explanation">{m.explanation}</p>
+                {m.eliminatedAtRound != null && (
+                  <p style={{ color: 'var(--ak-gold)', font: 'var(--ak-t-caption)', marginTop: 'var(--ak-space-2)' }}>
+                    خرج في الجولة {m.eliminatedAtRound}
+                  </p>
+                )}
+                {m.survived === true && (
+                  <p style={{ color: 'var(--ak-crimson-stage)', font: 'var(--ak-t-caption)', marginTop: 'var(--ak-space-2)' }}>
+                    نجى لآخر الجلسة.
+                  </p>
+                )}
+              </div>
+            ))}
+          </section>
+        );
+      })()}
 
       {/* OBVIOUS SUSPECT ---------------------------------------------- */}
       {data.obviousSuspect && (

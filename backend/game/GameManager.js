@@ -1483,36 +1483,61 @@ class GameManager {
 
   // ----- TRUTH (mafiozo reveal) -------------------------------------------
   _buildTruth(ctx) {
-    const { mafiozoRec, votingHistory, mode } = ctx;
-    if (!mafiozoRec) return null;
+    const { allRecs, votingHistory, mode } = ctx;
+    const allMafiozoRecs = allRecs.filter(r => r.gameRole === 'mafiozo');
+    if (allMafiozoRecs.length === 0) return null;
 
-    const elimRound = votingHistory.find(v => v.eliminatedId === mafiozoRec.playerId)?.round;
-    let explanation;
+    // E3: build a per-Mafiozo array describing each one. Single-Mafiozo
+    // games yield length=1 and the legacy singular fields (preserved
+    // below for older clients) match the first item.
+    const mafiozos = allMafiozoRecs.map(rec => {
+      const elimRound = votingHistory.find(v => v.eliminatedId === rec.playerId)?.round || null;
+      const survived = !elimRound;
 
-    if (elimRound) {
-      explanation = `${mafiozoRec.username} كان مخبي نفسه ورا شخصية ${mafiozoRec.storyCharacterName}. الساحة لاحظت تفصيلة "${mafiozoRec.suspiciousDetail}" بس في الجولة ${elimRound} الخيط ربط نفسه بنفسه.`;
-    } else {
-      const closeRound = votingHistory.find(v =>
-        v.tally && v.tally[mafiozoRec.playerId] && v.eliminatedId !== mafiozoRec.playerId
-      );
-      if (closeRound) {
-        explanation = `${mafiozoRec.username} كان قريب من الفضيحة في الجولة ${closeRound.round}، لكن الساحة ما اتأكدتش من تفصيلة "${mafiozoRec.suspiciousDetail}" في الوقت المناسب.`;
+      let explanation;
+      if (elimRound) {
+        explanation = `${rec.username} كان مخبي نفسه ورا شخصية ${rec.storyCharacterName}. الساحة لاحظت تفصيلة "${rec.suspiciousDetail}" بس في الجولة ${elimRound} الخيط ربط نفسه بنفسه.`;
       } else {
-        explanation = `${mafiozoRec.username} نجح يخبي تفصيلة "${mafiozoRec.suspiciousDetail}" تحت طبقات من الشك. ولا في جولة وحدة الصوت اتجه ناحيته بشكل حقيقي.`;
+        const closeRound = votingHistory.find(v =>
+          v.tally && v.tally[rec.playerId] && v.eliminatedId !== rec.playerId
+        );
+        if (closeRound) {
+          explanation = `${rec.username} كان قريب من الفضيحة في الجولة ${closeRound.round}، لكن الساحة ما اتأكدتش من تفصيلة "${rec.suspiciousDetail}" في الوقت المناسب.`;
+        } else {
+          explanation = `${rec.username} نجح يخبي تفصيلة "${rec.suspiciousDetail}" تحت طبقات من الشك. ولا في جولة وحدة الصوت اتجه ناحيته بشكل حقيقي.`;
+        }
       }
-    }
+      if (mode === 'blind' && survived) {
+        explanation += ` الأخطر إن اللعبة كانت "عمياني"، يعني ${rec.username} نفسه ماكانش يعرف إنه المافيوزو وقت اللعب.`;
+      }
 
-    if (mode === 'blind') {
-      explanation += ` الأخطر إن اللعبة كانت "عمياني"، يعني ${mafiozoRec.username} نفسه ماكانش يعرف إنه المافيوزو وقت اللعب. الحقيقة اتكشفت دلوقتي الأول مرة.`;
-    }
+      return {
+        playerId: rec.playerId,
+        username: rec.username,
+        characterName: rec.storyCharacterName,
+        storyRole: rec.storyCharacterRole,
+        suspiciousDetail: rec.suspiciousDetail,
+        eliminatedAtRound: elimRound,
+        survived,
+        explanation,
+      };
+    });
 
+    // First Mafiozo seeds the legacy singular fields (preserves old
+    // FinalRevealView fallback rendering bit-for-bit when length===1).
+    const first = allMafiozoRecs[0];
     return {
-      mafiozoPlayerId: mafiozoRec.playerId,
-      mafiozoUsername: mafiozoRec.username,
-      mafiozoCharacterName: mafiozoRec.storyCharacterName,
-      mafiozoStoryRole: mafiozoRec.storyCharacterRole,
-      mafiozoSuspiciousDetail: mafiozoRec.suspiciousDetail,
-      mafiozoExplanation: explanation,
+      // E3: array shape — preferred by clients new enough to read it.
+      mafiozos,
+      mafiozoCount: allMafiozoRecs.length,
+      // Legacy singular fields — DO NOT REMOVE. Older client builds
+      // (cached Vercel deploys) may still rely on these names.
+      mafiozoPlayerId:         first.playerId,
+      mafiozoUsername:         first.username,
+      mafiozoCharacterName:    first.storyCharacterName,
+      mafiozoStoryRole:        first.storyCharacterRole,
+      mafiozoSuspiciousDetail: first.suspiciousDetail,
+      mafiozoExplanation:      mafiozos[0].explanation,
     };
   }
 

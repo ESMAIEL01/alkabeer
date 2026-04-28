@@ -247,26 +247,51 @@ export default function ArchiveReplay() {
             {finalReveal.caseSummary.closingLine}
           </p>
         )}
-        {finalReveal && finalReveal.truth && (finalReveal.truth.mafiozoUsername || finalReveal.truth.mafiozoCharacterName) && (
-          <div style={{
-            marginTop: 'var(--ak-space-4)',
-            padding: 'var(--ak-space-3)',
-            background: 'var(--ak-crimson-bg-muted)',
-            border: '1px solid var(--ak-border-red)',
-            borderRadius: 'var(--ak-radius-md)',
-          }}>
-            <span className="ak-overline" style={{ color: 'var(--ak-gold)' }}>The Mafioso</span>
-            <p style={{ color: 'var(--ak-text-strong)', font: 'var(--ak-t-h3)', margin: 'var(--ak-space-2) 0 0' }}>
-              {finalReveal.truth.mafiozoUsername || '—'}
-              {finalReveal.truth.mafiozoCharacterName ? ` · ${finalReveal.truth.mafiozoCharacterName}` : ''}
-            </p>
-            {finalReveal.truth.mafiozoExplanation && (
-              <p style={{ color: 'var(--ak-text-main)', marginTop: 'var(--ak-space-2)' }}>
-                {finalReveal.truth.mafiozoExplanation}
-              </p>
-            )}
-          </div>
-        )}
+        {finalReveal && finalReveal.truth && (() => {
+          // E3: prefer truth.mafiozos array; fall back to legacy singular fields.
+          const mafiozos = Array.isArray(finalReveal.truth.mafiozos) && finalReveal.truth.mafiozos.length > 0
+            ? finalReveal.truth.mafiozos
+            : (finalReveal.truth.mafiozoUsername
+                ? [{
+                    username: finalReveal.truth.mafiozoUsername,
+                    characterName: finalReveal.truth.mafiozoCharacterName,
+                    explanation: finalReveal.truth.mafiozoExplanation,
+                  }]
+                : []);
+          if (mafiozos.length === 0) return null;
+          const isMulti = mafiozos.length > 1;
+          return (
+            <div style={{ marginTop: 'var(--ak-space-4)' }}>
+              {isMulti && (
+                <p style={{ color: 'var(--ak-text-muted)', font: 'var(--ak-t-caption)', marginBottom: 'var(--ak-space-2)' }}>
+                  {mafiozos.length} مافيوزو في القضية دي.
+                </p>
+              )}
+              {mafiozos.map((m, i) => (
+                <div key={m.playerId || i} style={{
+                  marginTop: i > 0 ? 'var(--ak-space-3)' : 0,
+                  padding: 'var(--ak-space-3)',
+                  background: 'var(--ak-crimson-bg-muted)',
+                  border: '1px solid var(--ak-border-red)',
+                  borderRadius: 'var(--ak-radius-md)',
+                }}>
+                  <span className="ak-overline" style={{ color: 'var(--ak-gold)' }}>
+                    {isMulti ? `The Mafioso · ${i + 1}/${mafiozos.length}` : 'The Mafioso'}
+                  </span>
+                  <p style={{ color: 'var(--ak-text-strong)', font: 'var(--ak-t-h3)', margin: 'var(--ak-space-2) 0 0' }}>
+                    {m.username || '—'}
+                    {m.characterName ? ` · ${m.characterName}` : ''}
+                  </p>
+                  {m.explanation && (
+                    <p style={{ color: 'var(--ak-text-main)', marginTop: 'var(--ak-space-2)' }}>
+                      {m.explanation}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </section>
 
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: 'var(--ak-space-4)' }}>
