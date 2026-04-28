@@ -259,9 +259,19 @@ async function tryGeminiArchive(input, modelName, { strict = false } = {}) {
   }
 }
 
-async function tryOpenRouterArchive(input) {
+/**
+ * FixPack v2 / Commit 5: OpenRouter archive attempt against an EXPLICIT
+ * model. The caller iterates the chain (primary → alternate1 → alternate2)
+ * via openrouterArchiveChain(); this function handles a single attempt.
+ *
+ * Returns the parsed archive on success, or null on any failure. Never
+ * throws. Always logs ONE row per attempt — no prompt body, no response
+ * body, no api keys; only model + source + ok + latency + validatorReason.
+ */
+async function tryOpenRouterArchive(input, modelName) {
   if (!openrouterConfigured()) return null;
-  const orModel = config.openrouter.fallbackModel;
+  if (!modelName || typeof modelName !== 'string' || !modelName.trim()) return null;
+  const orModel = modelName;
   const start = Date.now();
   try {
     const raw = await callOpenRouter({
@@ -269,17 +279,18 @@ async function tryOpenRouterArchive(input) {
       json: true,
       temperature: 0.8,
       maxTokens: config.openrouter.archiveMaxTokens,
+      modelName: orModel,
     });
     const parsed = safeJsonParse(raw);
     if (!parsed) {
-      console.warn('[ai] openrouter archive invalid (malformed_json)');
+      console.warn(`[ai] openrouter(${orModel}) archive invalid (malformed_json)`);
       logAi({ task: 'archive', source: 'openrouter', model: orModel,
         latencyMs: Date.now() - start, ok: false, validatorReason: 'malformed_json' });
       return null;
     }
     const err = validateArchive(parsed, deriveValidateOpts(input));
     if (err) {
-      console.warn(`[ai] openrouter archive invalid (${err})`);
+      console.warn(`[ai] openrouter(${orModel}) archive invalid (${err})`);
       logAi({ task: 'archive', source: 'openrouter', model: orModel,
         latencyMs: Date.now() - start, ok: false, validatorReason: 'validator_rejected' });
       return null;
@@ -288,11 +299,24 @@ async function tryOpenRouterArchive(input) {
       latencyMs: Date.now() - start, ok: true });
     return parsed;
   } catch (err) {
-    console.warn('[ai] openrouter archive failed:', err.message);
+    console.warn(`[ai] openrouter(${orModel}) archive failed:`, err.message);
     logAi({ task: 'archive', source: 'openrouter', model: orModel,
       latencyMs: Date.now() - start, ok: false, validatorReason: classifyProviderError(err) });
     return null;
   }
+}
+
+/**
+ * FixPack v2 / Commit 5: build the OpenRouter archive chain from config.
+ * Returns ['model_a', 'model_b', ...] in attempt order, with empty/blank
+ * entries removed. Lets the operator add or remove rungs without code change.
+ */
+function openrouterArchiveChain() {
+  return [
+    config.openrouter.fallbackModel,
+    config.openrouter.fallbackModel2,
+    config.openrouter.fallbackModel3,
+  ].filter(m => typeof m === 'string' && m.trim().length > 0);
 }
 
 async function tryGeminiNarration(prompt, forbiddenTerms) {
@@ -363,13 +387,24 @@ async function tryOpenRouterNarration(prompt, forbiddenTerms) {
  *   { source: 'gemini' | 'openrouter' | 'fallback', model?, archive, note? }
  * Never throws.
  *
- * Provider chain:
+ * Provider chain (FixPack v2 / Commit 5 — extended to TWO additional
+ * OpenRouter model rungs while preserving the deterministic fallback):
  *   1. Gemini archive model (default gemini-2.5-pro)
  *   2. Gemini archive fallback model (default gemini-2.5-flash) — only if
  *      different from the primary model. This gracefully absorbs Pro quota
  *      exhaustion (HTTP 429) without leaving the Gemini family.
- *   3. OpenRouter (if AI_FALLBACK_PROVIDER=openrouter and key configured)
- *   4. Built-in fallback scenario.
+ *   3. OpenRouter primary fallback model (config.openrouter.fallbackModel)
+ *   4. OpenRouter alternate model #2 (config.openrouter.fallbackModel2)
+ *      — skipped silently when blank (default).
+ *   5. OpenRouter alternate model #3 (config.openrouter.fallbackModel3)
+ *      — skipped silently when blank (default).
+ *   6. Built-in fallback scenario (deterministic, config-aware E4 padding).
+ *
+ * Each rung is independent: a quota error on one OpenRouter model never
+ * prevents the next from being tried. Each attempt logs ONE row to
+ * ai_generation_logs (metadata only — no prompt, no response). The chain
+ * is array-driven so future operators can add or remove rungs by adjusting
+ * env vars without touching code.
  */
 async function generateSealedArchive(input = {}) {
   // Rung 1: primary Gemini model with the full Architect prompt.
@@ -386,17 +421,18 @@ async function generateSealedArchive(input = {}) {
     if (fromFallback) return { source: 'gemini', model: fbModel, archive: fromFallback };
   }
 
-  // Rung 3: OpenRouter (external secondary fallback)
-  const fromOpenRouter = await tryOpenRouterArchive(input);
-  if (fromOpenRouter) {
-    return {
-      source: 'openrouter',
-      model: config.openrouter.fallbackModel,
-      archive: fromOpenRouter,
-    };
+  // Rungs 3..N: OpenRouter chain (primary + alternates). Empty/blank rungs
+  // are skipped silently inside tryOpenRouterArchive; the operator can
+  // tune the chain by setting OPENROUTER_FALLBACK_MODEL_2 /
+  // OPENROUTER_FALLBACK_MODEL_3 env vars.
+  for (const orModel of openrouterArchiveChain()) {
+    const fromOpenRouter = await tryOpenRouterArchive(input, orModel);
+    if (fromOpenRouter) {
+      return { source: 'openrouter', model: orModel, archive: fromOpenRouter };
+    }
   }
 
-  // Rung 4: built-in fallback archive (E4: config-aware).
+  // Final rung: built-in fallback archive (E4: config-aware).
   logAi({ task: 'archive_fallback', source: 'fallback', model: 'built-in',
     latencyMs: 0, ok: true, validatorReason: 'fallback_used' });
   const archive = buildFallbackArchive(input);
@@ -588,4 +624,5 @@ module.exports = {
   _validateArchive: validateArchive,
   _fallbackArchive: FALLBACK_ARCHIVE,
   _buildFallbackArchive: buildFallbackArchive,
+  _openrouterArchiveChain: openrouterArchiveChain,
 };

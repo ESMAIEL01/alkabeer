@@ -61,10 +61,20 @@ const config = Object.freeze({
   },
   // OpenRouter is an OPTIONAL secondary AI fallback. Never required at boot.
   // Enabled only when AI_FALLBACK_PROVIDER=openrouter AND a key is present.
+  //
+  // FixPack v2 / Commit 5: extra OpenRouter model slots so the archive
+  // chain can attempt up to THREE OpenRouter models (primary fallback +
+  // alternate1 + alternate2) before the deterministic built-in fallback
+  // kicks in. Slots are blank by default so a misconfigured operator does
+  // not pick up unknown model ids; set OPENROUTER_FALLBACK_MODEL_2 and/or
+  // OPENROUTER_FALLBACK_MODEL_3 to enable each rung. Empty/blank rungs
+  // are skipped silently — never error.
   openrouter: {
     apiKey: process.env.OPENROUTER_API_KEY || '',
     baseUrl: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
     fallbackModel: process.env.OPENROUTER_FALLBACK_MODEL || 'nvidia/nemotron-3-super-120b-a12b:free',
+    fallbackModel2: process.env.OPENROUTER_FALLBACK_MODEL_2 || '',
+    fallbackModel3: process.env.OPENROUTER_FALLBACK_MODEL_3 || '',
     timeoutMs: parseInt(process.env.OPENROUTER_TIMEOUT_MS || '30000', 10),
     // Output-token ceilings. Nemotron has no hidden thinking budget so all
     // tokens are visible output. A full Arabic JSON archive can need ~5K
