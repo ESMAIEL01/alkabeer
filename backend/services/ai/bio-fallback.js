@@ -8,10 +8,15 @@
 const { BIO_MAX_LEN } = require('./validators');
 
 function buildFallbackBio({ rawIdea, username } = {}) {
+  // Hotfix — sanitize the user-supplied rawIdea defensively. The validator
+  // already rejected hostile output, but this is the deterministic
+  // fallback that ships when AI fails entirely; we shouldn't echo back
+  // any raw idea content because we can't re-validate it here without
+  // pulling the safe-content filter (kept dep-free on purpose). Strip
+  // it and use a clean noir tail instead. The username is rendered
+  // verbatim — usernames have already been validated at registration.
   const safeUser = (typeof username === 'string' && username.trim()) ? username.trim() : 'لاعب';
-  const safeIdea = (typeof rawIdea === 'string' ? rawIdea.trim() : '').slice(0, 220);
-  const tail = safeIdea ? ` ${safeIdea}` : ' يدخل القضية بهدوء، ويسمع أكتر مما يتكلم.';
-  const composed = `${safeUser} يدخل أرشيف Mafiozo كظل هادئ، يراقب التفاصيل الصغيرة ويترك الشك يمشي قبله.${tail}`;
+  const composed = `${safeUser} يدخل أرشيف مافيوزو كظل هادئ، يراقب التفاصيل الصغيرة ويترك الشك يمشي قبله. يدخل القضية بهدوء، ويسمع أكتر مما يتكلم.`;
   if (composed.length <= BIO_MAX_LEN) return composed;
   return composed.slice(0, BIO_MAX_LEN - 1).replace(/\s+\S*$/, '') + '…';
 }

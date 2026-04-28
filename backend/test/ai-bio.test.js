@@ -127,12 +127,17 @@ test('16. fallback bio stays within BIO_MAX_LEN and contains identity tokens', (
   const { buildFallbackBio } = require('../services/ai/bio-fallback');
   const out = buildFallbackBio({
     username: 'investigator',
-    rawIdea: 'ا'.repeat(500),  // very long input — should clip + fit
+    rawIdea: 'ا'.repeat(500),  // very long input — should be ignored (hotfix)
   });
   assert.ok(typeof out === 'string');
   assert.ok(out.length <= BIO_MAX_LEN, `fallback length ${out.length} > ${BIO_MAX_LEN}`);
   assert.ok(out.includes('investigator'));
-  assert.ok(out.includes('Mafiozo'));
+  // Hotfix — the fallback now uses the Arabic brand "مافيوزو" so the
+  // entire bio body is Arabic (≥80% Arabic-letter requirement).
+  assert.ok(out.includes('مافيوزو'),
+    `fallback bio must use the Arabic brand "مافيوزو": ${out}`);
+  assert.equal(out.includes('Mafiozo'), false,
+    'fallback bio must NOT use the Latin brand "Mafiozo"');
 });
 
 test('17. fallback bio handles missing username/rawIdea defensively', () => {
@@ -142,7 +147,9 @@ test('17. fallback bio handles missing username/rawIdea defensively', () => {
   const c = buildFallbackBio({ username: '', rawIdea: '' });
   for (const out of [a, b, c]) {
     assert.ok(typeof out === 'string' && out.length > 0);
-    assert.ok(out.includes('Mafiozo'));
+    // Hotfix — Arabic brand only.
+    assert.ok(out.includes('مافيوزو'));
+    assert.equal(out.includes('Mafiozo'), false);
     assert.ok(out.length <= BIO_MAX_LEN);
   }
 });

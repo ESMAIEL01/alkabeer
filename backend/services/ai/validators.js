@@ -16,6 +16,11 @@ const NARRATION_MIN_LEN = 8;            // reject empty / one-word output
 // rare in practice; we just require that >= 60% of letters be Arabic-script.
 const ARABIC_SCRIPT_RE = /[؀-ۿݐ-ݿࢠ-ࣿ]/;
 
+// Hotfix — sharia-safe / culturally-appropriate content filter shared
+// across the bio + identity validators. See safe-content.js for the
+// documented categories.
+const { containsForbiddenTerm } = require('./safe-content');
+
 /**
  * Permissive JSON parser that strips code fences and recovers the first
  * complete JSON object if the model wrapped it in prose.
@@ -325,11 +330,17 @@ function validateBio(text) {
     if (lower.includes(String(t).toLowerCase())) return null;
   }
 
-  // Arabic-dominant guard (≥60% of letters Arabic script).
+  // Hotfix — sharia-safe content filter (alcohol / drugs / gambling /
+  // sexual / satanic / occult / blasphemous / profanity).
+  if (containsForbiddenTerm(cleaned).hit) return null;
+
+  // Arabic-dominant guard. Hotfix raises the threshold from 60% → 80%
+  // so a few proper nouns (Mafiozo, the player's western username) are
+  // tolerated but the body of the bio is essentially Arabic.
   const letters = cleaned.match(/[\p{L}]/gu) || [];
   if (letters.length === 0) return null;
   const ar = letters.filter(ch => ARABIC_SCRIPT_RE.test(ch)).length;
-  if (ar / letters.length < 0.6) return null;
+  if (ar / letters.length < 0.8) return null;
 
   return cleaned;
 }
@@ -393,6 +404,9 @@ function validateIdentityInterviewOutput(raw) {
       if (lower.includes(String(t).toLowerCase())) return null;
     }
 
+    // Hotfix — sharia-safe content filter applies to EVERY identity field.
+    if (containsForbiddenTerm(trimmed).hit) return null;
+
     const letters = trimmed.match(/[\p{L}]/gu) || [];
     if (letters.length === 0) return null;
     totalLetters += letters.length;
@@ -401,7 +415,8 @@ function validateIdentityInterviewOutput(raw) {
     cleaned[key] = trimmed;
   }
   if (totalLetters === 0) return null;
-  if (totalArabicLetters / totalLetters < 0.6) return null;
+  // Hotfix — Arabic-dominant tightened from 60% → 80%.
+  if (totalArabicLetters / totalLetters < 0.8) return null;
 
   return cleaned;
 }

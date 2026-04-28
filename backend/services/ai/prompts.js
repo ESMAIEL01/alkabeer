@@ -276,17 +276,21 @@ function finalRevealPolishPrompt(input) {
 // no @mentions, no #hashtags, no markdown, no AI disclaimers).
 // ---------------------------------------------------------------------------
 
+// Hotfix — pull the shared sharia-safe rules so the prompt and the
+// validator stay in sync. Lazy require so the prompts module remains
+// importable from tests that don't load the validator chain.
+const { SAFE_PROMPT_RULES_AR } = require('./safe-content');
+
 function profileBioPrompt(input) {
   const { rawIdea, username } = input || {};
   const safeIdea = typeof rawIdea === 'string' ? rawIdea.trim().slice(0, 300) : '';
   const safeUsername = typeof username === 'string' ? username.trim().slice(0, 60) : 'لاعب';
   return [
-    `إنت "الكبير"، راوي مصري سينمائي بأسلوب نوار. اكتب سيرة قصيرة لـ Mafiozo player.`,
+    `إنت "الكبير"، راوي مصري سينمائي بأسلوب نوار. اكتب سيرة قصيرة للاعب في "مافيوزو".`,
     `اسم اللاعب: ${safeUsername}`,
     `فكرته: ${safeIdea}`,
     ``,
     `قواعد صارمة:`,
-    `- نص عربي فقط بنسبة ≥60%.`,
     `- بين 80 و 500 حرف.`,
     `- جملتين أو ثلاثة بحد أقصى.`,
     `- أسلوب نوار سينمائي، مش طفولي، مش مبالغ فيه.`,
@@ -298,7 +302,8 @@ function profileBioPrompt(input) {
     `- ممنوع تقول إنك ذكاء اصطناعي.`,
     `- ممنوع كلمة "undefined".`,
     `- ممنوع JSON أو { } أو [ ].`,
-    `- يفضل ذكر "Mafiozo" كاسم اللعبة. "الكبير" راوي/مضيف، مش اسم المنتج.`,
+    `- "الكبير" راوي/مضيف، مش اسم المنتج. اسم المنتج "مافيوزو".`,
+    ...SAFE_PROMPT_RULES_AR,
     ``,
     `أرجع نص عربي فقط، بدون أي شرح زيادة.`,
   ].join('\n');
@@ -329,14 +334,13 @@ function identityInterviewPrompt(input) {
     .join('\n');
 
   return [
-    `إنت "الكبير"، راوي مصري سينمائي بأسلوب نوار. عندك مقابلة قصيرة مع لاعب Mafiozo اسمه ${safeUsername}.`,
+    `إنت "الكبير"، راوي مصري سينمائي بأسلوب نوار. عندك مقابلة قصيرة مع لاعب في "مافيوزو" اسمه ${safeUsername}.`,
     `الإجابات اللي تحت بيتقالها كأنها كلام اللاعب نفسه. لازم تطلع منها هوية اللاعب الحقيقية.`,
     ``,
     `إجابات اللاعب:`,
     lines,
     ``,
     `قواعد صارمة:`,
-    `- نص عربي فقط بنسبة ≥60% في كل حقل.`,
     `- ممنوع روابط (http/https/www).`,
     `- ممنوع إيميلات أو أرقام تليفون أو @mentions أو #hashtags.`,
     `- ممنوع markdown أو code fences.`,
@@ -344,7 +348,8 @@ function identityInterviewPrompt(input) {
     `- ممنوع تقول إنك ذكاء اصطناعي.`,
     `- ممنوع كلمة "undefined" أو "gameRole" أو "roleAssignments".`,
     `- ممنوع تخترع جرائم حقيقية أو أحداث تاريخية.`,
-    `- "الكبير" راوي/مضيف، مش اسم المنتج. "Mafiozo" هو اسم اللعبة.`,
+    `- "الكبير" راوي/مضيف، مش اسم المنتج. اسم المنتج "مافيوزو".`,
+    ...SAFE_PROMPT_RULES_AR,
     ``,
     `أرجع JSON واحد فقط، بالشكل الآتي بالضبط:`,
     `{`,

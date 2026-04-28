@@ -86,11 +86,14 @@ function buildFallbackIdentity(input) {
   const playStyleSummary = pickPool(PLAYSTYLE_POOL, seed + '|style') || PLAYSTYLE_POOL[0];
 
   // Compose a 2-3 sentence bio that always sits in the 80..500 char window.
-  const detailHint = safeAnswers[3] || safeAnswers[1] || safeAnswers[0] || 'بيراقب وبيستنى التفصيلة الغلط.';
+  // Hotfix — use "مافيوزو" instead of "Mafiozo" so the deterministic
+  // fallback is fully Arabic. The user-supplied detailHint is dropped
+  // because we can't re-validate it here against the sharia-safe
+  // filter — we use a clean local tail instead.
   const composedBio =
-    `${username} يدخل أرشيف Mafiozo بأسلوب ${title}. `
+    `${username} يدخل أرشيف مافيوزو بأسلوب ${title}. `
   + `${motto} `
-  + `${detailHint}`;
+  + `بيراقب التفاصيل الصغيرة ويترك الشك يمشي قبله.`;
   const bio = clampToWindow(composedBio, 80, 500);
 
   return {
