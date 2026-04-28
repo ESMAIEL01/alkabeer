@@ -196,6 +196,25 @@ test('5. vote_result payload exposes only wasMafiozo boolean, never the role str
   cleanup(lobby);
 });
 
+test('E1. buildPublicState.customConfig surfaces only public metadata (no roles, no identities)', () => {
+  const gm = new GameManager(makeMockIo(), null);
+  const lobby = makeLobby({ phase: 'CLUE_REVEAL' });
+  // Inject a custom config simulating create_room having normalized one.
+  lobby.config = { isCustom: true, playerCount: 5, mafiozoCount: 2, clueCount: 4, obviousSuspectEnabled: true };
+  gm.lobbies.set('ROOMX', lobby);
+  const state = gm.buildPublicState('ROOMX');
+  assert.ok(state.customConfig, 'customConfig present when isCustom');
+  // Allow-list pin: only safe public metadata fields surface.
+  const allowed = new Set(['isCustom', 'playerCount', 'mafiozoCount', 'clueCount']);
+  for (const k of Object.keys(state.customConfig)) {
+    assert.ok(allowed.has(k), `unexpected key on customConfig: ${k}`);
+  }
+  // Roles / hidden truth never appear on the customConfig surface.
+  assert.equal('roleAssignments' in state.customConfig, false);
+  assert.equal('mafiozoUsername' in state.customConfig, false);
+  assert.equal('obviousSuspectEnabled' in state.customConfig, false);
+});
+
 test('6. finalReveal role data appears ONLY when phase === FINAL_REVEAL', () => {
   const gm = new GameManager(makeMockIo(), null);
   const lobby = makeLobby({ phase: 'CLUE_REVEAL' });

@@ -163,6 +163,134 @@ function sameId(a, b) {
   return String(a) === String(b);
 }
 
+// ---------------------------------------------------------------------------
+// E1 — Custom Mode game config (multi-Mafiozo / variable clue count).
+//
+// Default behavior (rawConfig null/missing): isCustom=false, mafiozoCount=1,
+// clueCount=3, obviousSuspectEnabled when N>=4 — exactly the pre-E1 logic.
+// Custom config: explicit playerCount/mafiozoCount/clueCount with per-field
+// validation. The lobby object stores the normalized config on lobby.config
+// (or null for default games) so all downstream readers can branch on
+// resolveLobbyConfig(lobby).
+// ---------------------------------------------------------------------------
+
+const CUSTOM_PLAYER_MIN  = 3;
+const CUSTOM_PLAYER_MAX  = 8;
+const CUSTOM_CLUE_MIN    = 1;
+const CUSTOM_CLUE_MAX    = 5;
+const DEFAULT_CLUE_COUNT = 3;
+const DEFAULT_MAFIOZO_COUNT = 1;
+
+function maxMafiozoForPlayerCount(n) {
+  // Keep at least one innocent + (optional) obvious_suspect. The cap
+  // floor((N - 1) / 2) ensures Mafiozos < non-Mafiozos so investigators
+  // remain numerically meaningful.
+  if (!Number.isFinite(n) || n < 2) return 0;
+  return Math.floor((n - 1) / 2);
+}
+
+/**
+ * Validate a raw config blob from create_room / future archive endpoints.
+ * Returns { ok, errors[], normalized }. Never throws.
+ */
+function validateGameConfig(rawConfig) {
+  const errors = [];
+  if (rawConfig === null || rawConfig === undefined) {
+    return { ok: true, errors, normalized: null };
+  }
+  if (typeof rawConfig !== 'object' || Array.isArray(rawConfig)) {
+    return { ok: false, errors: ['الإعداد المخصص لازم يكون كائن.'], normalized: null };
+  }
+  const playerCount = Number.parseInt(rawConfig.playerCount, 10);
+  const mafiozoCount = Number.parseInt(rawConfig.mafiozoCount, 10);
+  const clueCount    = Number.parseInt(rawConfig.clueCount, 10);
+
+  if (!Number.isFinite(playerCount) || playerCount < CUSTOM_PLAYER_MIN || playerCount > CUSTOM_PLAYER_MAX) {
+    errors.push(`عدد اللاعبين لازم يكون من ${CUSTOM_PLAYER_MIN} لـ ${CUSTOM_PLAYER_MAX}.`);
+  }
+  const maxMafiozo = maxMafiozoForPlayerCount(playerCount);
+  if (!Number.isFinite(mafiozoCount) || mafiozoCount < 1 || mafiozoCount > maxMafiozo) {
+    errors.push(`عدد المافيوزو لازم يكون من 1 لـ ${Math.max(1, maxMafiozo)}.`);
+  }
+  if (!Number.isFinite(clueCount) || clueCount < CUSTOM_CLUE_MIN || clueCount > CUSTOM_CLUE_MAX) {
+    errors.push(`عدد الأدلة لازم يكون من ${CUSTOM_CLUE_MIN} لـ ${CUSTOM_CLUE_MAX}.`);
+  }
+  if (errors.length) return { ok: false, errors, normalized: null };
+
+  // obviousSuspectEnabled: respect explicit boolean if supplied; otherwise
+  // default to true when there is room for one (N >= 4 and at least one
+  // innocent slot remains after Mafiozos + obvious_suspect).
+  const slotsAfterMafiozos = playerCount - mafiozoCount;
+  const enableByDefault = playerCount >= 4 && slotsAfterMafiozos >= 2;
+  const obviousSuspectEnabled = (typeof rawConfig.obviousSuspectEnabled === 'boolean')
+    ? (rawConfig.obviousSuspectEnabled && enableByDefault)
+    : enableByDefault;
+
+  return {
+    ok: true,
+    errors: [],
+    normalized: {
+      isCustom: true,
+      playerCount, mafiozoCount, clueCount, obviousSuspectEnabled,
+    },
+  };
+}
+
+/**
+ * Synthesize the default config for a given joined-non-host count. Returns
+ * isCustom=false. Used by callers that need to branch uniformly on a config
+ * object even for default games.
+ */
+function getDefaultGameConfig(actualPlayerCount) {
+  const N = Number.isFinite(actualPlayerCount) ? actualPlayerCount : 0;
+  return {
+    isCustom: false,
+    playerCount: N,
+    mafiozoCount: DEFAULT_MAFIOZO_COUNT,
+    clueCount: DEFAULT_CLUE_COUNT,
+    // Default behavior preserved: enable obvious_suspect only at N>=4.
+    obviousSuspectEnabled: N >= 4,
+  };
+}
+
+/**
+ * Best-effort normalization for a possibly partial input. Used by
+ * create_room. Returns { ok, errors, normalized } where normalized is
+ * either a full custom config or null (default mode).
+ */
+function normalizeGameConfig(rawConfig) {
+  return validateGameConfig(rawConfig);
+}
+
+/**
+ * Resolve a config for the lobby, defaulting from actual non-host players
+ * when no custom config is set. Always returns a fully-populated config
+ * object so role-assignment / final-reveal code can read uniformly.
+ */
+function resolveLobbyConfig(lobby) {
+  if (!lobby) return getDefaultGameConfig(0);
+  if (lobby.config && lobby.config.isCustom) return lobby.config;
+  const eligibleCount = Array.from((lobby.players || new Map()).values())
+    .filter(p => p && p.id && p.username && !p.isHost).length;
+  return getDefaultGameConfig(eligibleCount);
+}
+
+/**
+ * Custom-mode start gate: the ARCHIVE-FINALIZE step must observe exactly
+ * config.playerCount eligible non-host players. Default mode skips this
+ * check entirely. Returns { ok, error? }.
+ */
+function validateCustomStartCount(lobby) {
+  const cfg = lobby && lobby.config;
+  if (!cfg || !cfg.isCustom) return { ok: true };
+  const actual = Array.from((lobby.players || new Map()).values())
+    .filter(p => p && p.id && p.username && !p.isHost).length;
+  if (actual !== cfg.playerCount) {
+    return { ok: false, error: `الإعداد المخصص محتاج ${cfg.playerCount} لاعبين بالضبط قبل الختم.` };
+  }
+  return { ok: true };
+}
+
 class GameManager {
   constructor(io, db) {
     this.io = io;
@@ -196,19 +324,27 @@ class GameManager {
         const requestedReveal = (data && data.roleRevealMode || '').toLowerCase();
         const roleRevealMode = VALID_REVEAL_MODES.has(requestedReveal) ? requestedReveal : 'normal';
 
+        // E1: optional Custom Mode config. null/undefined = default behavior.
+        const cfgResult = normalizeGameConfig(data && data.config);
+        if (!cfgResult.ok) {
+          return safeCb({ success: false, message: cfgResult.errors[0] || 'الإعداد المخصص غير صالح.' });
+        }
+
         this.lobbies.set(roomId, {
           id: roomId,
           creatorId: socket.userId,
           hostId: mode === 'HUMAN' ? socket.userId : 'AI_HOST',
           mode,
           roleRevealMode,
+          config: cfgResult.normalized,    // null = default; object = custom
           players: new Map(),
           state: 'LOBBY',
           gameData: null,
+          createdAt: new Date().toISOString(),
         });
 
         this.joinRoom(socket, roomId, mode === 'HUMAN');
-        safeCb({ success: true, roomId });
+        safeCb({ success: true, roomId, config: cfgResult.normalized });
       });
 
       socket.on('join_room', (data, callback) => {
@@ -284,16 +420,47 @@ class GameManager {
           return safeAck({ success: false, error: 'محتاج لاعب واحد على الأقل عشان توزع الأدوار.' });
         }
 
-        const { roleAssignments, publicCharacterCards } = this.assignRoles(eligible, decoded);
+        // E1: custom-mode start gate. Default mode skips this check.
+        const startGate = validateCustomStartCount(lobby);
+        if (!startGate.ok) {
+          return safeAck({ success: false, error: startGate.error });
+        }
+
+        // E1/E4: resolve config (default or custom) once and use everywhere.
+        const cfg = resolveLobbyConfig(lobby);
+        const expectedClueCount = cfg.clueCount;
+
+        // Validate decoded archive clue count for custom mode. Default mode
+        // keeps the existing tolerant fallback.
+        const decodedClues = Array.isArray(decoded.clues) ? decoded.clues : [];
+        if (cfg.isCustom && decodedClues.length !== expectedClueCount) {
+          return safeAck({
+            success: false,
+            error: `الأرشيف المخصص محتاج ${expectedClueCount} أدلة بالضبط.`,
+          });
+        }
+
+        const { roleAssignments, publicCharacterCards } = this.assignRoles(eligible, decoded, cfg);
+
+        // Resolve final clue list. Priority:
+        //   1. Caller-supplied `clues` array of expected length
+        //   2. decoded.clues of expected length
+        //   3. Deterministic placeholders padded to expected length
+        let finalClues;
+        if (Array.isArray(clues) && clues.length === expectedClueCount) {
+          finalClues = clues;
+        } else if (decodedClues.length === expectedClueCount) {
+          finalClues = decodedClues;
+        } else {
+          finalClues = Array.from({ length: expectedClueCount }, (_, i) => `دليل ${i + 1}...`);
+        }
 
         lobby.state = 'IN_GAME';
         lobby.gameData = {
           archiveBase64: archive,
           rawScenario: raw,
           decodedArchive: decoded,                  // server-only
-          clues: Array.isArray(clues) && clues.length === 3
-            ? clues
-            : (Array.isArray(decoded.clues) && decoded.clues.length === 3 ? decoded.clues : ['دليل 1...', 'دليل 2...', 'دليل 3...']),
+          clues: finalClues,
           clueIndex: 0,
           phase: 'ROLE_REVEAL',
           timer: 30,
@@ -684,7 +851,7 @@ class GameManager {
    * @param {Object} archive        - decoded archive {characters, mafiozo, ...}
    * @returns {{ roleAssignments: object, publicCharacterCards: array }}
    */
-  assignRoles(eligiblePlayers, archive) {
+  assignRoles(eligiblePlayers, archive, config) {
     const N = eligiblePlayers.length;
     const characters = padCharactersToCount(archive.characters, N);
 
@@ -692,13 +859,20 @@ class GameManager {
     const shuffledChars = secureShuffle(characters).slice(0, N);
     const shuffledPlayers = secureShuffle(eligiblePlayers);
 
-    // Hidden-role allocation:
-    //   index 0 → mafiozo
-    //   index 1 → obvious_suspect (only if N >= 4)
-    //   rest    → innocent
+    // E1: config-aware allocation. config.mafiozoCount controls how many
+    // hidden Mafiozos exist; config.obviousSuspectEnabled controls whether
+    // an obvious_suspect slot is allocated. Default config (cfg.isCustom
+    // false) preserves the pre-E1 behavior bit-for-bit:
+    //   index 0          → mafiozo
+    //   index 1          → obvious_suspect (only if N >= 4)
+    //   rest             → innocent
+    const cfg = (config && typeof config === 'object') ? config : getDefaultGameConfig(N);
+    const M  = Math.max(1, Math.min(cfg.mafiozoCount || 1, N - 1));
+    const enableObvious = !!cfg.obviousSuspectEnabled && N >= 4 && (N - M) >= 2;
+
     const gameRoleByIndex = new Array(N).fill('innocent');
-    gameRoleByIndex[0] = 'mafiozo';
-    if (N >= 4) gameRoleByIndex[1] = 'obvious_suspect';
+    for (let i = 0; i < M; i++) gameRoleByIndex[i] = 'mafiozo';
+    if (enableObvious) gameRoleByIndex[M] = 'obvious_suspect';
 
     const roleAssignments = {};
     const publicCharacterCards = [];
@@ -1534,6 +1708,16 @@ class GameManager {
       eliminatedIds: gd?.eliminatedIds || [],
       lastVoteResult: gd?.lastVoteResult || null,
       outcome: gd?.outcome || null,
+      // E1: safe public config view. Exposes only metadata the UI needs;
+      // NEVER includes role assignments, identities, or hidden truth.
+      customConfig: lobby.config && lobby.config.isCustom
+        ? {
+            isCustom: true,
+            playerCount: lobby.config.playerCount,
+            mafiozoCount: lobby.config.mafiozoCount,
+            clueCount: lobby.config.clueCount,
+          }
+        : null,
       // The full cinematic reveal payload — INCLUDED ONLY DURING FINAL_REVEAL.
       // Before that, finalReveal is undefined here, so hidden roles never
       // leak into the broadcast prematurely.
