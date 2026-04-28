@@ -104,12 +104,14 @@ ${ARCHIVE_JSON_SCHEMA_HINT}`;
  */
 function archivePromptStrict({ idea, players = 5, mood = 'مكس', difficulty = 'متوسط', clueCount = 3, mafiozoCount = 1 }) {
   const playerCount = Array.isArray(players) ? players.length : players;
-  // E4: build per-config clue + mafiozo example arrays so the model sees
-  // the right cardinality in the schema example.
-  const cluesExample = Array.from({ length: clueCount }, (_, i) => `    "الجملة ${i + 1} عربي كامل"`).join(',\n');
+  // FixPack v3 / Premium archive — show the model a CONCRETE noir example
+  // instead of a placeholder-shaped template. Weak models (Liquid, Nemotron)
+  // were copying strings like "الجملة 1 عربي كامل" verbatim from the old
+  // template; the example below uses real noir prose so the model imitates
+  // tone instead of structure-only filler.
   const mafiozosShape = mafiozoCount === 1
     ? `  "mafiozo": "اسم الشخصية المافيوزو الحقيقية + دورها",`
-    : `  "mafiozos": [\n${Array.from({ length: mafiozoCount }, (_, i) => `    { "name": "مافيوزو ${i + 1}", "role": "وظيفة", "suspicious_detail": "تفصيلة مريبة" }`).join(',\n')}\n  ],`;
+    : `  "mafiozos": [ /* بالظبط ${mafiozoCount} عناصر، كل عنصر { "name": "اسم عربي", "role": "وظيفة", "suspicious_detail": "تفصيلة مريبة بفعل ملموس" } */ ],`;
   const mafiozoRule = mafiozoCount === 1
     ? `8) المافيوزو بريء في الظاهر، والمشتبه الواضح بريء بجد بس شكله مذنب.`
     : `8) في ${mafiozoCount} مافيوزو شغّالين مع بعض، كلهم برآء في الظاهر. والمشتبه الواضح بريء بجد بس شكله مذنب.`;
@@ -122,32 +124,43 @@ function archivePromptStrict({ idea, players = 5, mood = 'مكس', difficulty = 
 الصعوبة: ${difficulty}
 فكرة المضيف: ${idea || 'جريمة مصرية مشوقة من خيالك.'}
 
-قواعد لازم تلتزم بيها:
+قواعد صارمة:
 1) أرجع JSON واحد فقط، من غير أي نص قبله أو بعده.
 2) ممنوع markdown. ممنوع \`\`\`. ممنوع تعليقات.
-3) كل القيم لازم تكون عربية ومش فاضية.
-4) ممنوع null. ممنوع "" (نص فاضي). ممنوع كلمات placeholder زي "TODO" أو "...".
-5) "clues" لازم يكون array فيه بالظبط ${clueCount} جمل عربية كاملة.
-6) كل دليل لازم يكون جملة عربية فيها 6 كلمات على الأقل.
-7) "characters" لازم يكون array فيه ${playerCount} شخصيات بالظبط.
+3) كل القيم لازم تكون عربية فصحى/مصرية ومش فاضية.
+4) ممنوع null أو "" أو placeholder. ممنوع كلمات زي "TODO"، "..."، "كاملة"، "الجملة 1"، "المشتبه 1"، "الشخص 1"، "الدليل 1".
+5) "clues" array فيه بالظبط ${clueCount} جمل. كل دليل بين 50 و 260 حرف عربي، يحتوي فعل ملموس وزمن أو مكان أو شيء مادي.
+6) ممنوع دليلين متشابهين. كل دليل يفتح خيط شك جديد ويلمح لـ 2-3 ناس مش شخص واحد.
+7) "characters" array فيه ${playerCount} شخصيات. كل اسم عربي حقيقي (مش "الشخص 1" ولا "Guest" ولا حروف مكررة).
 ${mafiozoRule}
-9) اللعبة عادلة: كل دليل يلمح لـ 2 أو 3 ناس مش شخص واحد.
+9) "title" بين 8 و 70 حرف. "story" بين 180 و 900 حرف. كل تفصيلة "suspicious_detail" بين 30 و 220 حرف وتحتوي شيء ملموس (وقت، مكان، شيء، فعل).
+10) ممنوع المحتوى الديني/الإلحادي/الشركي/الجنسي/الكحول/المخدرات/القمار/السحر/الشعوذة/إبليس/الشيطان.
+11) ممنوع روابط، إيميلات، أرقام تليفون، @mentions، #hashtags.
 
-شكل الـ JSON المطلوب بالظبط:
+مثال على المستوى المطلوب (مش للنسخ، بس عشان تفهم النبرة):
 {
-  "title": "اسم قصير عربي",
-  "story": "القصة الكاملة بالعربي. تحتوي على المكان، الزمان، طريقة الجريمة، وذكر المافيوزو والمشتبه الواضح.",
-${mafiozosShape}
-  "obvious_suspect": "اسم المشتبه الواضح + دوره",
+  "title": "الرسالة التي وصلت بعد الإغلاق",
+  "story": "في فندق قديم على طرف المدينة، اختفى دفتر الحجوزات بعد عشاء خاص جمع خمسة أشخاص. الكاميرات توقفت لدقيقتين، والباب لم يُكسر، لكن كل شخص كان يملك سببًا صغيرًا ليخفي الحقيقة...",
   "characters": [
-    { "name": "اسم", "role": "وظيفة", "suspicious_detail": "تفصيلة مريبة" }
+    { "name": "نادر الكيلاني", "role": "مدير استقبال أغلق الخزنة قبل العشاء", "suspicious_detail": "ادّعى أنه لم يلمس المفاتيح، رغم أن شاهدًا سمع رنينها معه في الممر الخلفي الساعة عشرة." }
   ],
   "clues": [
-${cluesExample}
+    "توقيت الكاميرا توقف قبل الحادث بدقيقتين فقط، بينما ظل جهاز تسجيل الدخول يعمل داخل مكتب الاستقبال.",
+    "أثر حبر أزرق ظهر على ظرف الرسالة المفقودة، وهو نفس الحبر المستخدم في سجل الحجوزات الصغير."
   ]
 }
 
-أرجع JSON فقط.`;
+شكل الـ JSON المطلوب بالظبط:
+{
+  "title": "...",
+  "story": "...",
+${mafiozosShape}
+  "obvious_suspect": "اسم المشتبه الواضح + دوره",
+  "characters": [ /* بالظبط ${playerCount} عناصر بنفس شكل المثال */ ],
+  "clues": [ /* بالظبط ${clueCount} جمل بنفس عمق ومستوى المثال */ ]
+}
+
+أرجع JSON فقط، من غير أي شرح قبله أو بعده.`;
 }
 
 function narrationPrompt({ phase, context }) {

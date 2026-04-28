@@ -58,6 +58,205 @@ function looksLikePlaceholder(s) {
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// FixPack v3 / Premium archive — quality gate.
+//
+// validateArchive runs schema first; if schema passes, validateArchiveQuality
+// runs and rejects archives that pass schema but contain placeholder strings,
+// silly/username-like names, weak clues, near-duplicate clues, or out-of-range
+// field lengths. The goal is to never accept the literal output the model
+// previously copied from the old example (e.g. "الجملة 1 على كاملة").
+// ---------------------------------------------------------------------------
+
+const ARCHIVE_QUALITY_LIMITS = Object.freeze({
+  TITLE_MIN: 8,   TITLE_MAX: 70,
+  STORY_MIN: 180, STORY_MAX: 900,
+  NAME_MIN: 2,    NAME_MAX: 45,
+  ROLE_MIN: 8,    ROLE_MAX: 80,
+  DETAIL_MIN: 30, DETAIL_MAX: 220,
+  CLUE_MIN: 50,   CLUE_MAX: 260,
+  ARABIC_RATIO_MIN: 0.8,
+});
+
+// Phrases models tend to copy from a placeholder-shaped example. JS
+// regex `\b` is ASCII-only, so Arabic patterns use explicit non-letter
+// lookaround instead of `\b`. The boundary char class excludes Arabic
+// letters so "الجملة 1" is matched whether it stands alone or is
+// surrounded by other Arabic words.
+const ARCHIVE_PLACEHOLDER_PATTERNS = Object.freeze([
+  /الجملة\s*[\d٠-٩]+/,             // "الجملة 1" / "الجملة ١"
+  /الدليل\s*[\d٠-٩]+\s*(?:يقول|على|كاملة|بالعربي)?/,
+  /الشخص\s*[\d٠-٩]+/,
+  /المشتبه\s*[\d٠-٩]+/,
+  /مافيوزو\s*[\d٠-٩]+/,
+  /اللاعب\s*[\d٠-٩]+/,
+  /عربي\s*كامل/,                    // tail from the old template
+  /جملة\s*[\d٠-٩]+\s*(?:عربي|كاملة)/,
+  /على\s*كاملة/,                     // from observed prod output
+  /^\s*\.{3,}\s*$/,
+  /\bTODO\b/i,
+  /\bplaceholder\b/i,
+  /\blorem\b/i,
+  /\bipsum\b/i,
+  /\bdemo\b/i,
+  /\bexample\b/i,
+  /\bundefined\b/i,
+  /\bNaN\b/,
+  /^\s*null\s*$/i,
+]);
+
+// Username/silly-name detector. Triggers reject on character names.
+// Arabic placeholders use explicit non-letter boundaries instead of `\b`
+// (which is ASCII-only). The Arabic patterns also accept being followed
+// by a digit or whitespace so "الشخص 1" / "المشتبه 2" both fire.
+const NAME_FORBIDDEN_PATTERNS = Object.freeze([
+  /_/,                                    // underscores
+  /\(/, /\)/,                             // parentheses (e.g. "(Guest)")
+  /(.)\1{4,}/i,                           // 5+ repeated chars (sssss, looooo)
+  /[\d٠-٩]{4,}/,                          // 4+ consecutive digits (800000)
+  /\bguest\b/i,
+  // Match the keyword without a trailing \b so "Player1" is caught (the
+  // ASCII-only \b would not fire between 'r' and '1' since both are
+  // word chars).
+  /\b(?:user|player|suspect)\d*\b/i,
+  /^(?:[A-Za-z]+\d+|\d+[A-Za-z]+)$/,
+  /(?:^|[^؀-ۿ])(?:المشتبه|الشخص|اللاعب)(?:$|[^؀-ۿ])/,
+]);
+
+// Generic-clue / weak-clue substrings.
+const CLUE_WEAK_PHRASES = Object.freeze([
+  'حدث شيء',
+  'شيء غريب حدث',
+  'الحقيقة انكشفت',
+  'شخص ما فعل',
+  'someone did',
+  'somebody is',
+]);
+
+/** Test for a placeholder pattern in any string. */
+function looksLikePlaceholderArchive(s) {
+  if (typeof s !== 'string' || !s) return true;
+  for (const re of ARCHIVE_PLACEHOLDER_PATTERNS) {
+    if (re.test(s)) return true;
+  }
+  return false;
+}
+
+/** Compute Arabic letter ratio for a string. */
+function arabicRatio(s) {
+  const letters = String(s || '').match(/[\p{L}]/gu) || [];
+  if (letters.length === 0) return 0;
+  const ar = letters.filter(ch => ARABIC_SCRIPT_RE.test(ch)).length;
+  return ar / letters.length;
+}
+
+/**
+ * Tiny similarity score between two clues. Returns the Jaccard overlap of
+ * 4-word shingles. Two clues > 0.6 here are "too similar" — we reject.
+ */
+function clueSimilarity(a, b) {
+  const tokens = (s) => String(s || '').toLowerCase().match(/[\p{L}]+/gu) || [];
+  const shingles = (toks, n = 3) => {
+    const out = new Set();
+    for (let i = 0; i + n <= toks.length; i++) out.add(toks.slice(i, i + n).join(' '));
+    return out;
+  };
+  const A = shingles(tokens(a));
+  const B = shingles(tokens(b));
+  if (A.size === 0 || B.size === 0) return 0;
+  let inter = 0;
+  for (const t of A) if (B.has(t)) inter++;
+  const union = A.size + B.size - inter;
+  return union === 0 ? 0 : inter / union;
+}
+
+/**
+ * Quality gate that runs AFTER the schema check. Returns null on success
+ * or a short reason string on failure. Never logs raw archive content.
+ *
+ * Reasons (stable for analytics):
+ *   weak_title | title_length | weak_story | story_length | story_arabic_low
+ *   weak_character_name | username_like_name | character_role_length
+ *   weak_suspicious_detail | suspicious_detail_length
+ *   weak_clue | clue_too_short | clue_too_long | clues_too_similar
+ *   placeholder_detected
+ */
+function validateArchiveQuality(a, opts = {}) {
+  if (!a || typeof a !== 'object') return 'placeholder_detected';
+  const L = ARCHIVE_QUALITY_LIMITS;
+
+  // title
+  if (typeof a.title !== 'string' || a.title.trim().length < L.TITLE_MIN
+      || a.title.trim().length > L.TITLE_MAX) {
+    return 'title_length';
+  }
+  if (looksLikePlaceholderArchive(a.title)) return 'weak_title';
+
+  // story
+  if (typeof a.story !== 'string') return 'weak_story';
+  const story = a.story.trim();
+  if (story.length < L.STORY_MIN || story.length > L.STORY_MAX) return 'story_length';
+  if (looksLikePlaceholderArchive(story)) return 'weak_story';
+  if (arabicRatio(story) < L.ARABIC_RATIO_MIN) return 'story_arabic_low';
+
+  // characters
+  const chars = Array.isArray(a.characters) ? a.characters : [];
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i] || {};
+    const name = typeof ch.name === 'string' ? ch.name.trim() : '';
+    const role = typeof ch.role === 'string' ? ch.role.trim() : '';
+    const detail = typeof ch.suspicious_detail === 'string' ? ch.suspicious_detail.trim() : '';
+    if (name.length < L.NAME_MIN || name.length > L.NAME_MAX) return `weak_character_name@${i}`;
+    if (looksLikePlaceholderArchive(name)) return `weak_character_name@${i}`;
+    for (const re of NAME_FORBIDDEN_PATTERNS) {
+      if (re.test(name)) return `username_like_name@${i}`;
+    }
+    if (role.length < L.ROLE_MIN || role.length > L.ROLE_MAX) return `character_role_length@${i}`;
+    if (looksLikePlaceholderArchive(role)) return `weak_character_role@${i}`;
+    if (detail.length < L.DETAIL_MIN || detail.length > L.DETAIL_MAX) return `suspicious_detail_length@${i}`;
+    if (looksLikePlaceholderArchive(detail)) return `weak_suspicious_detail@${i}`;
+  }
+
+  // clues — length + uniqueness + weak-phrase check
+  const clues = Array.isArray(a.clues) ? a.clues.map(c => String(c || '').trim()) : [];
+  for (let i = 0; i < clues.length; i++) {
+    const c = clues[i];
+    if (c.length < L.CLUE_MIN) return `clue_too_short@${i}`;
+    if (c.length > L.CLUE_MAX) return `clue_too_long@${i}`;
+    if (looksLikePlaceholderArchive(c)) return `weak_clue@${i}`;
+    const lower = c.toLowerCase();
+    for (const phrase of CLUE_WEAK_PHRASES) {
+      if (lower.includes(phrase.toLowerCase())) return `weak_clue@${i}`;
+    }
+    if (arabicRatio(c) < L.ARABIC_RATIO_MIN) return `clue_arabic_low@${i}`;
+  }
+  for (let i = 0; i < clues.length; i++) {
+    for (let j = i + 1; j < clues.length; j++) {
+      if (clueSimilarity(clues[i], clues[j]) > 0.6) return `clues_too_similar@${i},${j}`;
+    }
+  }
+
+  // mafiozo identity quality (works for both legacy singular + multi).
+  if (Array.isArray(a.mafiozos)) {
+    for (let i = 0; i < a.mafiozos.length; i++) {
+      const m = a.mafiozos[i] || {};
+      const name = typeof m.name === 'string' ? m.name.trim() : '';
+      if (looksLikePlaceholderArchive(name)) return `weak_mafiozo_name@${i}`;
+      for (const re of NAME_FORBIDDEN_PATTERNS) {
+        if (re.test(name)) return `username_like_name@mafiozo${i}`;
+      }
+    }
+  } else if (typeof a.mafiozo === 'string') {
+    if (looksLikePlaceholderArchive(a.mafiozo)) return 'weak_mafiozo_name';
+  }
+  if (typeof a.obvious_suspect === 'string'
+      && looksLikePlaceholderArchive(a.obvious_suspect)) {
+    return 'weak_obvious_suspect';
+  }
+
+  return null;
+}
+
 /**
  * Validate a sealed-archive object. Returns null if valid, else a short reason
  * string useful for warn-level logs. Reasons include indices where applicable.
@@ -72,6 +271,11 @@ function looksLikePlaceholder(s) {
  * is the preferred shape. The legacy singular archive.mafiozo string is
  * accepted ONLY when expectedMafiozos === 1 (backwards compat with default
  * archive prompts).
+ *
+ * FixPack v3 / Premium archive: after the schema check passes, runs
+ * validateArchiveQuality which rejects placeholder/weak content. Pass
+ * { skipQuality: true } to opt out (e.g. legacy fallback fixtures that
+ * predate the quality gate).
  */
 function validateArchive(a, opts = {}) {
   if (!a || typeof a !== 'object') return 'not an object';
@@ -137,6 +341,16 @@ function validateArchive(a, opts = {}) {
     if (!ch || typeof ch !== 'object') return `invalid character at index ${i}`;
     if (typeof ch.name !== 'string' || !ch.name.trim()) return `missing name on character ${i}`;
     if (typeof ch.role !== 'string' || !ch.role.trim()) return `missing role on character ${i}`;
+  }
+
+  // FixPack v3 / Premium archive — quality gate runs AFTER schema only
+  // when the caller opts in via `enforceQuality: true`. The AI provider
+  // chain in services/ai/index.js sets this flag; legacy callers and
+  // fixtures that predate the quality gate keep their schema-only
+  // contract by default.
+  if (opts.enforceQuality) {
+    const q = validateArchiveQuality(a, opts);
+    if (q) return q;
   }
 
   return null;
@@ -424,6 +638,7 @@ function validateIdentityInterviewOutput(raw) {
 module.exports = {
   safeJsonParse,
   validateArchive,
+  validateArchiveQuality,
   validateNarration,
   validatePolishLine,
   validateFinalRevealPolish,
@@ -431,6 +646,8 @@ module.exports = {
   validateIdentityInterviewOutput,
   FINAL_REVEAL_FIELD_LIMITS,
   IDENTITY_FIELD_LIMITS,
+  ARCHIVE_QUALITY_LIMITS,
+  ARCHIVE_PLACEHOLDER_PATTERNS,
   NARRATION_MAX_LEN,
   BIO_MIN_LEN,
   BIO_MAX_LEN,

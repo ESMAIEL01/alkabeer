@@ -271,7 +271,15 @@ function deriveValidateOpts(input) {
   const i = input || {};
   const clueCount = Number.isFinite(i.clueCount) ? i.clueCount : 3;
   const mafiozoCount = Number.isFinite(i.mafiozoCount) ? i.mafiozoCount : 1;
-  return { expectedClues: clueCount, expectedMafiozos: mafiozoCount };
+  // FixPack v3 / Premium archive — every PROVIDER call goes through the
+  // strict quality gate. The deterministic fallback stays opted-out
+  // (skipQuality is implicit; the fallback builder constructs known-good
+  // content) until Commit 2 lands the premium fallback.
+  return {
+    expectedClues: clueCount,
+    expectedMafiozos: mafiozoCount,
+    enforceQuality: true,
+  };
 }
 
 async function tryGeminiArchive(input, modelName, { strict = false } = {}) {
