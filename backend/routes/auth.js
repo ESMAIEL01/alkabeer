@@ -135,18 +135,39 @@ router.post('/guest', async (req, res) => {
 
 // ----- GET /api/auth/me ---------------------------------------------------
 // Lightweight token-verifying endpoint the frontend can use to bootstrap.
+// F2: also resolves the user's current is_admin flag from the DB so admin
+// demotion takes effect on the next /me call without requiring re-login.
+// The flag is read from the live row, NOT from the JWT.
 router.get('/me', async (req, res) => {
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'غير مصرح.' });
+  let decoded;
   try {
-    const decoded = jwt.verify(token, config.jwtSecret);
-    return res.json({
-      user: { id: decoded.id, username: decoded.username, isGuest: !!decoded.isGuest }
-    });
+    decoded = jwt.verify(token, config.jwtSecret);
   } catch {
     return res.status(401).json({ error: 'الجلسة انتهت.' });
   }
+  let isAdmin = false;
+  try {
+    const { rows } = await query(
+      'SELECT is_admin FROM users WHERE id = $1',
+      [decoded.id]
+    );
+    isAdmin = !!(rows && rows[0] && rows[0].is_admin === true);
+  } catch (e) {
+    // Non-fatal: a DB blip shouldn't strand a valid session. Default to
+    // isAdmin=false (non-admins lose nothing; admins retry on next /me).
+    console.warn('[auth/me] is_admin lookup failed:', e && e.message);
+  }
+  return res.json({
+    user: {
+      id: decoded.id,
+      username: decoded.username,
+      isGuest: !!decoded.isGuest,
+      isAdmin,
+    }
+  });
 });
 
 module.exports = router;
