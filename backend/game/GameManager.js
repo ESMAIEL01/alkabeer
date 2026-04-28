@@ -297,20 +297,86 @@ function resolveLobbyConfig(lobby) {
   return getDefaultGameConfig(eligibleCount);
 }
 
+// ---------------------------------------------------------------------------
+// Player-count semantics (FixPack v2 / Commit 1)
+//
+// Custom Mode is documented as "playerCount = number of participating SUSPECT
+// players". A human host who is only hosting is NEVER counted as a suspect.
+// AI Host rooms have no human host; everyone joined is a suspect. These
+// helpers make the semantics explicit so the validator's error copy can
+// quote both the required count and the actual count, eliminating the prior
+// ambiguous "محتاج 3 لاعبين" message.
+// ---------------------------------------------------------------------------
+
+/**
+ * Real players: any record with id + username. Phantom rows (missing id or
+ * missing username) are filtered out at this layer so every downstream caller
+ * sees a clean list.
+ */
+function getRealPlayers(lobby) {
+  if (!lobby || !lobby.players) return [];
+  return Array.from(lobby.players.values()).filter(p => p && p.id && p.username);
+}
+
+/**
+ * Host players: real players whose isHost flag is truthy. In AI Host rooms
+ * this is always empty (the AI host slot is virtual). In Human Host rooms
+ * this is exactly one player (the creator).
+ */
+function getHostPlayers(lobby) {
+  return getRealPlayers(lobby).filter(p => p.isHost);
+}
+
+/**
+ * Suspect players: real players who participate in the game as
+ * card/voting players. Excludes the human host because hosting != playing.
+ */
+function getSuspectPlayers(lobby) {
+  return getRealPlayers(lobby).filter(p => !p.isHost);
+}
+
+/**
+ * Count of suspect players currently joined to this lobby.
+ */
+function getCurrentSuspectCount(lobby) {
+  return getSuspectPlayers(lobby).length;
+}
+
+/**
+ * Required suspect count for a config:
+ *   - Default mode (no custom config): no requirement → returns null.
+ *   - Custom mode: cfg.playerCount is the exact number of suspect seats.
+ */
+function getCustomRequiredSuspectCount(config) {
+  if (!config || !config.isCustom) return null;
+  return Number.isFinite(config.playerCount) ? config.playerCount : null;
+}
+
 /**
  * Custom-mode start gate: the ARCHIVE-FINALIZE step must observe exactly
- * config.playerCount eligible non-host players. Default mode skips this
- * check entirely. Returns { ok, error? }.
+ * config.playerCount eligible non-host (suspect) players. Default mode skips
+ * this check entirely. Returns { ok, error?, current?, required? }.
+ *
+ * The error message includes BOTH required and current counts to remove
+ * the ambiguity reported in the FixPack v2 screenshot.
+ *
+ * @param {object} lobby
+ * @param {object} [explicitConfig] optional override; defaults to lobby.config
  */
-function validateCustomStartCount(lobby) {
-  const cfg = lobby && lobby.config;
-  if (!cfg || !cfg.isCustom) return { ok: true };
-  const actual = Array.from((lobby.players || new Map()).values())
-    .filter(p => p && p.id && p.username && !p.isHost).length;
-  if (actual !== cfg.playerCount) {
-    return { ok: false, error: `الإعداد المخصص محتاج ${cfg.playerCount} لاعبين بالضبط قبل الختم.` };
+function validateCustomStartCount(lobby, explicitConfig) {
+  const cfg = explicitConfig === undefined ? (lobby && lobby.config) : explicitConfig;
+  const required = getCustomRequiredSuspectCount(cfg);
+  if (required === null) return { ok: true };
+  const current = getCurrentSuspectCount(lobby);
+  if (current !== required) {
+    return {
+      ok: false,
+      required,
+      current,
+      error: `الإعداد المخصص يحتاج ${required} لاعبين مشاركين بالضبط قبل الختم. الموجود الآن: ${current}.`,
+    };
   }
-  return { ok: true };
+  return { ok: true, required, current };
 }
 
 class GameManager {
@@ -2342,3 +2408,15 @@ class GameManager {
 }
 
 module.exports = GameManager;
+
+// Test/diagnostic exports — module-level helpers exposed so tests can pin
+// the player-count semantics without standing up a full socket server.
+// NOT part of the production surface; do NOT import these from routes/.
+module.exports._getRealPlayers = getRealPlayers;
+module.exports._getHostPlayers = getHostPlayers;
+module.exports._getSuspectPlayers = getSuspectPlayers;
+module.exports._getCurrentSuspectCount = getCurrentSuspectCount;
+module.exports._getCustomRequiredSuspectCount = getCustomRequiredSuspectCount;
+module.exports._validateCustomStartCount = validateCustomStartCount;
+module.exports._normalizeGameConfig = normalizeGameConfig;
+module.exports._maxMafiozoForPlayerCount = maxMafiozoForPlayerCount;
