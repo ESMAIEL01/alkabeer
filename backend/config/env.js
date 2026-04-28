@@ -27,6 +27,11 @@ if (process.env.JWT_SECRET && process.env.JWT_SECRET.length < 32 && isProd) {
   throw new Error('JWT_SECRET must be at least 32 characters in production. Generate one with: openssl rand -hex 64');
 }
 
+// FixPack v3 / Commit 1: parse a comma-separated model list from an env
+// var. Pure helper extracted to its own dep-free file so unit tests can
+// pin parsing semantics without booting dotenv. See parseModelList.js.
+const { parseModelList } = require('./parseModelList');
+
 const config = Object.freeze({
   nodeEnv: NODE_ENV,
   isProd,
@@ -62,19 +67,27 @@ const config = Object.freeze({
   // OpenRouter is an OPTIONAL secondary AI fallback. Never required at boot.
   // Enabled only when AI_FALLBACK_PROVIDER=openrouter AND a key is present.
   //
-  // FixPack v2 / Commit 5: extra OpenRouter model slots so the archive
-  // chain can attempt up to THREE OpenRouter models (primary fallback +
-  // alternate1 + alternate2) before the deterministic built-in fallback
-  // kicks in. Slots are blank by default so a misconfigured operator does
-  // not pick up unknown model ids; set OPENROUTER_FALLBACK_MODEL_2 and/or
-  // OPENROUTER_FALLBACK_MODEL_3 to enable each rung. Empty/blank rungs
-  // are skipped silently — never error.
+  // FixPack v3 / Commit 1: task-aware model routing. The legacy
+  // OPENROUTER_FALLBACK_MODEL / _MODEL_2 / _MODEL_3 slots are still
+  // honored as the legacy archive chain when the per-task lists are
+  // empty. The four per-task lists below are the preferred path:
+  //   - OPENROUTER_ARCHIVE_MODELS      → archive / scenario generation
+  //   - OPENROUTER_FINAL_REVEAL_MODELS → final reveal flavor
+  //   - OPENROUTER_POLISH_MODELS       → vote-result + clue transition + narration
+  //   - OPENROUTER_BIO_MODELS          → profile bio + identity interview
+  // Each is a comma-separated list. Whitespace is trimmed, blanks dropped,
+  // duplicates removed. Empty list → falls back to the legacy chain. The
+  // chains are pure config; no prompt body is ever read here.
   openrouter: {
     apiKey: process.env.OPENROUTER_API_KEY || '',
     baseUrl: process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
     fallbackModel: process.env.OPENROUTER_FALLBACK_MODEL || 'nvidia/nemotron-3-super-120b-a12b:free',
     fallbackModel2: process.env.OPENROUTER_FALLBACK_MODEL_2 || '',
     fallbackModel3: process.env.OPENROUTER_FALLBACK_MODEL_3 || '',
+    archiveModels:     parseModelList(process.env.OPENROUTER_ARCHIVE_MODELS),
+    finalRevealModels: parseModelList(process.env.OPENROUTER_FINAL_REVEAL_MODELS),
+    polishModels:      parseModelList(process.env.OPENROUTER_POLISH_MODELS),
+    bioModels:         parseModelList(process.env.OPENROUTER_BIO_MODELS),
     timeoutMs: parseInt(process.env.OPENROUTER_TIMEOUT_MS || '30000', 10),
     // Output-token ceilings. Nemotron has no hidden thinking budget so all
     // tokens are visible output. A full Arabic JSON archive can need ~5K

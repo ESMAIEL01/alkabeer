@@ -307,16 +307,115 @@ async function tryOpenRouterArchive(input, modelName) {
 }
 
 /**
- * FixPack v2 / Commit 5: build the OpenRouter archive chain from config.
- * Returns ['model_a', 'model_b', ...] in attempt order, with empty/blank
- * entries removed. Lets the operator add or remove rungs without code change.
+ * FixPack v3 / Commit 1: task-aware OpenRouter model chain.
+ *
+ * The four documented tasks are 'archive' | 'final_reveal' | 'polish' | 'bio'.
+ * Each task reads its dedicated env-driven list (config.openrouter.*Models).
+ * If a task list is empty, the helper falls back to the legacy archive
+ * chain (fallbackModel + _MODEL_2 + _MODEL_3) so existing operators see
+ * no behavior regression.
+ *
+ * Returns ['model_a', 'model_b', ...] in attempt order. Blanks dropped,
+ * duplicates dropped, order preserved.
+ *
+ * @param {'archive'|'final_reveal'|'polish'|'bio'} [task='archive']
  */
-function openrouterArchiveChain() {
-  return [
+function getOpenRouterModelsForTask(task) {
+  const t = typeof task === 'string' ? task : 'archive';
+  let list = [];
+  if (t === 'archive')           list = config.openrouter.archiveModels;
+  else if (t === 'final_reveal') list = config.openrouter.finalRevealModels;
+  else if (t === 'polish')       list = config.openrouter.polishModels;
+  else if (t === 'bio')          list = config.openrouter.bioModels;
+  if (Array.isArray(list) && list.length > 0) return list;
+  // Legacy fallback: keep the old chain so existing deployments still work.
+  const legacy = [
     config.openrouter.fallbackModel,
     config.openrouter.fallbackModel2,
     config.openrouter.fallbackModel3,
   ].filter(m => typeof m === 'string' && m.trim().length > 0);
+  return legacy;
+}
+
+/**
+ * Backward-compatible alias used by existing callers.
+ */
+function openrouterArchiveChain() {
+  return getOpenRouterModelsForTask('archive');
+}
+
+/**
+ * FixPack v3 / Commit 1: generic OpenRouter model-chain runner. Walks the
+ * task's model list in order, calls the model via callOpenRouter, runs
+ * the supplied validator, and returns the FIRST validated output. On
+ * every miss it logs ONE metadata-only row (model + source + ok +
+ * latency + validatorReason) — never the prompt or response body. Never
+ * throws.
+ *
+ * @param {object} args
+ * @param {string} args.task           — log label + model-list selector
+ * @param {string} args.userPrompt     — the user message
+ * @param {Function} args.validate     — (raw) => string|null|undefined
+ *                                       returns truthy parsed value on success
+ * @param {boolean} [args.json=false]  — JSON-only output flag
+ * @param {number} [args.temperature=0.85]
+ * @param {number} [args.maxTokens]
+ * @param {string[]} [args.models]     — override (otherwise getOpenRouterModelsForTask)
+ * @returns {Promise<{ source: 'openrouter', model: string, output: any } | null>}
+ */
+async function tryOpenRouterModelChain({
+  task,
+  userPrompt,
+  validate,
+  json = false,
+  temperature = 0.85,
+  maxTokens,
+  models,
+} = {}) {
+  if (!openrouterConfigured()) return null;
+  if (typeof task !== 'string' || !task) return null;
+  if (typeof userPrompt !== 'string' || !userPrompt) return null;
+  if (typeof validate !== 'function') return null;
+  const chain = Array.isArray(models) && models.length > 0
+    ? models
+    : getOpenRouterModelsForTask(task);
+  if (!chain || chain.length === 0) return null;
+
+  for (const orModel of chain) {
+    if (!orModel || typeof orModel !== 'string' || !orModel.trim()) continue;
+    const start = Date.now();
+    let raw;
+    try {
+      raw = await callOpenRouter({
+        userPrompt,
+        json,
+        temperature,
+        maxTokens,
+        modelName: orModel,
+      });
+    } catch (err) {
+      logAi({ task, source: 'openrouter', model: orModel,
+        latencyMs: Date.now() - start, ok: false,
+        validatorReason: classifyProviderError(err) });
+      continue;
+    }
+    let cleaned;
+    try {
+      cleaned = validate(raw);
+    } catch {
+      cleaned = null;
+    }
+    if (!cleaned) {
+      logAi({ task, source: 'openrouter', model: orModel,
+        latencyMs: Date.now() - start, ok: false,
+        validatorReason: 'validator_rejected' });
+      continue;
+    }
+    logAi({ task, source: 'openrouter', model: orModel,
+      latencyMs: Date.now() - start, ok: true });
+    return { source: 'openrouter', model: orModel, output: cleaned };
+  }
+  return null;
 }
 
 async function tryGeminiNarration(prompt, forbiddenTerms) {
@@ -349,34 +448,9 @@ async function tryGeminiNarration(prompt, forbiddenTerms) {
   }
 }
 
-async function tryOpenRouterNarration(prompt, forbiddenTerms) {
-  if (!openrouterConfigured()) return null;
-  const orModel = config.openrouter.fallbackModel;
-  const start = Date.now();
-  try {
-    const raw = await callOpenRouter({
-      userPrompt: prompt,
-      json: false,
-      temperature: 0.9,
-      maxTokens: config.openrouter.narrationMaxTokens,
-    });
-    const cleaned = validateNarration(raw, { forbiddenTerms });
-    if (!cleaned) {
-      console.warn('[ai] openrouter narration rejected by validator');
-      logAi({ task: 'narration', source: 'openrouter', model: orModel,
-        latencyMs: Date.now() - start, ok: false, validatorReason: 'validator_rejected' });
-      return null;
-    }
-    logAi({ task: 'narration', source: 'openrouter', model: orModel,
-      latencyMs: Date.now() - start, ok: true });
-    return cleaned;
-  } catch (err) {
-    console.warn('[ai] openrouter narration failed:', err.message);
-    logAi({ task: 'narration', source: 'openrouter', model: orModel,
-      latencyMs: Date.now() - start, ok: false, validatorReason: classifyProviderError(err) });
-    return null;
-  }
-}
+// FixPack v3 / Commit 1: tryOpenRouterNarration / tryOpenRouterPolish were
+// removed. Their callers now go through tryOpenRouterModelChain with a
+// task-routed model list (polish | final_reveal | bio). See callers below.
 
 // ---------------------------------------------------------------------------
 // Public surface
@@ -455,8 +529,21 @@ async function narrate({ phase, context, forbiddenTerms } = {}) {
   const fromGemini = await tryGeminiNarration(prompt, forbiddenTerms);
   if (fromGemini) return { source: 'gemini', model: config.gemini.narrationModel, line: fromGemini };
 
-  const fromOpenRouter = await tryOpenRouterNarration(prompt, forbiddenTerms);
-  if (fromOpenRouter) return { source: 'openrouter', model: config.openrouter.fallbackModel, line: fromOpenRouter };
+  // FixPack v3 / Commit 1: short prose uses the polish model chain.
+  // Log label stays 'narration' so historical analytics queries continue
+  // to work; the chain selector is 'polish'.
+  const fromOpenRouter = await tryOpenRouterModelChain({
+    task: 'narration',
+    userPrompt: prompt,
+    validate: (raw) => validateNarration(raw, { forbiddenTerms }),
+    models: getOpenRouterModelsForTask('polish'),
+    json: false,
+    temperature: 0.9,
+    maxTokens: config.openrouter.narrationMaxTokens,
+  });
+  if (fromOpenRouter) {
+    return { source: 'openrouter', model: fromOpenRouter.model, line: fromOpenRouter.output };
+  }
 
   logAi({ task: 'narration_fallback', source: 'fallback', model: 'built-in',
     latencyMs: 0, ok: true, validatorReason: 'fallback_used' });
@@ -499,32 +586,7 @@ async function tryGeminiPolish(prompt, validator, task, { json = false } = {}) {
   }
 }
 
-async function tryOpenRouterPolish(prompt, validator, task, { json = false } = {}) {
-  if (!openrouterConfigured()) return null;
-  const orModel = config.openrouter.fallbackModel;
-  const start = Date.now();
-  try {
-    const raw = await callOpenRouter({
-      userPrompt: prompt,
-      json,
-      temperature: 0.9,
-      maxTokens: config.openrouter.narrationMaxTokens,
-    });
-    const cleaned = validator(raw);
-    if (!cleaned) {
-      logAi({ task, source: 'openrouter', model: orModel,
-        latencyMs: Date.now() - start, ok: false, validatorReason: 'validator_rejected' });
-      return null;
-    }
-    logAi({ task, source: 'openrouter', model: orModel,
-      latencyMs: Date.now() - start, ok: true });
-    return cleaned;
-  } catch (err) {
-    logAi({ task, source: 'openrouter', model: orModel,
-      latencyMs: Date.now() - start, ok: false, validatorReason: classifyProviderError(err) });
-    return null;
-  }
-}
+// (tryOpenRouterPolish was removed — see comment above tryOpenRouterModelChain.)
 
 /**
  * Embellish a vote-result deterministic payload with one short Arabic noir
@@ -542,9 +604,19 @@ async function embellishVoteResult(input) {
   const fromGemini = await tryGeminiPolish(prompt, validator, task);
   if (fromGemini) return { source: 'gemini', model: config.gemini.narrationModel, line: fromGemini };
 
-  const fromOpenRouter = await tryOpenRouterPolish(prompt, validator, task);
-  if (fromOpenRouter) return { source: 'openrouter', model: config.openrouter.fallbackModel, line: fromOpenRouter };
-
+  // FixPack v3 / Commit 1: vote-result polish uses the 'polish' chain.
+  const fromOpenRouter = await tryOpenRouterModelChain({
+    task,
+    userPrompt: prompt,
+    validate: validator,
+    models: getOpenRouterModelsForTask('polish'),
+    json: false,
+    temperature: 0.9,
+    maxTokens: config.openrouter.narrationMaxTokens,
+  });
+  if (fromOpenRouter) {
+    return { source: 'openrouter', model: fromOpenRouter.model, line: fromOpenRouter.output };
+  }
   return null;
 }
 
@@ -561,9 +633,19 @@ async function embellishClueTransition(input) {
   const fromGemini = await tryGeminiPolish(prompt, validator, task);
   if (fromGemini) return { source: 'gemini', model: config.gemini.narrationModel, line: fromGemini };
 
-  const fromOpenRouter = await tryOpenRouterPolish(prompt, validator, task);
-  if (fromOpenRouter) return { source: 'openrouter', model: config.openrouter.fallbackModel, line: fromOpenRouter };
-
+  // FixPack v3 / Commit 1: clue-transition polish uses the 'polish' chain.
+  const fromOpenRouter = await tryOpenRouterModelChain({
+    task,
+    userPrompt: prompt,
+    validate: validator,
+    models: getOpenRouterModelsForTask('polish'),
+    json: false,
+    temperature: 0.9,
+    maxTokens: config.openrouter.narrationMaxTokens,
+  });
+  if (fromOpenRouter) {
+    return { source: 'openrouter', model: fromOpenRouter.model, line: fromOpenRouter.output };
+  }
   return null;
 }
 
@@ -584,9 +666,20 @@ async function embellishFinalReveal(input) {
   const fromGemini = await tryGeminiPolish(prompt, validator, task, { json: true });
   if (fromGemini) return { source: 'gemini', model: config.gemini.narrationModel, polish: fromGemini };
 
-  const fromOpenRouter = await tryOpenRouterPolish(prompt, validator, task, { json: true });
-  if (fromOpenRouter) return { source: 'openrouter', model: config.openrouter.fallbackModel, polish: fromOpenRouter };
-
+  // FixPack v3 / Commit 1: final-reveal polish uses the 'final_reveal' chain
+  // (heavier reasoning models preferred).
+  const fromOpenRouter = await tryOpenRouterModelChain({
+    task,
+    userPrompt: prompt,
+    validate: validator,
+    models: getOpenRouterModelsForTask('final_reveal'),
+    json: true,
+    temperature: 0.9,
+    maxTokens: config.openrouter.narrationMaxTokens,
+  });
+  if (fromOpenRouter) {
+    return { source: 'openrouter', model: fromOpenRouter.model, polish: fromOpenRouter.output };
+  }
   return null;
 }
 
@@ -603,8 +696,19 @@ async function writeProfileBio(input) {
   const fromGemini = await tryGeminiPolish(prompt, validator, task);
   if (fromGemini) return { source: 'gemini', model: config.gemini.narrationModel, bio: fromGemini };
 
-  const fromOpenRouter = await tryOpenRouterPolish(prompt, validator, task);
-  if (fromOpenRouter) return { source: 'openrouter', model: config.openrouter.fallbackModel, bio: fromOpenRouter };
+  // FixPack v3 / Commit 1: bio uses the dedicated 'bio' chain.
+  const fromOpenRouter = await tryOpenRouterModelChain({
+    task,
+    userPrompt: prompt,
+    validate: validator,
+    models: getOpenRouterModelsForTask('bio'),
+    json: false,
+    temperature: 0.9,
+    maxTokens: config.openrouter.narrationMaxTokens,
+  });
+  if (fromOpenRouter) {
+    return { source: 'openrouter', model: fromOpenRouter.model, bio: fromOpenRouter.output };
+  }
 
   // Deterministic fallback. Log a fallback row so admin analytics still
   // sees the bio attempt. Metadata-only (no rawIdea, no bio body).
@@ -625,4 +729,6 @@ module.exports = {
   _fallbackArchive: FALLBACK_ARCHIVE,
   _buildFallbackArchive: buildFallbackArchive,
   _openrouterArchiveChain: openrouterArchiveChain,
+  _getOpenRouterModelsForTask: getOpenRouterModelsForTask,
+  _tryOpenRouterModelChain: tryOpenRouterModelChain,
 };
