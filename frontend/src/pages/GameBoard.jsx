@@ -960,10 +960,18 @@ export default function GameBoard() {
               || elimById?.username
               || (voteResult.eliminatedId ? 'مشتبه مجهول' : null);
             const isLastRound = voteResult.round >= totalClues;
+            // E2: multi-Mafiozo aware title + subtitle. mafiozosRemaining
+            // and totalMafiozos are safe public counters; identities of
+            // remaining Mafiozos are NEVER on the wire.
+            const remaining = Number.isFinite(voteResult.mafiozosRemaining) ? voteResult.mafiozosRemaining : 0;
+            const total     = Number.isFinite(voteResult.totalMafiozos)     ? voteResult.totalMafiozos     : 1;
+            const isMulti = total > 1;
             const titleText =
               voteResult.reason === 'majority'
                 ? (voteResult.wasMafiozo
-                    ? 'اتقبض على المافيوزو'
+                    ? (remaining === 0
+                        ? (isMulti ? 'اتقبض على آخر مافيوزو' : 'اتقبض على المافيوزو')
+                        : 'اتقبض على مافيوزو، لكن الظل لسه له باقي')
                     : (resolvedElim ? `${resolvedElim} خرج من اللعبة` : 'مشتبه خرج من اللعبة'))
                 : voteResult.reason === 'tie'    ? 'تعادل في التصويت — محدش خرج'
                 : voteResult.reason === 'no-vote'? 'محدش صوّت — الجولة عدّت'
@@ -971,9 +979,13 @@ export default function GameBoard() {
                 : '—';
             let subText;
             if (voteResult.reason === 'majority' && voteResult.wasMafiozo) {
-              subText = 'الحقيقة اتكشفت. الأرشيف بيتفك دلوقتي.';
+              subText = remaining === 0
+                ? 'الحقيقة اتكشفت. الأرشيف بيتفك دلوقتي.'
+                : `لسه فيه ${remaining} مافيوزو في الساحة. الجولة الجاية هتقرّبكم من الحقيقة.`;
             } else if (voteResult.reason === 'majority' && !voteResult.wasMafiozo) {
-              subText = isLastRound ? 'الكشف ضاع — المافيوزو لسه وسطكم.' : 'الدليل الجاي هيقرّبكم من الحقيقة.';
+              subText = isLastRound
+                ? (isMulti ? 'الكشف ضاع — المافيوزو لسه وسطكم.' : 'الكشف ضاع — المافيوزو لسه وسطكم.')
+                : 'الدليل الجاي هيقرّبكم من الحقيقة.';
             } else if (voteResult.reason === 'tie' || voteResult.reason === 'no-vote' || voteResult.reason === 'all-skip') {
               subText = isLastRound ? 'مفيش حسم في الجولة الأخيرة — المافيوزو لسه وسطكم.' : 'الجولة عدّت بدون حسم. الدليل الجاي طريقكم.';
             } else {

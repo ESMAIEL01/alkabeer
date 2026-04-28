@@ -306,3 +306,208 @@ test('12. Ready-to-vote participants include eliminated players; targets exclude
   assert.equal(gm.isValidVoteTarget(lobby, 101), false, 'host → not a target');
   assert.equal(gm.isValidVoteTarget(lobby, 999), false, 'unknown id → not a target');
 });
+
+// ---------------------------------------------------------------------------
+// E2 — Multi-Mafiozo voting + win conditions.
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a 5-player multi-Mafiozo lobby: host(101) + A(202)=mafiozo,
+ * B(303)=mafiozo, C(404)=innocent, D(505)=innocent, E(606)=obvious_suspect.
+ */
+function makeMultiLobby({ eliminate = [], clueIndex = 0, clueCount = 3 } = {}) {
+  const players = new Map();
+  players.set(101, { id: 101, username: 'host', socketId: 's1', isHost: true,  isAlive: true });
+  players.set(202, { id: 202, username: 'A',    socketId: 's2', isHost: false, isAlive: true });
+  players.set(303, { id: 303, username: 'B',    socketId: 's3', isHost: false, isAlive: true });
+  players.set(404, { id: 404, username: 'C',    socketId: 's4', isHost: false, isAlive: true });
+  players.set(505, { id: 505, username: 'D',    socketId: 's5', isHost: false, isAlive: true });
+  players.set(606, { id: 606, username: 'E',    socketId: 's6', isHost: false, isAlive: true });
+
+  const roleAssignments = {
+    202: { playerId: 202, username: 'A', gameRole: 'mafiozo',         storyCharacterName: 'Sa', storyCharacterRole: 'r', suspiciousDetail: '...', isAlive: true },
+    303: { playerId: 303, username: 'B', gameRole: 'mafiozo',         storyCharacterName: 'Sb', storyCharacterRole: 'r', suspiciousDetail: '...', isAlive: true },
+    404: { playerId: 404, username: 'C', gameRole: 'innocent',        storyCharacterName: 'Sc', storyCharacterRole: 'r', suspiciousDetail: '...', isAlive: true },
+    505: { playerId: 505, username: 'D', gameRole: 'innocent',        storyCharacterName: 'Sd', storyCharacterRole: 'r', suspiciousDetail: '...', isAlive: true },
+    606: { playerId: 606, username: 'E', gameRole: 'obvious_suspect', storyCharacterName: 'Se', storyCharacterRole: 'r', suspiciousDetail: '...', isAlive: true },
+  };
+  for (const id of eliminate) {
+    if (players.has(id)) players.get(id).isAlive = false;
+    if (roleAssignments[id]) roleAssignments[id].isAlive = false;
+  }
+  return {
+    id: 'ROOMM',
+    creatorId: 101, hostId: 101, mode: 'AI',
+    roleRevealMode: 'normal', state: 'IN_GAME',
+    config: { isCustom: true, playerCount: 5, mafiozoCount: 2, clueCount, obviousSuspectEnabled: true },
+    players,
+    gameData: {
+      archiveBase64: '', rawScenario: '',
+      decodedArchive: { characters: [], mafiozo: 'X' },
+      clues: Array.from({ length: clueCount }, (_, i) => `c${i + 1}`),
+      clueIndex,
+      phase: 'VOTING',
+      timer: 30,
+      interval: null,
+      isPaused: false,
+      votes: {},
+      roleRevealMode: 'normal',
+      roleAssignments,
+      publicCharacterCards: [],
+      votingHistory: [],
+      eliminatedIds: eliminate.slice(),
+      outcome: null,
+      lastVoteResult: null,
+    },
+  };
+}
+
+test('E2.1 default 1-Mafiozo eliminated → investigators_win (regression of pre-E2 behavior)', () => {
+  const { gm, io } = newGM();
+  const lobby = makeLobby();  // 1 mafiozo (202)
+  gm.lobbies.set('ROOMX', lobby);
+  lobby.gameData.votes = { 202: 202, 303: 202, 404: 202 };
+  gm.closeVoting('ROOMX', 'all_voted');
+  const vr = lastVoteResult(io);
+  assert.equal(vr.eliminatedId, 202);
+  assert.equal(vr.wasMafiozo, true);
+  assert.equal(vr.totalMafiozos, 1, 'default games report totalMafiozos=1');
+  assert.equal(vr.mafiozosRemaining, 0);
+  assert.equal(lobby.gameData.outcome, 'investigators_win');
+  cleanup(lobby);
+});
+
+test('E2.2 multi-Mafiozo: eliminate first Mafiozo → game continues, mafiozosRemaining=1', () => {
+  const { gm, io } = newGM();
+  const lobby = makeMultiLobby();
+  gm.lobbies.set('ROOMM', lobby);
+  // All non-host vote A (mafiozo #1).
+  lobby.gameData.votes = { 202: 202, 303: 202, 404: 202, 505: 202, 606: 202 };
+  gm.closeVoting('ROOMM', 'all_voted');
+  const vr = lastVoteResult(io);
+  assert.equal(vr.eliminatedId, 202);
+  assert.equal(vr.wasMafiozo, true);
+  assert.equal(vr.totalMafiozos, 2);
+  assert.equal(vr.mafiozosRemaining, 1, 'one Mafiozo still alive');
+  assert.equal(lobby.gameData.outcome, null, 'game continues when Mafiozos remain');
+  cleanup(lobby);
+});
+
+test('E2.3 multi-Mafiozo: eliminate second remaining Mafiozo → investigators_win', () => {
+  const { gm, io } = newGM();
+  const lobby = makeMultiLobby({ eliminate: [202], clueIndex: 1 });
+  gm.lobbies.set('ROOMM', lobby);
+  // A already eliminated. Now everyone (including jury voter A) votes B.
+  lobby.gameData.votes = { 202: 303, 303: 303, 404: 303, 505: 303, 606: 303 };
+  gm.closeVoting('ROOMM', 'all_voted');
+  const vr = lastVoteResult(io);
+  assert.equal(vr.eliminatedId, 303);
+  assert.equal(vr.wasMafiozo, true);
+  assert.equal(vr.totalMafiozos, 2);
+  assert.equal(vr.mafiozosRemaining, 0, 'all Mafiozos eliminated');
+  assert.equal(lobby.gameData.outcome, 'investigators_win');
+  cleanup(lobby);
+});
+
+test('E2.4 multi-Mafiozo: eliminate innocent on FINAL clue → mafiozo_survives', () => {
+  const { gm, io } = newGM();
+  const lobby = makeMultiLobby({ clueCount: 3, clueIndex: 2 }); // last clue
+  gm.lobbies.set('ROOMM', lobby);
+  // Everyone votes innocent C; both Mafiozos still alive afterward.
+  lobby.gameData.votes = { 202: 404, 303: 404, 404: 404, 505: 404, 606: 404 };
+  gm.closeVoting('ROOMM', 'all_voted');
+  const vr = lastVoteResult(io);
+  assert.equal(vr.eliminatedId, 404);
+  assert.equal(vr.wasMafiozo, false);
+  assert.equal(vr.mafiozosRemaining, 2);
+  assert.equal(lobby.gameData.outcome, 'mafiozo_survives');
+  cleanup(lobby);
+});
+
+test('E2.5 multi-Mafiozo: tie on final clue with Mafiozos alive → mafiozo_survives', () => {
+  const { gm, io } = newGM();
+  const lobby = makeMultiLobby({ clueCount: 3, clueIndex: 2 });
+  gm.lobbies.set('ROOMM', lobby);
+  // Two players vote A, two vote B → 2-2 tie, no elimination.
+  lobby.gameData.votes = { 202: 303, 303: 202, 404: 202, 505: 303 };
+  gm.closeVoting('ROOMM', 'all_voted');
+  const vr = lastVoteResult(io);
+  assert.equal(vr.reason, 'tie');
+  assert.equal(vr.eliminatedId, null);
+  assert.equal(vr.mafiozosRemaining, 2);
+  assert.equal(lobby.gameData.outcome, 'mafiozo_survives');
+  cleanup(lobby);
+});
+
+test('E2.6 multi-Mafiozo: all-skip on final clue with Mafiozos alive → mafiozo_survives', () => {
+  const { gm, io } = newGM();
+  const lobby = makeMultiLobby({ clueCount: 3, clueIndex: 2 });
+  gm.lobbies.set('ROOMM', lobby);
+  lobby.gameData.votes = { 202: 'skip', 303: 'skip', 404: 'skip', 505: 'skip', 606: 'skip' };
+  gm.closeVoting('ROOMM', 'all_voted');
+  const vr = lastVoteResult(io);
+  assert.equal(vr.reason, 'all-skip');
+  assert.equal(vr.mafiozosRemaining, 2);
+  assert.equal(lobby.gameData.outcome, 'mafiozo_survives');
+  cleanup(lobby);
+});
+
+test('E2.7 vote_result payload includes mafiozosRemaining + totalMafiozos but NO roleAssignments / gameRole', () => {
+  const { gm, io } = newGM();
+  const lobby = makeMultiLobby();
+  gm.lobbies.set('ROOMM', lobby);
+  lobby.gameData.votes = { 202: 202, 303: 202, 404: 202, 505: 202, 606: 202 };
+  gm.closeVoting('ROOMM', 'all_voted');
+  const vr = lastVoteResult(io);
+  assert.equal('mafiozosRemaining' in vr, true);
+  assert.equal('totalMafiozos' in vr, true);
+  assert.equal('roleAssignments' in vr, false);
+  assert.equal('gameRole' in vr, false);
+  // Allow-list pin: 10 documented keys.
+  const allowed = new Set([
+    'round', 'eliminatedId', 'eliminatedUsername', 'wasMafiozo', 'reason',
+    'tally', 'eligibleCount', 'votedCount', 'mafiozosRemaining', 'totalMafiozos',
+  ]);
+  for (const k of Object.keys(vr)) {
+    assert.ok(allowed.has(k), `unexpected key on vote_result: ${k}`);
+  }
+  cleanup(lobby);
+});
+
+test('E2.8 multi-Mafiozo: eliminated juror still votes (jury rule) in custom mode', () => {
+  const { gm, io } = newGM();
+  const lobby = makeMultiLobby({ eliminate: [404], clueIndex: 1 });  // C eliminated earlier
+  gm.lobbies.set('ROOMM', lobby);
+  // C still votes A (mafiozo #1); 4 alive non-host + 1 juror.
+  lobby.gameData.votes = { 202: 202, 303: 202, 404: 202, 505: 202, 606: 202 };
+  gm.closeVoting('ROOMM', 'all_voted');
+  const vr = lastVoteResult(io);
+  assert.equal(vr.eligibleCount, 5, 'all 5 non-host (including eliminated juror) counted');
+  assert.equal(vr.votedCount, 5);
+  assert.equal(vr.eliminatedId, 202);
+  cleanup(lobby);
+});
+
+test('E2.9 multi-Mafiozo: stale vote on already-eliminated target dropped from tally', () => {
+  const { gm, io } = newGM();
+  const lobby = makeMultiLobby({ eliminate: [202], clueIndex: 1 });
+  gm.lobbies.set('ROOMM', lobby);
+  // Half the lobby votes for already-eliminated A (stale); rest vote B.
+  lobby.gameData.votes = { 202: 303, 303: 303, 404: 202 /* stale */, 505: 303, 606: 202 /* stale */ };
+  gm.closeVoting('ROOMM', 'all_voted');
+  const vr = lastVoteResult(io);
+  assert.equal(vr.eliminatedId, 303, 'B eliminated by 3 valid votes (stale 202 entries dropped)');
+  assert.equal(vr.tally['202'], undefined, 'tally must not contain stale 202');
+  cleanup(lobby);
+});
+
+test('E2.10 multi-Mafiozo: vote-extension threshold uses participants count', () => {
+  const { gm } = newGM();
+  const lobby = makeMultiLobby({ eliminate: [404] });
+  gm.lobbies.set('ROOMM', lobby);
+  // 5 non-host (4 alive + 1 eliminated juror).
+  const participants = gm.getVotingParticipants(lobby);
+  assert.equal(participants.length, 5);
+  const required = Math.max(1, Math.ceil(participants.length * 0.7));
+  assert.equal(required, 4, 'ceil(5 * 0.7) === 4');
+});

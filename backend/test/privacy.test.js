@@ -189,6 +189,8 @@ test('5. vote_result payload exposes only wasMafiozo boolean, never the role str
   const allowed = new Set([
     'round', 'eliminatedId', 'eliminatedUsername', 'wasMafiozo', 'reason',
     'tally', 'eligibleCount', 'votedCount',
+    // E2: safe public counters — counts only, never identities.
+    'mafiozosRemaining', 'totalMafiozos',
   ]);
   for (const k of Object.keys(vr)) {
     assert.ok(allowed.has(k), `unexpected key on vote_result: ${k}`);

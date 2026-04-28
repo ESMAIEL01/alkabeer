@@ -1190,8 +1190,20 @@ class GameManager {
       closedBy: reason,
     });
 
+    // E2: multi-Mafiozo win-condition support. Compute remaining alive
+    // Mafiozos AFTER any elimination above (closeVoting already mutated
+    // roleAssignments[id].isAlive when wasMafiozo). Investigators only
+    // win when ALL Mafiozos are eliminated. Default single-Mafiozo games
+    // collapse to the original behavior (totalMafiozos=1; eliminating it
+    // sets aliveMafiozos=0 immediately).
+    const allRoleRecs = Object.values(lobby.gameData.roleAssignments || {});
+    const totalMafiozos = allRoleRecs.filter(r => r.gameRole === 'mafiozo').length;
+    const aliveMafiozos = allRoleRecs.filter(r => r.gameRole === 'mafiozo' && r.isAlive).length;
+
     // Build the broadcast-safe vote_result payload. NEVER includes mafiozo
-    // identity beyond the boolean wasMafiozo on the eliminated player.
+    // identity beyond the boolean wasMafiozo on the eliminated player. The
+    // mafiozosRemaining + totalMafiozos counters are SAFE: counts only,
+    // not identities.
     const voteResult = {
       round,
       eliminatedId,
@@ -1201,6 +1213,8 @@ class GameManager {
       tally: { ...tally },
       eligibleCount: participants.length,
       votedCount: participants.filter(p => votes[p.id] !== undefined).length,
+      mafiozosRemaining: aliveMafiozos,
+      totalMafiozos,
     };
     lobby.gameData.lastVoteResult = voteResult;
 
@@ -1213,16 +1227,24 @@ class GameManager {
 
     // Decide what comes next.
     const lastClueReached = lobby.gameData.clueIndex >= lobby.gameData.clues.length - 1;
-    if (wasMafiozo) {
-      // Investigators win — reveal screen handles the cinematic ending.
+
+    // E2 win logic:
+    //   - Mafiozo eliminated AND no Mafiozos remain → investigators_win
+    //   - Mafiozo eliminated but some still alive → game continues (or
+    //     ends as mafiozo_survives if this was the last clue)
+    //   - non-Mafiozo eliminated, last clue reached, Mafiozos still alive
+    //     → mafiozo_survives
+    //   - tie / no-vote / all-skip on last clue with Mafiozos alive
+    //     → mafiozo_survives
+    if (wasMafiozo && aliveMafiozos === 0) {
       lobby.gameData.outcome = 'investigators_win';
       this.enterPhase(lobby, 'VOTE_RESULT', 8);
       this.startRoomTimer(roomId);
       return;
     }
 
-    if (lastClueReached) {
-      // Last round ended without catching the mafiozo → mafiozo survives.
+    if (lastClueReached && aliveMafiozos > 0) {
+      // Final-round close: no Mafiozos caught means at least one survives.
       lobby.gameData.outcome = 'mafiozo_survives';
       this.enterPhase(lobby, 'VOTE_RESULT', 8);
       this.startRoomTimer(roomId);
