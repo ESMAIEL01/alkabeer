@@ -15,6 +15,112 @@ const LIMITS = Object.freeze({
   DISPLAY_NAME_MIN, DISPLAY_NAME_MAX, AVATAR_URL_MAX, BIO_MAX,
 });
 
+// ---------------------------------------------------------------------------
+// Avatar URL validator (FixPack v3 / Commit 4 — hardening pass).
+//
+// Pure helper. Importable from tests without dotenv/express.
+//
+// Contract:
+//   validateAvatarUrl(raw)
+//     → { ok: true,  value: '' }                  // explicit clear
+//     → { ok: true,  value: '<https-url>' }       // accepted
+//     → { ok: false, error: '<arabic message>' } // rejected
+//
+// Rules (defense-in-depth):
+//   - Non-string input → error.
+//   - Trim outer whitespace.
+//   - Empty after trim → accepted as explicit clear.
+//   - Reject ANY ASCII control character (U+0000–U+001F + U+007F).
+//     XSS / smuggling defense: terminal escapes and embedded NULs cannot
+//     reach the storage layer.
+//   - Reject Unicode line/paragraph separators ( / ) and BOM
+//     () for the same reason.
+//   - Reject length > 500 (AVATAR_URL_MAX).
+//   - Reject any non-https scheme by inspecting the FIRST component up to
+//     ":". Matches against an explicit denylist so bad schemes are
+//     reported by name in the warn-class log path. The https-only
+//     regex below is the affirmative gate; the denylist is the
+//     negative one.
+//   - Require ^https:// (case-insensitive).
+//   - Reject any HTML-ish tag `<<letter>` (catches <script, <img, <svg,
+//     <iframe, <object, <embed, <link, <a, ...).
+//   - Reject .svg / .svgz extensions (extension parsed up to '?' or '#').
+//     SVG can carry inline JS via <script> — we never serve user-
+//     supplied SVG even though we don't fetch it server-side.
+//   - The image is NEVER fetched server-side. NEVER proxied. NEVER
+//     stored as base64. Only the URL string is persisted.
+// ---------------------------------------------------------------------------
+
+const AVATAR_DENYLIST_SCHEMES = Object.freeze([
+  'http', 'javascript', 'data', 'blob', 'file', 'ftp',
+  'vbscript', 'mailto', 'tel', 'ws', 'wss', 'about', 'chrome',
+]);
+
+// Match U+0000–U+001F plus U+007F (DEL). Hex-escaped so the source file
+// stays free of raw control bytes (otherwise the file would refuse to
+// parse on some platforms).
+const AVATAR_CONTROL_RE = /[\x00-\x1F\x7F]/;
+// Bidirectional / smuggling separators: U+2028 (LS), U+2029 (PS), U+FEFF (BOM).
+const AVATAR_SEPARATOR_RE = /[\u2028\u2029\uFEFF]/;
+// Broad HTML tag detector — any `<` followed by whitespace and a letter.
+const AVATAR_HTML_TAG_RE = /<\s*[a-zA-Z]/;
+// Strict https require.
+const AVATAR_HTTPS_RE = /^https:\/\//i;
+// SVG extension (ignoring query / fragment).
+const AVATAR_SVG_EXT_RE = /\.(svg|svgz)(?:[?#]|$)/i;
+
+function detectScheme(value) {
+  // Returns the scheme (lowercased) or null if no ':' is present in the
+  // first 24 chars (defensive — long pre-colon strings can't be a URL).
+  if (typeof value !== 'string' || !value) return null;
+  const probe = value.slice(0, 24);
+  const colon = probe.indexOf(':');
+  if (colon <= 0) return null;
+  const head = probe.slice(0, colon).toLowerCase();
+  // A scheme must match RFC 3986: letter followed by letters/digits/+/-/.
+  if (!/^[a-z][a-z0-9+\-.]*$/.test(head)) return null;
+  return head;
+}
+
+function validateAvatarUrl(raw) {
+  if (raw === undefined || raw === null) {
+    return { ok: true, value: '' };
+  }
+  if (typeof raw !== 'string') {
+    return { ok: false, error: 'رابط الصورة لازم يكون نص.' };
+  }
+  const v = raw.trim();
+  if (v.length === 0) {
+    return { ok: true, value: '' };
+  }
+  if (v.length > AVATAR_URL_MAX) {
+    return { ok: false, error: 'رابط الصورة طويل جداً.' };
+  }
+  if (AVATAR_CONTROL_RE.test(v)) {
+    return { ok: false, error: 'رابط الصورة فيه رموز غير آمنة.' };
+  }
+  if (AVATAR_SEPARATOR_RE.test(v)) {
+    return { ok: false, error: 'رابط الصورة فيه رموز غير آمنة.' };
+  }
+  if (AVATAR_HTML_TAG_RE.test(v)) {
+    return { ok: false, error: 'رابط الصورة فيه HTML — مش مسموح.' };
+  }
+  // Reject any explicitly denylisted scheme BEFORE we check the
+  // https-only gate. This gives a clearer error message when the user
+  // pastes an http:// or javascript: link.
+  const scheme = detectScheme(v);
+  if (scheme && AVATAR_DENYLIST_SCHEMES.includes(scheme)) {
+    return { ok: false, error: 'رابط الصورة لازم يبدأ بـ https://' };
+  }
+  if (!AVATAR_HTTPS_RE.test(v)) {
+    return { ok: false, error: 'رابط الصورة لازم يبدأ بـ https://' };
+  }
+  if (AVATAR_SVG_EXT_RE.test(v)) {
+    return { ok: false, error: 'صور SVG غير مدعومة. استخدم JPG أو PNG أو WebP.' };
+  }
+  return { ok: true, value: v };
+}
+
 /**
  * Validate + normalize a profile-update body.
  * Returns { ok, errors[], normalized: {displayName|null, avatarUrl|null, bio|null} }.
@@ -55,21 +161,14 @@ function validateAndNormalizeProfileInput(body) {
   }
 
   if (b.avatarUrl !== undefined && b.avatarUrl !== null) {
-    if (typeof b.avatarUrl !== 'string') {
-      errors.push('رابط الصورة لازم يكون نص.');
+    // Commit 4: dedicated avatar URL validator with denylist of dangerous
+    // schemes, control-character rejection, HTML tag rejection, and SVG
+    // extension rejection. The image is never fetched server-side.
+    const r = validateAvatarUrl(b.avatarUrl);
+    if (r.ok) {
+      out.avatarUrl = r.value;
     } else {
-      const v = b.avatarUrl.trim();
-      if (v.length === 0) {
-        out.avatarUrl = '';                       // explicit clear
-      } else if (v.length > AVATAR_URL_MAX) {
-        errors.push('رابط الصورة طويل جداً.');
-      } else if (!/^https:\/\//i.test(v)) {
-        errors.push('رابط الصورة لازم يبدأ بـ https://');
-      } else if (/<\s*script/i.test(v)) {
-        errors.push('رابط الصورة فيه شيء غير آمن.');
-      } else {
-        out.avatarUrl = v;
-      }
+      errors.push(r.error);
     }
   }
 
@@ -259,6 +358,7 @@ module.exports = {
   validateAndNormalizeProfileInput,
   validateBioAiRequest,
   validateIdentityInterviewRequest,
+  validateAvatarUrl,
   mapProfileRow,
   mapStatsRow,
   LIMITS,
@@ -268,4 +368,6 @@ module.exports = {
   IDENTITY_ANSWERS_MAX,
   IDENTITY_ANSWER_MIN,
   IDENTITY_ANSWER_MAX,
+  AVATAR_URL_MAX,
+  AVATAR_DENYLIST_SCHEMES,
 };
