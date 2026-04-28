@@ -165,12 +165,107 @@ function validateBioAiRequest(body) {
   return { ok: true, normalized: { rawIdea: trimmed } };
 }
 
+// ---------------------------------------------------------------------------
+// AI identity-interview request validator (FixPack v3 / Commit 2).
+//
+// Body shape: { answers: [ { questionId, question, answer }, ... ] }.
+//   - answers length 3..6
+//   - each answer 2..180 chars (after trim)
+//   - questionId / question are short safe strings (≤ 80 / ≤ 240 chars)
+//   - reject URLs, emails, phone numbers, HTML/script, markdown/code fences
+//   - reject empty answers
+//
+// On success returns { ok: true, normalized: { username?, answers: [...] } }
+// where each normalized answer is { questionId, question, answer } trimmed
+// and length-bounded. The username slot is reserved for the route handler
+// to fill from req.user — never trusted from the body.
+// ---------------------------------------------------------------------------
+
+const IDENTITY_ANSWERS_MIN = 3;
+const IDENTITY_ANSWERS_MAX = 6;
+const IDENTITY_ANSWER_MIN = 2;
+const IDENTITY_ANSWER_MAX = 180;
+const IDENTITY_QUESTION_MAX = 240;
+const IDENTITY_QID_MAX = 80;
+
+const IDENTITY_URL_RE     = /\b(?:https?:\/\/|www\.)\S+/i;
+const IDENTITY_EMAIL_RE   = /\b[\w.+-]+@[\w-]+\.[a-z]{2,}\b/i;
+// 7+ consecutive ASCII or Arabic-Indic digits with optional separators.
+const IDENTITY_PHONE_RE   = /(?:\+?[\d٠-٩][\d٠-٩\s\-]{6,})/;
+const IDENTITY_SCRIPT_RE  = /<\s*\/?\s*(?:script|style|iframe|img|svg|object|embed)\b/i;
+// Conservative HTML tag detection — anything that looks like <foo ...>.
+const IDENTITY_HTML_RE    = /<\s*[a-z][^>]*>/i;
+const IDENTITY_FENCE_RE   = /```/;
+const IDENTITY_MD_HDR_RE  = /^\s*#{1,6}\s/;
+const IDENTITY_MD_BOLD_RE = /\*\*[^*]+\*\*|__[^_]+__/;
+
+function validateIdentityInterviewRequest(body) {
+  const b = (body && typeof body === 'object') ? body : {};
+  if (!Array.isArray(b.answers)) {
+    return { ok: false, error: 'الإجابات لازم تكون قائمة.' };
+  }
+  if (b.answers.length < IDENTITY_ANSWERS_MIN) {
+    return { ok: false, error: `لازم تجاوب على ${IDENTITY_ANSWERS_MIN} أسئلة على الأقل.` };
+  }
+  if (b.answers.length > IDENTITY_ANSWERS_MAX) {
+    return { ok: false, error: `الحد الأقصى ${IDENTITY_ANSWERS_MAX} إجابات.` };
+  }
+
+  const out = [];
+  const seenIds = new Set();
+  for (let i = 0; i < b.answers.length; i++) {
+    const a = b.answers[i] || {};
+    if (typeof a !== 'object' || Array.isArray(a)) {
+      return { ok: false, error: `الإجابة رقم ${i + 1} شكلها غلط.` };
+    }
+    const questionId = typeof a.questionId === 'string' ? a.questionId.trim() : '';
+    const question = typeof a.question === 'string' ? a.question.trim() : '';
+    const answerRaw = typeof a.answer === 'string' ? a.answer : '';
+    const answer = answerRaw.replace(/[\r\n\t]+/g, ' ').trim();
+
+    if (!questionId || questionId.length > IDENTITY_QID_MAX) {
+      return { ok: false, error: `معرّف السؤال رقم ${i + 1} غير صالح.` };
+    }
+    if (seenIds.has(questionId)) {
+      return { ok: false, error: 'لا تكرر نفس السؤال.' };
+    }
+    seenIds.add(questionId);
+    if (!question || question.length > IDENTITY_QUESTION_MAX) {
+      return { ok: false, error: `نص السؤال رقم ${i + 1} غير صالح.` };
+    }
+    if (answer.length < IDENTITY_ANSWER_MIN) {
+      return { ok: false, error: `الإجابة رقم ${i + 1} قصيرة جداً.` };
+    }
+    if (answer.length > IDENTITY_ANSWER_MAX) {
+      return { ok: false, error: `الإجابة رقم ${i + 1} طويلة جداً (الحد الأقصى ${IDENTITY_ANSWER_MAX} حرف).` };
+    }
+    // Reject URLs, emails, phones, HTML/script, markdown/code fences in the answer.
+    if (IDENTITY_URL_RE.test(answer))    return { ok: false, error: `الإجابة رقم ${i + 1} فيها رابط — مش مسموح.` };
+    if (IDENTITY_EMAIL_RE.test(answer))  return { ok: false, error: `الإجابة رقم ${i + 1} فيها إيميل — مش مسموح.` };
+    if (IDENTITY_PHONE_RE.test(answer))  return { ok: false, error: `الإجابة رقم ${i + 1} فيها رقم تليفون — مش مسموح.` };
+    if (IDENTITY_SCRIPT_RE.test(answer)) return { ok: false, error: `الإجابة رقم ${i + 1} فيها كود غير آمن.` };
+    if (IDENTITY_HTML_RE.test(answer))   return { ok: false, error: `الإجابة رقم ${i + 1} فيها HTML — مش مسموح.` };
+    if (IDENTITY_FENCE_RE.test(answer))  return { ok: false, error: `الإجابة رقم ${i + 1} فيها code fence — مش مسموح.` };
+    if (IDENTITY_MD_HDR_RE.test(answer)) return { ok: false, error: `الإجابة رقم ${i + 1} فيها تنسيق markdown — اكتبها كنص عادي.` };
+    if (IDENTITY_MD_BOLD_RE.test(answer))return { ok: false, error: `الإجابة رقم ${i + 1} فيها تنسيق markdown — اكتبها كنص عادي.` };
+
+    out.push({ questionId, question, answer });
+  }
+
+  return { ok: true, normalized: { answers: out } };
+}
+
 module.exports = {
   validateAndNormalizeProfileInput,
   validateBioAiRequest,
+  validateIdentityInterviewRequest,
   mapProfileRow,
   mapStatsRow,
   LIMITS,
   BIO_AI_RAW_MIN,
   BIO_AI_RAW_MAX,
+  IDENTITY_ANSWERS_MIN,
+  IDENTITY_ANSWERS_MAX,
+  IDENTITY_ANSWER_MIN,
+  IDENTITY_ANSWER_MAX,
 };

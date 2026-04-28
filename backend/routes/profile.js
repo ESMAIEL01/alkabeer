@@ -12,6 +12,7 @@ const { aiLimiter } = require('../middleware/rateLimit');
 const {
   validateAndNormalizeProfileInput,
   validateBioAiRequest,
+  validateIdentityInterviewRequest,
   mapProfileRow,
   mapStatsRow,
   LIMITS,
@@ -149,10 +150,62 @@ router.post('/bio/ai', authRequired, aiLimiter, async (req, res, next) => {
   }
 });
 
+/**
+ * POST /api/profile/identity/interview — FixPack v3 / Commit 2.
+ *
+ * Guided AI identity interview. Body: { answers: [{ questionId, question,
+ * answer }, ...] }, length 3..6, each answer 2..180 chars and free of
+ * URLs / emails / phones / HTML / markdown / code fences (validated at
+ * the route boundary by validateIdentityInterviewRequest).
+ *
+ * Response: { bio, title, tone, motto, playStyleSummary, source }.
+ * Does NOT persist anything — the user previews on the frontend and
+ * pastes the bio into the existing /api/profile/me bio field via the
+ * normal PUT path if they want to keep it.
+ *
+ * Middleware order: authRequired → aiLimiter → handler. authRequired
+ * 401s before consuming a rate-limit slot. The bio rate limiter is the
+ * same one used for /api/profile/bio/ai and /api/scenarios so the
+ * AI-cost budget is shared.
+ *
+ * Privacy:
+ *   - The raw answers are NEVER logged (only metadata via logAi).
+ *   - The generated identity is NEVER logged (only metadata).
+ *   - The username comes from req.user.username, never from the body.
+ *   - F1 profile.bio_ai_requested-style analytics event is NOT fired
+ *     here on purpose; the dedicated 'profile_identity' task label is
+ *     visible via ai_generation_logs for admin analytics.
+ */
+router.post('/identity/interview', authRequired, aiLimiter, async (req, res, next) => {
+  const v = validateIdentityInterviewRequest(req.body);
+  if (!v.ok) return res.status(400).json({ error: v.error });
+  try {
+    const result = await ai.runIdentityInterview({
+      answers: v.normalized.answers,
+      username: (req.user && req.user.username) || null,
+    });
+    if (!result || !result.identity) {
+      return res.status(503).json({ error: 'الكبير ما قدرش يصيغ هويتك دلوقتي. حاول تاني بعد لحظات.' });
+    }
+    const id = result.identity;
+    return res.json({
+      bio: id.bio,
+      title: id.title,
+      tone: id.tone,
+      motto: id.motto,
+      playStyleSummary: id.playStyleSummary,
+      source: result.source || 'fallback',
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
 module.exports = router;
 // Re-exported for convenience; canonical home is profile-helpers.js.
 module.exports.validateAndNormalizeProfileInput = validateAndNormalizeProfileInput;
 module.exports.validateBioAiRequest = validateBioAiRequest;
+module.exports.validateIdentityInterviewRequest = validateIdentityInterviewRequest;
 module.exports.mapProfileRow = mapProfileRow;
 module.exports.mapStatsRow = mapStatsRow;
 module.exports.LIMITS = LIMITS;

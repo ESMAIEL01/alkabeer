@@ -25,13 +25,16 @@ const {
   archivePrompt, archivePromptStrict, narrationPrompt,
   voteResultPolishPrompt, clueTransitionPolishPrompt, finalRevealPolishPrompt,
   profileBioPrompt,
+  identityInterviewPrompt,
 } = require('./prompts');
 const {
   safeJsonParse, validateArchive, validateNarration,
   validatePolishLine, validateFinalRevealPolish,
   validateBio,
+  validateIdentityInterviewOutput,
 } = require('./validators');
 const { buildFallbackBio } = require('./bio-fallback');
+const { buildFallbackIdentity } = require('./identity-fallback');
 const { logAiGeneration, logEvent } = require('../analytics');
 
 // ---------------------------------------------------------------------------
@@ -717,6 +720,69 @@ async function writeProfileBio(input) {
   return { source: 'fallback', bio: buildFallbackBio(input || {}) };
 }
 
+/**
+ * FixPack v3 / Commit 2 — guided identity-interview producer.
+ *
+ * Input shape (already validated at the route boundary):
+ *   { answers: [ { questionId, question, answer }, ... ], username }
+ *
+ * Output:
+ *   { source: 'gemini' | 'openrouter' | 'fallback',
+ *     model?: string,
+ *     identity: { bio, title, tone, motto, playStyleSummary } }
+ *
+ * Provider chain:
+ *   1. Gemini (narration model, JSON mode) via tryGeminiPolish
+ *   2. OpenRouter bio chain via tryOpenRouterModelChain
+ *   3. Deterministic fallback via buildFallbackIdentity (always passes
+ *      validateIdentityInterviewOutput by construction)
+ *
+ * Privacy:
+ *   - The user's answers are inlined in the prompt and never logged.
+ *   - The AI response is validated and never persisted to logs.
+ *   - logAi rows carry only metadata (model + source + ok + latency
+ *     + validatorReason) — pinned by the static-source regression test.
+ */
+async function runIdentityInterview(input) {
+  const safe = (input && typeof input === 'object') ? input : {};
+  const prompt = identityInterviewPrompt(safe);
+  const validator = (raw) => validateIdentityInterviewOutput(raw);
+  const task = 'profile_identity';
+
+  const fromGemini = await tryGeminiPolish(prompt, validator, task, { json: true });
+  if (fromGemini) {
+    return {
+      source: 'gemini',
+      model: config.gemini.narrationModel,
+      identity: fromGemini,
+    };
+  }
+
+  const fromOpenRouter = await tryOpenRouterModelChain({
+    task,
+    userPrompt: prompt,
+    validate: validator,
+    models: getOpenRouterModelsForTask('bio'),
+    json: true,
+    temperature: 0.85,
+    maxTokens: config.openrouter.narrationMaxTokens,
+  });
+  if (fromOpenRouter) {
+    return {
+      source: 'openrouter',
+      model: fromOpenRouter.model,
+      identity: fromOpenRouter.output,
+    };
+  }
+
+  logAi({ task, source: 'fallback', model: 'built-in',
+    latencyMs: 0, ok: true, validatorReason: 'fallback_used' });
+  return {
+    source: 'fallback',
+    identity: buildFallbackIdentity(safe),
+  };
+}
+
 module.exports = {
   generateSealedArchive,
   narrate,
@@ -724,10 +790,12 @@ module.exports = {
   embellishClueTransition,
   embellishFinalReveal,
   writeProfileBio,
+  runIdentityInterview,
   // Test/diagnostic exports — not part of the route surface.
   _validateArchive: validateArchive,
   _fallbackArchive: FALLBACK_ARCHIVE,
   _buildFallbackArchive: buildFallbackArchive,
+  _buildFallbackIdentity: buildFallbackIdentity,
   _openrouterArchiveChain: openrouterArchiveChain,
   _getOpenRouterModelsForTask: getOpenRouterModelsForTask,
   _tryOpenRouterModelChain: tryOpenRouterModelChain,

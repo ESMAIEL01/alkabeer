@@ -8,6 +8,17 @@ import AkButton from '../components/AkButton';
 
 const HISTORY_PAGE_SIZE = 10;
 
+// FixPack v3 / Commit 2 — guided identity interview questions. Stable
+// questionIds so the backend can correlate answers across requests.
+const INTERVIEW_QUESTIONS = [
+  { id: 'play_style',  question: 'بتحب تلعب بهدوء ولا تواجه الناس مباشرة؟' },
+  { id: 'defense',     question: 'لما تتهم، بتدافع بعقل ولا بتقلب الطاولة؟' },
+  { id: 'persona',     question: 'تحب تظهر في اللعبة كشخص غامض، محقق، مخادع، ولا شاهد بريء؟' },
+  { id: 'memorable',   question: 'إيه أكتر تفصيلة تحب الناس تفتكرك بيها؟' },
+  { id: 'one_line',    question: 'في جملة واحدة، إيه أسلوبك في اللعب؟' },
+  { id: 'tone_choice', question: 'تحب هويتك تكون فخمة، مرعبة، ساخرة، ولا هادئة؟' },
+];
+
 /**
  * ProfilePage — Mafiozo player dashboard.
  *
@@ -56,6 +67,17 @@ export default function ProfilePage() {
   const [aiBioBusy, setAiBioBusy] = useState(false);
   const [aiBioPreview, setAiBioPreview] = useState(null);  // { bio, source }
   const [aiBioError, setAiBioError] = useState('');
+
+  // FixPack v3 / Commit 2 — guided identity interview state. Mirrors the
+  // bio-writer pattern: no AI call on mount, only on user click; duplicate
+  // clicks blocked while busy; preview is shown but never auto-persisted.
+  const [interviewOpen, setInterviewOpen] = useState(false);
+  const [interviewAnswers, setInterviewAnswers] = useState(
+    () => INTERVIEW_QUESTIONS.map(() => '')
+  );
+  const [interviewBusy, setInterviewBusy] = useState(false);
+  const [interviewError, setInterviewError] = useState('');
+  const [interviewPreview, setInterviewPreview] = useState(null); // { bio, title, tone, motto, playStyleSummary, source }
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -149,6 +171,90 @@ export default function ProfilePage() {
   const rejectAiBio = () => {
     setAiBioPreview(null);
     setAiBioError('');
+  };
+
+  // FixPack v3 / Commit 2 — guided identity interview handlers.
+  const openInterview = () => {
+    setInterviewOpen(true);
+    setInterviewError('');
+  };
+  const closeInterview = () => {
+    setInterviewOpen(false);
+    setInterviewError('');
+    setInterviewPreview(null);
+  };
+  const setInterviewAnswerAt = (idx, value) => {
+    setInterviewAnswers(prev => {
+      const next = prev.slice();
+      next[idx] = value;
+      return next;
+    });
+  };
+
+  const generateIdentity = async () => {
+    if (interviewBusy) return;
+    setInterviewBusy(true);
+    setInterviewError('');
+    setInterviewPreview(null);
+    // Build the answers payload with the canonical question text + id so
+    // the backend prompt has full context. Empty answers are dropped
+    // before the request — the server still enforces 3..6.
+    const answers = INTERVIEW_QUESTIONS
+      .map((q, i) => ({
+        questionId: q.id,
+        question: q.question,
+        answer: (interviewAnswers[i] || '').trim(),
+      }))
+      .filter(a => a.answer.length > 0);
+    if (answers.length < 3) {
+      setInterviewError('جاوب على 3 أسئلة على الأقل عشان الكبير يقدر يصيغ هويتك.');
+      setInterviewBusy(false);
+      return;
+    }
+    try {
+      const resp = await api.post('/api/profile/identity/interview', { answers });
+      if (resp && resp.bio && resp.title) {
+        setInterviewPreview({
+          bio: resp.bio,
+          title: resp.title,
+          tone: resp.tone,
+          motto: resp.motto,
+          playStyleSummary: resp.playStyleSummary,
+          source: resp.source || 'fallback',
+        });
+      } else {
+        setInterviewError('الكبير ما رجّعش هوية صالحة. حاول تاني.');
+      }
+    } catch (err) {
+      setInterviewError(err.message || 'تعذّر التواصل مع الكبير دلوقتي.');
+    } finally {
+      setInterviewBusy(false);
+    }
+  };
+
+  const useInterviewBio = () => {
+    if (!interviewPreview) return;
+    // Open edit mode if not already, then copy the bio into the draft.
+    // Title / tone / motto / playStyleSummary are PREVIEW-only — they are
+    // intentionally not persisted (no schema for them in user_profiles).
+    if (!editing) {
+      beginEdit();
+      setDraft(d => ({
+        ...d,
+        bio: interviewPreview.bio,
+        // beginEdit uses the current profile values; reapply the bio
+        // override on the next tick via state-merge.
+      }));
+    } else {
+      setDraft(d => ({ ...d, bio: interviewPreview.bio }));
+    }
+    setInterviewPreview(null);
+    setInterviewError('');
+  };
+
+  const ignoreInterview = () => {
+    setInterviewPreview(null);
+    setInterviewError('');
   };
 
   const saveEdit = async (e) => {
@@ -323,6 +429,118 @@ export default function ProfilePage() {
           </form>
         </section>
       )}
+
+      {/* FixPack v3 / Commit 2 — guided AI identity interview.
+          Always visible (collapsed by default). No AI call fires until
+          the user explicitly clicks "اصنع هويتي" — keeps page mount
+          responsive. Output is a preview only; nothing auto-persists. */}
+      <section className="s-profile-section s-identity-section">
+        <div className="s-profile-section-head">
+          <span className="ak-overline">Identity · هوية اللاعب</span>
+          {!interviewOpen && (
+            <AkButton variant="ghost" type="button" onClick={openInterview}>
+              ابدأ المقابلة
+            </AkButton>
+          )}
+          {interviewOpen && (
+            <AkButton variant="ghost" type="button" onClick={closeInterview}>
+              إخفاء
+            </AkButton>
+          )}
+        </div>
+        <h2 className="s-profile-section-title">اصنع هويتك في Mafiozo</h2>
+        <p className="s-identity-intro">
+          جاوب على شوية أسئلة قصيرة، والكبير هيقترح عليك بايو ولقب ونبرة وشعار. ولا حاجة هتتحفظ تلقائياً —
+          إنت اللي بتقرر تستخدمها أو تتجاهلها.
+        </p>
+
+        {interviewOpen && (
+          <div className="s-identity-form">
+            {INTERVIEW_QUESTIONS.map((q, i) => (
+              <label key={q.id} className="s-identity-question">
+                <span className="s-identity-q-num">{i + 1}.</span>
+                <span className="s-identity-q-text">{q.question}</span>
+                <textarea
+                  rows={2}
+                  value={interviewAnswers[i]}
+                  onChange={(e) => setInterviewAnswerAt(i, e.target.value)}
+                  maxLength={200}
+                  placeholder="اكتب إجابة قصيرة (2 لـ 180 حرف)"
+                  disabled={interviewBusy}
+                />
+                <small className="s-identity-q-counter">
+                  {(interviewAnswers[i] || '').trim().length} / 180
+                </small>
+              </label>
+            ))}
+
+            {interviewError && (
+              <div className="s-profile-banner err" style={{ marginTop: 'var(--ak-space-2)' }}>
+                ⚠ {interviewError}
+              </div>
+            )}
+
+            <div className="s-identity-cta">
+              <AkButton
+                variant="primary"
+                type="button"
+                onClick={generateIdentity}
+                disabled={interviewBusy}
+              >
+                {interviewBusy ? 'الكبير بيصيغ هويتك...' : 'اصنع هويتي'}
+              </AkButton>
+            </div>
+
+            {interviewPreview && (
+              <div className="s-identity-preview">
+                <div className="s-bio-ai-preview-head">
+                  <span className="ak-overline">اقتراح الكبير</span>
+                  <span style={{ font: 'var(--ak-t-caption)', color: 'var(--ak-text-muted)' }}>
+                    {interviewPreview.source === 'gemini'      ? 'مصدر: Gemini'
+                      : interviewPreview.source === 'openrouter' ? 'مصدر: OpenRouter'
+                      : 'مصدر: نص احتياطي'}
+                  </span>
+                </div>
+
+                <div className="s-identity-preview-grid">
+                  <div className="s-identity-preview-cell">
+                    <span className="ak-overline">اللقب</span>
+                    <p className="s-identity-preview-value">{interviewPreview.title}</p>
+                  </div>
+                  <div className="s-identity-preview-cell">
+                    <span className="ak-overline">النبرة</span>
+                    <p className="s-identity-preview-value">{interviewPreview.tone}</p>
+                  </div>
+                  <div className="s-identity-preview-cell s-identity-preview-cell-wide">
+                    <span className="ak-overline">الشعار</span>
+                    <p className="s-identity-preview-value">«{interviewPreview.motto}»</p>
+                  </div>
+                  <div className="s-identity-preview-cell s-identity-preview-cell-wide">
+                    <span className="ak-overline">أسلوب اللعب</span>
+                    <p className="s-identity-preview-value">{interviewPreview.playStyleSummary}</p>
+                  </div>
+                  <div className="s-identity-preview-cell s-identity-preview-cell-wide">
+                    <span className="ak-overline">السيرة المقترحة</span>
+                    <p className="s-identity-preview-value">{interviewPreview.bio}</p>
+                  </div>
+                </div>
+
+                <div className="s-bio-ai-preview-actions">
+                  <AkButton variant="primary" type="button" onClick={useInterviewBio} disabled={saving}>
+                    استخدم البايو
+                  </AkButton>
+                  <AkButton variant="ghost" type="button" onClick={generateIdentity} disabled={interviewBusy || saving}>
+                    إعادة الصياغة
+                  </AkButton>
+                  <AkButton variant="ghost" type="button" onClick={ignoreInterview} disabled={saving}>
+                    تجاهل
+                  </AkButton>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* Stats grid */}
       <section className="s-profile-section">

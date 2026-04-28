@@ -304,6 +304,61 @@ function profileBioPrompt(input) {
   ].join('\n');
 }
 
+// ---------------------------------------------------------------------------
+// Profile identity interview (FixPack v3 / Commit 2).
+//
+// Builds a guided 4–6 question prompt that produces a JSON identity:
+//   { bio, title, tone, motto, playStyleSummary }
+// Same denylist as the bio writer. The user's answers are inlined verbatim
+// (already validated at the route boundary — no URLs, emails, phones,
+// HTML, markdown, or code fences). The username is the player's display
+// name, never trusted from the request body.
+// ---------------------------------------------------------------------------
+
+function identityInterviewPrompt(input) {
+  const { answers, username } = input || {};
+  const safeUsername = typeof username === 'string' ? username.trim().slice(0, 60) : 'لاعب';
+  const list = Array.isArray(answers) ? answers : [];
+  const lines = list
+    .filter(a => a && typeof a.question === 'string' && typeof a.answer === 'string')
+    .map((a, i) => {
+      const q = a.question.trim().slice(0, 240);
+      const ans = a.answer.replace(/[\r\n]+/g, ' ').trim().slice(0, 180);
+      return `${i + 1}. س: ${q}\n   ج: ${ans}`;
+    })
+    .join('\n');
+
+  return [
+    `إنت "الكبير"، راوي مصري سينمائي بأسلوب نوار. عندك مقابلة قصيرة مع لاعب Mafiozo اسمه ${safeUsername}.`,
+    `الإجابات اللي تحت بيتقالها كأنها كلام اللاعب نفسه. لازم تطلع منها هوية اللاعب الحقيقية.`,
+    ``,
+    `إجابات اللاعب:`,
+    lines,
+    ``,
+    `قواعد صارمة:`,
+    `- نص عربي فقط بنسبة ≥60% في كل حقل.`,
+    `- ممنوع روابط (http/https/www).`,
+    `- ممنوع إيميلات أو أرقام تليفون أو @mentions أو #hashtags.`,
+    `- ممنوع markdown أو code fences.`,
+    `- ممنوع emojis.`,
+    `- ممنوع تقول إنك ذكاء اصطناعي.`,
+    `- ممنوع كلمة "undefined" أو "gameRole" أو "roleAssignments".`,
+    `- ممنوع تخترع جرائم حقيقية أو أحداث تاريخية.`,
+    `- "الكبير" راوي/مضيف، مش اسم المنتج. "Mafiozo" هو اسم اللعبة.`,
+    ``,
+    `أرجع JSON واحد فقط، بالشكل الآتي بالضبط:`,
+    `{`,
+    `  "bio": "سيرة قصيرة بأسلوب نوار، 80–500 حرف.",`,
+    `  "title": "لقب قصير 4–60 حرف.",`,
+    `  "tone": "وصف نبرة الشخصية 4–80 حرف.",`,
+    `  "motto": "جملة قصيرة بصوت اللاعب 8–120 حرف.",`,
+    `  "playStyleSummary": "وصف أسلوب اللعب 30–260 حرف."`,
+    `}`,
+    ``,
+    `أرجع JSON فقط، بدون أي شرح زيادة، بدون \`\`\` ولا أي تنسيق آخر.`,
+  ].join('\n');
+}
+
 module.exports = {
   loadKnowledge,
   ALKABEER_PERSONA,
@@ -314,4 +369,5 @@ module.exports = {
   clueTransitionPolishPrompt,
   finalRevealPolishPrompt,
   profileBioPrompt,
+  identityInterviewPrompt,
 };

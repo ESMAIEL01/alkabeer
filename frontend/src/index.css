@@ -2346,3 +2346,103 @@ h1, h2, h3, h4, h5, h6 {
     font-size: 0.78rem;
   }
 }
+
+/* ===========================================================================
+ * FixPack v3 / Commit 2 — guided AI identity interview panel
+ * =========================================================================== */
+
+.s-identity-section { /* uses .s-profile-section base styles */ }
+
+.s-identity-intro {
+  color: var(--ak-text-muted);
+  font: var(--ak-t-body, inherit);
+  margin: 0.5rem 0 var(--ak-space-3, 0.75rem);
+  max-width: 60ch;
+}
+
+.s-identity-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ak-space-3, 0.75rem);
+  margin-top: var(--ak-space-3, 0.75rem);
+}
+
+.s-identity-question {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  background: var(--ak-bg-deep, #0c0a08);
+  border: 1px solid var(--ak-border, rgba(255, 255, 255, 0.06));
+  border-radius: var(--ak-radius-md, 6px);
+  padding: 0.7rem 0.9rem;
+}
+
+.s-identity-q-num {
+  color: var(--ak-gold, #d4a851);
+  font-weight: 700;
+  margin-inline-end: 0.4rem;
+  display: inline;
+}
+
+.s-identity-q-text {
+  display: inline;
+  color: var(--ak-text, #fdf8ee);
+  font: var(--ak-t-body, inherit);
+}
+
+.s-identity-question textarea {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--ak-border, rgba(255, 255, 255, 0.1));
+  border-radius: var(--ak-radius-sm, 4px);
+  color: var(--ak-text, #fdf8ee);
+  padding: 0.5rem 0.7rem;
+  font: var(--ak-t-body, inherit);
+  resize: vertical;
+}
+
+.s-identity-q-counter {
+  color: var(--ak-text-muted);
+  font: var(--ak-t-caption, 600 0.72rem/1.2 inherit);
+  text-align: end;
+}
+
+.s-identity-cta {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--ak-space-2, 0.5rem);
+}
+
+.s-identity-preview {
+  margin-top: var(--ak-space-3, 0.75rem);
+  padding: var(--ak-space-3, 0.75rem);
+  background: var(--ak-gold-tint, rgba(212, 168, 81, 0.08));
+  border: 1px solid var(--ak-border-gold, rgba(212, 168, 81, 0.4));
+  border-radius: var(--ak-radius-md, 6px);
+}
+
+.s-identity-preview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+  margin: var(--ak-space-2, 0.5rem) 0 var(--ak-space-3, 0.75rem);
+}
+
+.s-identity-preview-cell {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--ak-border, rgba(255, 255, 255, 0.06));
+  border-radius: var(--ak-radius-sm, 4px);
+  padding: 0.55rem 0.7rem;
+}
+
+.s-identity-preview-cell-wide { grid-column: 1 / -1; }
+
+.s-identity-preview-value {
+  color: var(--ak-text, #fdf8ee);
+  font: var(--ak-t-body, inherit);
+  margin: 0.25rem 0 0;
+  line-height: 1.55;
+}
+
+@media (max-width: 480px) {
+  .s-identity-preview-grid { grid-template-columns: 1fr; }
+}

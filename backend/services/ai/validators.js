@@ -334,6 +334,78 @@ function validateBio(text) {
   return cleaned;
 }
 
+// ---------------------------------------------------------------------------
+// Identity-interview output validator (FixPack v3 / Commit 2).
+//
+// Expected shape:
+//   { bio, title, tone, motto, playStyleSummary }
+// Field length windows (chars after trim):
+//   bio              80..500
+//   title             4..60
+//   tone              4..80
+//   motto             8..120
+//   playStyleSummary 30..260
+//
+// The same shared denylist used for bios applies: no URLs, no emails, no
+// phones, no @mentions, no #hashtags, no markdown/code fences, no AI
+// disclaimers, no "undefined", no "gameRole" / "roleAssignments". Arabic
+// must be ≥60% of letters across every field combined. Returns the cleaned
+// object on success or null on any rejection — never throws.
+// ---------------------------------------------------------------------------
+
+const IDENTITY_FIELD_LIMITS = Object.freeze({
+  bio:              { min: 80,  max: 500 },
+  title:            { min: 4,   max: 60  },
+  tone:             { min: 4,   max: 80  },
+  motto:            { min: 8,   max: 120 },
+  playStyleSummary: { min: 30,  max: 260 },
+});
+
+function validateIdentityInterviewOutput(raw) {
+  let parsed = raw;
+  if (typeof raw === 'string') {
+    parsed = safeJsonParse(raw);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+
+  const cleaned = {};
+  let totalLetters = 0;
+  let totalArabicLetters = 0;
+
+  for (const [key, limits] of Object.entries(IDENTITY_FIELD_LIMITS)) {
+    const v = parsed[key];
+    if (typeof v !== 'string') return null;
+    if (/```/.test(v)) return null;
+    const trimmed = v.replace(/[\r\n]+/g, ' ').trim();
+    if (trimmed.length < limits.min || trimmed.length > limits.max) return null;
+
+    if (/^#{1,6}\s/m.test(trimmed)) return null;
+    if (/^\s*[*_]{2,}/m.test(trimmed)) return null;
+    if (/^\s*[{\[]/.test(trimmed)) return null;
+    if (URL_RE.test(trimmed))    return null;
+    if (EMAIL_RE.test(trimmed))  return null;
+    if (PHONE_RE.test(trimmed))  return null;
+    if (MENTION_RE.test(trimmed)) return null;
+    if (HASHTAG_RE.test(trimmed)) return null;
+
+    const lower = trimmed.toLowerCase();
+    for (const t of BIO_FORBIDDEN_TERMS) {
+      if (lower.includes(String(t).toLowerCase())) return null;
+    }
+
+    const letters = trimmed.match(/[\p{L}]/gu) || [];
+    if (letters.length === 0) return null;
+    totalLetters += letters.length;
+    totalArabicLetters += letters.filter(ch => ARABIC_SCRIPT_RE.test(ch)).length;
+
+    cleaned[key] = trimmed;
+  }
+  if (totalLetters === 0) return null;
+  if (totalArabicLetters / totalLetters < 0.6) return null;
+
+  return cleaned;
+}
+
 module.exports = {
   safeJsonParse,
   validateArchive,
@@ -341,7 +413,9 @@ module.exports = {
   validatePolishLine,
   validateFinalRevealPolish,
   validateBio,
+  validateIdentityInterviewOutput,
   FINAL_REVEAL_FIELD_LIMITS,
+  IDENTITY_FIELD_LIMITS,
   NARRATION_MAX_LEN,
   BIO_MIN_LEN,
   BIO_MAX_LEN,
