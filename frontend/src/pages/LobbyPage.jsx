@@ -269,6 +269,8 @@ export default function LobbyPage() {
         </div>
         <div className="actions">
           <AkButton variant="ghost" onClick={() => navigate('/explain')}>القوانين</AkButton>
+          {/* FixPack v2 / Commit 4: surface profile access from the lobby. */}
+          <AkButton variant="ghost" onClick={() => navigate('/profile')}>ملفي الشخصي</AkButton>
           <AkButton variant="ghost" onClick={() => { clearSession(); navigate('/'); }}>انسحاب</AkButton>
         </div>
       </header>

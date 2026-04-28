@@ -352,10 +352,15 @@ export default function ProfilePage() {
 
         {!historyLoading && history.length === 0 && !historyError && (
           <div className="s-profile-empty-state">
-            <p className="s-profile-empty-title">الأرشيف فاضي لسه</p>
+            <p className="s-profile-empty-title">لا توجد مباريات محفوظة بعد</p>
             <p className="s-profile-empty-sub">
-              المباريات اللي بتوصل لـ FINAL_REVEAL هتظهر هنا.
+              ابدأ لعبة كاملة لحد ما توصل للكشف النهائي عشان تظهر هنا.
             </p>
+            <div style={{ marginTop: 'var(--ak-space-3)' }}>
+              <AkButton variant="primary" onClick={() => navigate('/lobby')}>
+                ابدأ لعبة جديدة
+              </AkButton>
+            </div>
           </div>
         )}
 
