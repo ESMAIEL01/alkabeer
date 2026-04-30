@@ -32,17 +32,28 @@ function FinalRevealView({ data, aiPolish, fallbackOutcome, onNewGame, onBackToL
   // Recovery if the backend hasn't emitted the reveal yet (rare race / refresh).
   if (!data) {
     return (
-      <div className="s-final animate-fade-in" style={{ textAlign: 'center', paddingTop: 'var(--ak-space-7)' }}>
-        <span aria-hidden style={{ fontSize: '4rem', color: 'var(--ak-gold)', display: 'block', lineHeight: 1 }}>▲</span>
-        <h2 style={{ font: 'var(--ak-t-h2)', margin: 'var(--ak-space-3) 0 var(--ak-space-3)' }}>جاري فك الأرشيف...</h2>
-        <p style={{ color: 'var(--ak-text-muted)', font: 'var(--ak-t-body)', marginBottom: 'var(--ak-space-5)' }}>
-          {fallbackOutcome === 'investigators_win'
-            ? 'انتصر التحقيق. الكشف الكامل جاي بعد لحظة.'
-            : fallbackOutcome === 'mafiozo_survives'
-            ? 'المافيوزو نجا. الحقيقة هتتكشف دلوقتي.'
-            : 'الجلسة انتهت. الأرشيف بيتفك.'}
-        </p>
-        <button className="ak-btn ak-btn-ghost" onClick={onBackToLobby} style={{ minWidth: '220px' }}>ارجع للساحة</button>
+      <div className="s-final animate-fade-in">
+        <div className="s-seal-waiting">
+          <img
+            src="/design/scene-archive-book.png"
+            alt=""
+            aria-hidden="true"
+            className="s-seal-book"
+          />
+          <p className="ak-overline s-seal-overline">PROTOCOL ZERO · فك التشفير</p>
+          <h2 className="s-seal-headline">الكبير بيفك الأرشيف</h2>
+          <p className="s-seal-sub">
+            {fallbackOutcome === 'investigators_win'
+              ? 'انتصر التحقيق. الحقيقة هتتكشف دلوقتي.'
+              : fallbackOutcome === 'mafiozo_survives'
+              ? 'المافيوزو نجا. الكشف النهائي قادم.'
+              : 'الجلسة انتهت. الأرشيف بيتفك.'}
+          </p>
+          <div className="s-seal-bar" aria-hidden="true">
+            <div className="s-seal-bar-fill" />
+          </div>
+          <button className="ak-btn ak-btn-ghost" onClick={onBackToLobby} style={{ minWidth: '220px' }}>ارجع للساحة</button>
+        </div>
       </div>
     );
   }
@@ -1053,10 +1064,18 @@ export default function GameBoard() {
           )}
 
           {gameState === 'ARCHIVE_LOCKED' && (
-            <div className="animate-fade-in" style={{ textAlign: 'center', maxWidth: '520px' }}>
+            <div className="s-archive-locked animate-fade-in">
+              <img
+                src="/design/scene-archive-book.png"
+                alt=""
+                aria-hidden="true"
+                className="s-archive-locked-book"
+              />
               <span className="ak-overline">Protocol Zero · Sealed</span>
-              <h2 style={{ font: 'var(--ak-t-h1)', margin: 'var(--ak-space-3) 0 var(--ak-space-3)', color: 'var(--ak-crimson-stage)', textShadow: 'var(--ak-glow-red-urgent)' }}>الأرشيف مختوم</h2>
-              <p style={{ color: 'var(--ak-text-muted)', marginBottom: 'var(--ak-space-4)' }}>تم تشفير الحقيقة. القصة ثابتة ولا مجال لتغييرها الآن.</p>
+              <h2 className="s-archive-locked-title">الأرشيف مختوم</h2>
+              <p style={{ color: 'var(--ak-text-muted)', marginBottom: 'var(--ak-space-4)' }}>
+                تم تشفير الحقيقة. القصة ثابتة ولا مجال لتغييرها الآن.
+              </p>
               <div style={{ background: 'var(--ak-crimson-bg-muted)', border: '1px solid var(--ak-border-red)', borderRadius: 'var(--ak-radius-md)', padding: 'var(--ak-space-3)', font: 'var(--ak-t-mono)', fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', wordBreak: 'break-all', direction: 'ltr', textAlign: 'left', marginBottom: 'var(--ak-space-4)' }}>
                 PROTOCOL_ZERO_HASH:<br />{archiveBase64.slice(0, 200)}{archiveBase64.length > 200 ? '…' : ''}
               </div>
