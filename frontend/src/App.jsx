@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import LandingPage from './pages/LandingPage';
 import AuthPage from './pages/AuthPage';
 import LobbyPage from './pages/LobbyPage';
 import ExplainPage from './pages/ExplainPage';
@@ -17,7 +18,8 @@ function App() {
     <Router>
       <div className="app-container">
         <Routes>
-          <Route path="/" element={token ? <Navigate to="/lobby" /> : <AuthPage />} />
+          <Route path="/" element={token ? <Navigate to="/lobby" /> : <LandingPage />} />
+          <Route path="/auth" element={<AuthPage />} />
           <Route path="/lobby" element={<LobbyPage />} />
           <Route path="/explain" element={<ExplainPage />} />
           <Route path="/host-dashboard" element={<HostDashboard />} />

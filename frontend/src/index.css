@@ -2840,3 +2840,128 @@ html {
   font: var(--ak-t-caption, 600 0.78rem/1.4 inherit);
   border-radius: var(--ak-radius-sm, 4px);
 }
+
+/* ===========================================================================
+ * LANDING PAGE — s-landing
+ * Brand register. First impression for every new player.
+ * Scene: group-chat link at 10pm, phone in hand, room half-lit, skeptical.
+ * Color strategy: Committed — noir base, crimson CTA dominant, gold overline.
+ * =========================================================================== */
+.s-landing {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Investigation-room scene at 42% — present but not competing with copy */
+.s-landing::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url('/design/scene-archive-room.png') center 30% / cover no-repeat;
+  opacity: 0.42;
+  z-index: -2;
+}
+
+/* Crimson haze at top (Al-Kabeer signature), noir floor at bottom */
+.s-landing::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(43, 0, 0, 0.72) 0%,
+    rgba(5, 5, 5, 0.18) 32%,
+    rgba(5, 5, 5, 0.90) 100%
+  );
+  z-index: -1;
+}
+
+.s-landing-header {
+  padding: var(--ak-space-5) var(--ak-space-7);
+}
+
+.s-landing-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--ak-space-7) var(--ak-space-5);
+}
+
+/* The sealed archive book — the brand's physical anchor */
+.s-landing-seal {
+  width: min(240px, 50vw);
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: var(--ak-radius-md);
+  margin-bottom: var(--ak-space-6);
+  filter:
+    drop-shadow(0 0 50px rgba(229, 9, 20, 0.45))
+    drop-shadow(0 24px 48px rgba(0, 0, 0, 0.80));
+  animation: fadeIn var(--ak-dur-cinematic) var(--ak-ease-cinematic) both;
+}
+
+.s-landing-overline {
+  margin-bottom: var(--ak-space-4);
+  animation: fadeIn var(--ak-dur-slow) var(--ak-ease-cinematic) 200ms both;
+}
+
+.s-landing-headline {
+  font: var(--ak-t-display);
+  color: var(--ak-text-strong);
+  letter-spacing: var(--ak-tracking-tight);
+  margin: 0 0 var(--ak-space-4);
+  max-width: 16ch;
+  animation: fadeIn var(--ak-dur-slow) var(--ak-ease-cinematic) 350ms both;
+}
+
+.s-landing-body {
+  font: var(--ak-t-body-lg);
+  color: var(--ak-text-muted);
+  max-width: 40ch;
+  margin: 0 auto var(--ak-space-6);
+  animation: fadeIn var(--ak-dur-slow) var(--ak-ease-cinematic) 500ms both;
+}
+
+.s-landing-cta {
+  animation: fadeIn var(--ak-dur-slow) var(--ak-ease-cinematic) 650ms both;
+}
+
+.s-landing-footer {
+  padding: var(--ak-space-4) var(--ak-space-7);
+  border-top: 1px solid var(--ak-border-soft);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.s-landing-stamp {
+  font: var(--ak-t-overline);
+  letter-spacing: var(--ak-tracking-x-wide);
+  text-transform: uppercase;
+  color: var(--ak-text-faint);
+  direction: ltr;
+}
+
+@media (max-width: 600px) {
+  .s-landing-header {
+    padding: var(--ak-space-4) var(--ak-space-5);
+  }
+  .s-landing-hero {
+    padding: var(--ak-space-6) var(--ak-space-4);
+  }
+  .s-landing-headline {
+    font: var(--ak-t-h1);
+    letter-spacing: var(--ak-tracking-tight);
+  }
+  .s-landing-seal {
+    width: min(200px, 55vw);
+  }
+  .s-landing-footer {
+    padding: var(--ak-space-3) var(--ak-space-4);
+  }
+}
