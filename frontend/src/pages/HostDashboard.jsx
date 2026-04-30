@@ -229,7 +229,7 @@ export default function HostDashboard() {
           </div>
         )}
         {error && (
-          <div className="s-auth-error" style={{ marginTop: 'var(--ak-space-3)' }}>⚠ {error}</div>
+          <div className="s-auth-error" style={{ marginTop: 'var(--ak-space-3)' }}>{error}</div>
         )}
         {aiNote && (
           <div className="s-host-ai-note">
