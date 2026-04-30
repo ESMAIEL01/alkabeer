@@ -113,7 +113,7 @@ function parseEventsQuery(query) {
 /**
  * Parse pagination + status filter + search for /api/admin/accounts.
  */
-const VALID_ACCOUNT_STATUSES = new Set(['all', 'pending', 'approved', 'rejected', 'deleted']);
+const VALID_ACCOUNT_STATUSES = new Set(['all', 'pending', 'approved', 'rejected', 'deleted', 'guests']);
 
 function parseAccountsQuery(query) {
   const q = query || {};

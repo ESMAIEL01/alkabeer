@@ -131,6 +131,17 @@ async function start() {
     process.exit(1);
   }
 
+  // Verify migration 011_account_status.sql has been applied.
+  try {
+    await db.query('SELECT status FROM users LIMIT 0');
+  } catch (_e) {
+    console.warn(
+      '⚠️  MIGRATION WARNING: Column "status" missing from users table. ' +
+      'Run backend/db/migrations/011_account_status.sql before using ' +
+      '/api/admin/accounts/* endpoints — they will return 500 until migrated.'
+    );
+  }
+
   // 0.0.0.0 is required so Fly.io's load balancer can reach us.
   server.listen(config.port, '0.0.0.0', () => {
     console.log(`🚀 Mafiozo backend listening on 0.0.0.0:${config.port}`);
