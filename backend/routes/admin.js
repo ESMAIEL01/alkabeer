@@ -38,11 +38,20 @@ const {
   parseDateRange,
   parseEventsQuery,
   parseUsersQuery,
+  parseAccountsQuery,
   shapeAdminSession,
   shapeAdminUser,
+  shapeAdminAccount,
   shapeAdminEvent,
   shapeOverview,
 } = require('./admin-helpers');
+const { logEvent } = require('../services/analytics');
+
+function fireEvent(args) {
+  try {
+    Promise.resolve(logEvent(args)).catch(() => {});
+  } catch { /* swallow */ }
+}
 
 const router = express.Router();
 
@@ -72,15 +81,17 @@ router.get('/metrics/overview', async (_req, res, next) => {
       { rows: usersTotal },
       { rows: usersGuest },
       { rows: usersAdmin },
+      { rows: usersPending },
       { rows: aiTotal7d },
       { rows: aiFails7d },
     ] = await Promise.all([
       query('SELECT COUNT(*)::bigint AS n FROM game_sessions'),
       query('SELECT COUNT(*)::bigint AS n FROM game_sessions WHERE created_at >= NOW() - INTERVAL \'1 day\''),
       query('SELECT COUNT(*)::bigint AS n FROM game_sessions WHERE created_at >= NOW() - INTERVAL \'7 days\''),
-      query('SELECT COUNT(*)::bigint AS n FROM users'),
-      query('SELECT COUNT(*)::bigint AS n FROM users WHERE is_guest = TRUE'),
+      query('SELECT COUNT(*)::bigint AS n FROM users WHERE status != \'deleted\''),
+      query('SELECT COUNT(*)::bigint AS n FROM users WHERE is_guest = TRUE AND status != \'deleted\''),
       query('SELECT COUNT(*)::bigint AS n FROM users WHERE is_admin = TRUE'),
+      query('SELECT COUNT(*)::bigint AS n FROM users WHERE status = \'pending\' AND is_guest = FALSE'),
       query('SELECT COUNT(*)::bigint AS n FROM ai_generation_logs WHERE created_at >= NOW() - INTERVAL \'7 days\''),
       query('SELECT COUNT(*)::bigint AS n FROM ai_generation_logs WHERE created_at >= NOW() - INTERVAL \'7 days\' AND ok = FALSE'),
     ]);
@@ -95,6 +106,7 @@ router.get('/metrics/overview', async (_req, res, next) => {
       guestUsers,
       registeredUsers: Math.max(0, totalUsers - guestUsers),
       adminUsers: num(usersAdmin[0]),
+      pendingAccounts: num(usersPending[0]),
       aiCallsLast7d: num(aiTotal7d[0]),
       aiFailuresLast7d: num(aiFails7d[0]),
     }));
@@ -348,6 +360,334 @@ router.get('/users', async (req, res, next) => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /accounts
+// Paginated account list with optional status filter and username search.
+// ---------------------------------------------------------------------------
+
+router.get('/accounts', async (req, res, next) => {
+  const q = parseAccountsQuery(req.query || {});
+  try {
+    const where = [];
+    const params = [];
+    if (q.status && q.status !== 'all') {
+      params.push(q.status);
+      where.push(`u.status = $${params.length}`);
+    }
+    if (q.search) {
+      params.push(`%${q.search}%`);
+      where.push(`u.username ILIKE $${params.length}`);
+    }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    params.push(q.limit);
+    const limitParam = params.length;
+    params.push(q.offset);
+    const offsetParam = params.length;
+
+    const [{ rows: accountRows }, { rows: countRows }] = await Promise.all([
+      query(
+        `SELECT u.id, u.username, u.is_guest, u.is_admin, u.status,
+                u.created_at, u.approved_at, u.rejected_at, u.deleted_at, u.expires_at,
+                COALESCE(COUNT(p.user_id), 0)::int AS games_played
+           FROM users u
+           LEFT JOIN game_participants p ON p.user_id = u.id
+           ${whereSql}
+          GROUP BY u.id
+          ORDER BY u.created_at DESC
+          LIMIT $${limitParam} OFFSET $${offsetParam}`,
+        params
+      ),
+      query(
+        `SELECT COUNT(*)::bigint AS n FROM users u ${whereSql}`,
+        params.slice(0, where.length)
+      ),
+    ]);
+    return res.json({
+      accounts: accountRows.map(shapeAdminAccount).filter(Boolean),
+      total: num(countRows[0] && countRows[0].n),
+      limit: q.limit,
+      offset: q.offset,
+      status: q.status,
+      search: q.search,
+    });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /accounts/pending
+// Oldest-first queue of accounts awaiting approval. Max 100 rows.
+// ---------------------------------------------------------------------------
+
+router.get('/accounts/pending', async (req, res, next) => {
+  try {
+    const { rows } = await query(
+      `SELECT u.id, u.username, u.is_guest, u.is_admin, u.status,
+              u.created_at, u.approved_at, u.rejected_at, u.deleted_at, u.expires_at,
+              0 AS games_played
+         FROM users u
+        WHERE u.status = 'pending' AND u.is_guest = FALSE
+        ORDER BY u.created_at ASC
+        LIMIT 100`
+    );
+    return res.json({ accounts: rows.map(shapeAdminAccount).filter(Boolean) });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /accounts/:id/approve
+// ---------------------------------------------------------------------------
+
+router.post('/accounts/:id/approve', async (req, res, next) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'معرف غير صالح.' });
+  try {
+    const { rows } = await query(
+      `UPDATE users
+          SET status = 'approved', approved_at = NOW(), approved_by = $2
+        WHERE id = $1 AND status = 'pending' AND is_guest = FALSE
+        RETURNING id, username, status`,
+      [id, req.user.id]
+    );
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'الحساب مش موجود أو مش في حالة انتظار.' });
+    }
+    fireEvent({ eventType: 'admin.account_approved', userId: req.user.id, payload: { targetId: id } });
+    return res.json({ ok: true, id: rows[0].id, username: rows[0].username, status: rows[0].status });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /accounts/:id/reject
+// Cannot reject admins or the requesting admin themselves.
+// ---------------------------------------------------------------------------
+
+router.post('/accounts/:id/reject', async (req, res, next) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'معرف غير صالح.' });
+  if (id === req.user.id) return res.status(400).json({ error: 'ما تقدرش تتصرف في حسابك الخاص من هنا.' });
+  try {
+    // Pre-check in SELECT — is_admin must not appear in the UPDATE statement
+    // (anti-escalation invariant enforced by test F2.8).
+    const { rows: guard } = await query(
+      'SELECT id, username, is_admin, is_guest, status FROM users WHERE id = $1',
+      [id]
+    );
+    const target = guard[0];
+    if (!target || target.status === 'deleted') {
+      return res.status(404).json({ error: 'الحساب مش موجود أو محذوف.' });
+    }
+    if (target.is_admin) return res.status(403).json({ error: 'مش ممكن رفض حساب مشرف.' });
+    if (target.is_guest) return res.status(400).json({ error: 'مش ممكن رفض حساب ضيف.' });
+
+    const { rows } = await query(
+      `UPDATE users
+          SET status = 'rejected', rejected_at = NOW(), rejected_by = $2
+        WHERE id = $1 AND status != 'deleted'
+        RETURNING id, username, status`,
+      [id, req.user.id]
+    );
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'الحساب مش موجود أو مش ممكن رفضه.' });
+    }
+    fireEvent({ eventType: 'admin.account_rejected', userId: req.user.id, payload: { targetId: id } });
+    return res.json({ ok: true, id: rows[0].id, username: rows[0].username, status: rows[0].status });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /accounts/:id — soft delete (sets status='deleted').
+// Cannot delete admins or the requesting admin themselves.
+// Soft delete preserves game_participants data (avoids ON DELETE CASCADE).
+// ---------------------------------------------------------------------------
+
+router.delete('/accounts/:id', async (req, res, next) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isFinite(id)) return res.status(400).json({ error: 'معرف غير صالح.' });
+  if (id === req.user.id) return res.status(400).json({ error: 'ما تقدرش تحذف حسابك الخاص.' });
+  try {
+    // Pre-check in SELECT — is_admin must not appear in the UPDATE statement
+    // (anti-escalation invariant enforced by test F2.8).
+    const { rows: guard } = await query(
+      'SELECT id, is_admin, status FROM users WHERE id = $1',
+      [id]
+    );
+    const target = guard[0];
+    if (!target || target.status === 'deleted') {
+      return res.status(404).json({ error: 'الحساب مش موجود أو محذوف قبل كده.' });
+    }
+    if (target.is_admin) return res.status(403).json({ error: 'مش ممكن حذف حساب مشرف.' });
+
+    const { rows } = await query(
+      `UPDATE users
+          SET status = 'deleted', deleted_at = NOW(), deleted_by = $2
+        WHERE id = $1 AND status != 'deleted'
+        RETURNING id, username`,
+      [id, req.user.id]
+    );
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ error: 'الحساب مش موجود أو محذوف قبل كده.' });
+    }
+    fireEvent({ eventType: 'admin.account_deleted', userId: req.user.id, payload: { targetId: id } });
+    return res.json({ ok: true });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /accounts/cleanup-guests
+// Soft-deletes expired guest rows (not hard DELETE — game_participants.user_id
+// has ON DELETE CASCADE so a hard delete would cascade and remove archived
+// participation records). Soft delete makes the account unreachable for auth
+// while preserving the foreign-key link.
+//
+// Body: { dryRun: boolean, confirm: string }
+//   dryRun defaults to true — safe preview.
+//   Real run requires confirm === "DELETE_EXPIRED_GUESTS".
+// ---------------------------------------------------------------------------
+
+router.post('/accounts/cleanup-guests', async (req, res, next) => {
+  const body = req.body || {};
+  const dryRun = body.dryRun !== false;
+
+  if (dryRun) {
+    try {
+      const [{ rows: sample }, { rows: countRows }] = await Promise.all([
+        query(
+          `SELECT id, username, expires_at FROM users
+            WHERE is_guest = TRUE AND expires_at IS NOT NULL AND expires_at < NOW()
+              AND status != 'deleted'
+            ORDER BY expires_at ASC
+            LIMIT 50`
+        ),
+        query(
+          `SELECT COUNT(*)::bigint AS n FROM users
+            WHERE is_guest = TRUE AND expires_at IS NOT NULL AND expires_at < NOW()
+              AND status != 'deleted'`
+        ),
+      ]);
+      return res.json({
+        dryRun: true,
+        count: num(countRows[0]),
+        sample: sample.map(r => ({
+          id: r.id,
+          username: r.username || null,
+          expiresAt: r.expires_at ? new Date(r.expires_at).toISOString() : null,
+        })),
+      });
+    } catch (err) {
+      return next(err);
+    }
+  }
+
+  if (body.confirm !== 'DELETE_EXPIRED_GUESTS') {
+    return res.status(400).json({
+      error: 'يلزم تأكيد صريح. أرسل confirm: "DELETE_EXPIRED_GUESTS" مع dryRun: false.',
+    });
+  }
+
+  try {
+    const { rows } = await query(
+      `UPDATE users
+          SET status = 'deleted', deleted_at = NOW(), deleted_by = $1
+        WHERE is_guest = TRUE
+          AND expires_at IS NOT NULL
+          AND expires_at < NOW()
+          AND status != 'deleted'
+        RETURNING id`,
+      [req.user.id]
+    );
+    const deleted = rows ? rows.length : 0;
+    fireEvent({ eventType: 'admin.cleanup_guests', userId: req.user.id, payload: { deleted } });
+    return res.json({ ok: true, deleted });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /accounts/purge-non-admin
+// Soft-deletes all non-admin, non-guest accounts that aren't already deleted.
+//
+// Body: { dryRun: boolean, confirm: string }
+//   dryRun defaults to true — safe preview with up to 50 sample usernames.
+//   Real run requires confirm === "DELETE_NON_ADMIN_ACCOUNTS".
+// ---------------------------------------------------------------------------
+
+router.post('/accounts/purge-non-admin', async (req, res, next) => {
+  const body = req.body || {};
+  const dryRun = body.dryRun !== false;
+
+  if (dryRun) {
+    try {
+      const [{ rows: sample }, { rows: countRows }] = await Promise.all([
+        query(
+          `SELECT id, username, status, created_at FROM users
+            WHERE is_admin = FALSE AND is_guest = FALSE AND status != 'deleted'
+            ORDER BY created_at DESC
+            LIMIT 50`
+        ),
+        query(
+          `SELECT COUNT(*)::bigint AS n FROM users
+            WHERE is_admin = FALSE AND is_guest = FALSE AND status != 'deleted'`
+        ),
+      ]);
+      return res.json({
+        dryRun: true,
+        count: num(countRows[0]),
+        sample: sample.map(r => ({
+          id: r.id,
+          username: r.username || null,
+          status: r.status || null,
+          createdAt: r.created_at ? new Date(r.created_at).toISOString() : null,
+        })),
+      });
+    } catch (err) {
+      return next(err);
+    }
+  }
+
+  if (body.confirm !== 'DELETE_NON_ADMIN_ACCOUNTS') {
+    return res.status(400).json({
+      error: 'يلزم تأكيد صريح. أرسل confirm: "DELETE_NON_ADMIN_ACCOUNTS" مع dryRun: false.',
+    });
+  }
+
+  try {
+    // Pre-select IDs via SELECT (is_admin reference is allowed in SELECT).
+    // The subsequent UPDATE uses id = ANY($2) so no is_admin appears in the
+    // UPDATE statement — satisfies the anti-escalation invariant (test F2.8).
+    const { rows: targetRows } = await query(
+      `SELECT id FROM users
+        WHERE is_guest = FALSE AND status != 'deleted'
+          AND id NOT IN (SELECT id FROM users WHERE is_admin = TRUE)`
+    );
+    const ids = targetRows.map(r => r.id);
+    if (ids.length === 0) return res.json({ dryRun: false, count: 0 });
+
+    const { rows } = await query(
+      `UPDATE users
+          SET status = 'deleted', deleted_at = NOW(), deleted_by = $1
+        WHERE id = ANY($2::int[]) AND status != 'deleted'
+        RETURNING id`,
+      [req.user.id, ids]
+    );
+    const count = rows ? rows.length : 0;
+    fireEvent({ eventType: 'admin.purge_non_admin', userId: req.user.id, payload: { count } });
+    return res.json({ dryRun: false, count });
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Tiny utilities
 // ---------------------------------------------------------------------------
 
@@ -373,7 +713,9 @@ module.exports = router;
 module.exports.parseDateRange = parseDateRange;
 module.exports.parseEventsQuery = parseEventsQuery;
 module.exports.parseUsersQuery = parseUsersQuery;
+module.exports.parseAccountsQuery = parseAccountsQuery;
 module.exports.shapeAdminSession = shapeAdminSession;
 module.exports.shapeAdminUser = shapeAdminUser;
+module.exports.shapeAdminAccount = shapeAdminAccount;
 module.exports.shapeAdminEvent = shapeAdminEvent;
 module.exports.shapeOverview = shapeOverview;

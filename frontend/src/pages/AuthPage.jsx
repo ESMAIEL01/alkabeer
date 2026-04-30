@@ -20,17 +20,23 @@ export default function AuthPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [pendingMsg, setPendingMsg] = useState('');
 
   const handleAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setPendingMsg('');
     try {
       let endpoint = '/api/auth/login';
       if (activeTab === 'register') endpoint = '/api/auth/register';
       if (activeTab === 'guest')    endpoint = '/api/auth/guest';
       const payload = activeTab === 'guest' ? { username } : { username, password };
       const data = await api.post(endpoint, payload);
+      if (data && data.pending) {
+        setPendingMsg(data.message || 'حسابك بينتظر موافقة الأدمن.');
+        return;
+      }
       setSession({ token: data.token, user: data.user });
       navigate('/lobby');
     } catch (err) {
@@ -67,7 +73,7 @@ export default function AuthPage() {
             aria-selected={activeTab === 'login'}
             aria-controls="tabpanel-auth"
             className="s-auth-tab"
-            onClick={() => { setActiveTab('login'); setError(''); }}
+            onClick={() => { setActiveTab('login'); setError(''); setPendingMsg(''); }}
           >
             دخول
           </button>
@@ -78,7 +84,7 @@ export default function AuthPage() {
             aria-selected={activeTab === 'register'}
             aria-controls="tabpanel-auth"
             className="s-auth-tab"
-            onClick={() => { setActiveTab('register'); setError(''); }}
+            onClick={() => { setActiveTab('register'); setError(''); setPendingMsg(''); }}
           >
             عضوية
           </button>
@@ -89,13 +95,18 @@ export default function AuthPage() {
             aria-selected={activeTab === 'guest'}
             aria-controls="tabpanel-auth"
             className="s-auth-tab"
-            onClick={() => { setActiveTab('guest'); setError(''); }}
+            onClick={() => { setActiveTab('guest'); setError(''); setPendingMsg(''); }}
           >
             ضيف
           </button>
         </div>
 
         {error && <div className="s-auth-error" role="alert">{error}</div>}
+        {pendingMsg && (
+          <div className="s-host-ai-note" role="status" style={{ marginBottom: 'var(--ak-space-3)' }}>
+            {pendingMsg}
+          </div>
+        )}
 
         <form
           id="tabpanel-auth"
