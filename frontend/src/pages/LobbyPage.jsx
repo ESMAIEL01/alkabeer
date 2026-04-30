@@ -93,7 +93,7 @@ function AiHostReadyPanel({ progress, imReady, busy, onToggle, error, amISuspect
 
       {amISuspect && imReady && !inProgress && (
         <div style={{ textAlign: 'center', font: 'var(--ak-t-caption, inherit)', color: 'var(--ak-text-muted)' }}>
-          ✓ تم تسجيل جاهزيتك
+          تم تسجيل جاهزيتك
         </div>
       )}
 
@@ -102,7 +102,7 @@ function AiHostReadyPanel({ progress, imReady, busy, onToggle, error, amISuspect
       )}
 
       {error && (
-        <div className="s-auth-error">⚠ {error}</div>
+        <div className="s-auth-error">{error}</div>
       )}
     </div>
   );
@@ -320,7 +320,7 @@ export default function LobbyPage() {
 
       {!activeRoom ? (
         <>
-          {error && <div className="s-auth-error">⚠ {error}</div>}
+          {error && <div className="s-auth-error">{error}</div>}
 
           {/* STEP 1: gameplay reveal mode */}
           {!roleRevealMode && (

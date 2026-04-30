@@ -3229,3 +3229,15 @@ html {
   .s-seal-headline { font: var(--ak-t-h2); }
   .s-archive-locked-book { width: min(100px, 38vw); }
 }
+
+/* Mobile typography scale — cap display-size headings on 375–480px viewports */
+@media (max-width: 480px) {
+  /* Voting phase headline */
+  .s-vote h1 { font: var(--ak-t-h1); letter-spacing: var(--ak-tracking-tight); }
+
+  /* Verdict headline — long Arabic strings need room */
+  .s-result h1 { font: var(--ak-t-h1); letter-spacing: var(--ak-tracking-tight); }
+
+  /* Mode card title — prevent wrapping on narrow cards */
+  .s-lobby-mode-card .mode-title { font: var(--ak-t-h3); }
+}

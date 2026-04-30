@@ -904,11 +904,11 @@ export default function GameBoard() {
             <button className="ak-btn ak-btn-ghost" onClick={confirmEndSession}>إنهاء الجلسة</button>
           </div>
           {hostError && (
-            <div className="s-auth-error" style={{ marginTop: 'var(--ak-space-3)', maxWidth: '480px', marginInline: 'auto' }}>⚠ {hostError}</div>
+            <div className="s-auth-error" style={{ marginTop: 'var(--ak-space-3)', maxWidth: '480px', marginInline: 'auto' }}>{hostError}</div>
           )}
         </div>
       ) : (
-        // -------- Player view: private role card -----------------------
+        // -------- Player view: cinematic role card ---------------------
         <div className="s-reveal">
           <div className="s-reveal-shell">
             <div className="s-reveal-timer">00:{Math.max(0, timer).toString().padStart(2, '0')}</div>
@@ -952,7 +952,7 @@ export default function GameBoard() {
                   </div>
                 )}
 
-                <p className="warning">⚠ {roleCard.warning || 'ممنوع تكشف بطاقتك للاعبين التانيين.'}</p>
+                <p className="warning">{roleCard.warning || 'لا تكشف بطاقتك للاعبين التانيين.'}</p>
               </div>
             )}
           </div>
@@ -1004,7 +1004,7 @@ export default function GameBoard() {
               تخطّي العرض (اختياري)
             </button>
             {hostError && (
-              <div className="s-auth-error" style={{ marginTop: 'var(--ak-space-3)', maxWidth: '480px', marginInline: 'auto' }}>⚠ {hostError}</div>
+              <div className="s-auth-error" style={{ marginTop: 'var(--ak-space-3)', maxWidth: '480px', marginInline: 'auto' }}>{hostError}</div>
             )}
           </div>
         )}
