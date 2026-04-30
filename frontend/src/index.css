@@ -2965,3 +2965,79 @@ html {
     padding: var(--ak-space-3) var(--ak-space-4);
   }
 }
+
+/* ===========================================================================
+ * POST-GAME REPORT — s-report
+ * Product register. Immediate session summary; wired to GET /api/archive/:gameId
+ * via location.state.gameId passed by the caller (GameBoard).
+ * =========================================================================== */
+.s-report {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: var(--ak-space-7) var(--ak-space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ak-space-6);
+}
+
+.s-report-hero {
+  text-align: center;
+  padding-bottom: var(--ak-space-6);
+  border-bottom: 1px solid var(--ak-border-soft);
+}
+
+.s-report-hero h1 {
+  font: var(--ak-t-h1);
+  letter-spacing: var(--ak-tracking-tight);
+  margin: var(--ak-space-3) 0 0;
+}
+
+.s-report-sub {
+  color: var(--ak-text-muted);
+  font: var(--ak-t-body);
+  margin-top: var(--ak-space-3);
+  max-width: 40ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.s-report-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ak-space-2);
+}
+
+.s-report-section-title {
+  font: var(--ak-t-h3);
+  color: var(--ak-text-strong);
+  margin: var(--ak-space-2) 0 var(--ak-space-3);
+}
+
+.s-report-truth-row {
+  background: var(--ak-crimson-bg-muted);
+  border: 1px solid var(--ak-border-red);
+  border-radius: var(--ak-radius-md);
+  padding: var(--ak-space-4);
+}
+
+.s-report-actions {
+  display: flex;
+  gap: var(--ak-space-3);
+  flex-wrap: wrap;
+  justify-content: center;
+  padding-top: var(--ak-space-4);
+  border-top: 1px solid var(--ak-border-soft);
+}
+
+@media (max-width: 480px) {
+  .s-report {
+    padding: var(--ak-space-5) var(--ak-space-4);
+  }
+  .s-report-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .s-report-actions .ak-btn {
+    width: 100%;
+  }
+}
