@@ -488,7 +488,7 @@ export default function AdminDashboard() {
                 تأكيد إجراء{' '}
                 <strong style={{ color: 'var(--ak-crimson-action)' }}>
                   {accountAction.action === 'approve' ? 'موافقة' :
-                   accountAction.action === 'reject'  ? 'رفض' :    'حذف'}
+                   accountAction.action === 'reject'  ? 'رفض'    : 'حذف'}
                 </strong>{' '}
                 على <strong>{accountAction.username || `#${accountAction.id}`}</strong>؟
               </p>
@@ -549,7 +549,7 @@ export default function AdminDashboard() {
                           }}>
                             {a.status === 'pending'  ? 'انتظار' :
                              a.status === 'approved' ? 'موافق'  :
-                             a.status === 'rejected' ? 'مرفوض' :  'محذوف'}
+                             a.status === 'rejected' ? 'مرفوض'  : 'محذوف'}
                           </span>
                           {a.approvedAt && a.status === 'approved' && (
                             <div style={{ fontSize: '0.75rem', color: 'var(--ak-text-muted)' }}>{a.approvedAt.slice(0, 10)}</div>
