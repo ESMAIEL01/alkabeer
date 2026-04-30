@@ -103,7 +103,7 @@
    *   text-on-gold     | gold, gold-hover, gold-soft               | ≥ 9:1 ✓ AAA
    *   text-on-danger   | crimson-bg-muted (danger panels)          | 12.4:1 ✓ AAA
    * ======================================================================== */
-  --ak-text-strong:    #ffffff;
+  --ak-text-strong:    oklch(99% 0.005 45);
   --ak-text-main:      #f5f5f5;
   --ak-text-muted:     #a0a0a0;
   --ak-text-faint:     #6b6b6b;
