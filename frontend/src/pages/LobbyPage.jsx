@@ -335,16 +335,20 @@ export default function LobbyPage() {
                   className="s-lobby-mode-card gold"
                   onClick={() => setRoleRevealMode('normal')}
                 >
+                  <span className="mode-tag">STANDARD · كشف عادي</span>
                   <h3 className="mode-title">عادي</h3>
                   <p className="mode-desc">كل لاعب يعرف شخصيته ودوره السري قبل بداية التحقيق.</p>
+                  <span className="mode-footer">مناسب للمبتدئين والمحترفين</span>
                 </button>
                 <button
                   type="button"
                   className="s-lobby-mode-card danger"
                   onClick={() => setRoleRevealMode('blind')}
                 >
+                  <span className="mode-tag">EXTREME · كشف أعمى</span>
                   <h3 className="mode-title">عمياني</h3>
                   <p className="mode-desc">كل لاعب يعرف وظيفته وتفصيلته المريبة فقط. الحقيقة الكاملة بتظهر في الكشف النهائي.</p>
+                  <span className="mode-footer">مستوى متقدم</span>
                 </button>
               </div>
             </section>
@@ -429,16 +433,20 @@ export default function LobbyPage() {
                   className="s-lobby-mode-card gold"
                   onClick={() => handleCreateRoom('HUMAN')}
                 >
+                  <span className="mode-tag">HUMAN HOST · بشري</span>
                   <h3 className="mode-title">مضيف بشري</h3>
                   <p className="mode-desc">إنت اللي بتكتب الأرشيف وبتدير الجلسة بصوتك.</p>
+                  <span className="mode-footer">تحكم كامل في القضية</span>
                 </button>
                 <button
                   type="button"
                   className="s-lobby-mode-card gold"
                   onClick={() => handleCreateRoom('AI')}
                 >
+                  <span className="mode-tag">AI HOST · ذكاء اصطناعي</span>
                   <h3 className="mode-title">الكبير الاصطناعي</h3>
                   <p className="mode-desc">الذكاء بيكتب القصة، وإنت بتتحكم في الجلسة.</p>
+                  <span className="mode-footer">جاهز في ثوانٍ</span>
                 </button>
               </div>
             </section>

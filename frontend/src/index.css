@@ -444,16 +444,46 @@ html {
 .s-lobby-mode-card:hover {
   border-color: var(--ak-border-gold-strong);
   transform: translateY(-2px);
-  box-shadow: var(--ak-shadow-panel-hover);
+  box-shadow: var(--ak-shadow-panel-hover), inset 0 3px 0 var(--ak-gold);
 }
 .s-lobby-mode-card.danger:hover {
   border-color: var(--ak-border-red-strong);
-  box-shadow: var(--ak-shadow-panel-hover), var(--ak-glow-red-danger);
+  box-shadow: var(--ak-shadow-panel-hover), var(--ak-glow-red-danger), inset 0 3px 0 var(--ak-crimson-stage);
 }
-.s-lobby-mode-card .mode-title { font: var(--ak-t-h3); margin-bottom: var(--ak-space-2); }
+.s-lobby-mode-card:focus-visible {
+  outline: none;
+  box-shadow: var(--ak-glow-focus-ring);
+}
+/* Classification tag — overline label at card top, direction-ltr */
+.s-lobby-mode-card .mode-tag {
+  display: block;
+  font: var(--ak-t-overline);
+  letter-spacing: var(--ak-tracking-x-wide);
+  text-transform: uppercase;
+  color: var(--ak-text-faint);
+  direction: ltr;
+  text-align: left;
+  margin-bottom: var(--ak-space-4);
+}
+.s-lobby-mode-card.gold   .mode-tag { color: rgba(212, 175, 55, 0.55); }
+.s-lobby-mode-card.danger .mode-tag { color: rgba(229, 9, 20, 0.50); }
+
+.s-lobby-mode-card .mode-title { font: var(--ak-t-h2); margin-bottom: var(--ak-space-3); }
 .s-lobby-mode-card.gold   .mode-title { color: var(--ak-gold); }
 .s-lobby-mode-card.danger .mode-title { color: var(--ak-crimson-stage); }
-.s-lobby-mode-card .mode-desc  { color: var(--ak-text-muted); font: var(--ak-t-body-sm); line-height: 1.65; }
+.s-lobby-mode-card .mode-desc  { color: var(--ak-text-muted); font: var(--ak-t-body-sm); line-height: 1.7; margin-bottom: var(--ak-space-3); }
+
+/* Footer classification line — sits below description */
+.s-lobby-mode-card .mode-footer {
+  display: block;
+  font: var(--ak-t-caption);
+  color: var(--ak-text-faint);
+  padding-top: var(--ak-space-3);
+  border-top: 1px solid var(--ak-border-soft);
+  text-align: right;
+}
+.s-lobby-mode-card.gold   .mode-footer { color: var(--ak-gold); opacity: 0.65; }
+.s-lobby-mode-card.danger .mode-footer { color: var(--ak-crimson-stage); opacity: 0.65; }
 
 .s-lobby-mode-badge {
   display: flex;
