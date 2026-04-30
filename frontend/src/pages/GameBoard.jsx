@@ -24,7 +24,7 @@ function ConnectionBanner({ status }) {
 // suspicious details, actual voting history, real eliminations, real outcome.
 // No hard-coded "Player X won" lines.
 // =============================================================================
-function FinalRevealView({ data, aiPolish, fallbackOutcome, onNewGame, onBackToLobby }) {
+function FinalRevealView({ data, aiPolish, fallbackOutcome, onNewGame, onBackToLobby, onViewReport }) {
   const [shareCopied, setShareCopied] = useState(false);
   const [shareError, setShareError] = useState(false);
   const shareTextareaRef = useRef(null);
@@ -478,6 +478,11 @@ function FinalRevealView({ data, aiPolish, fallbackOutcome, onNewGame, onBackToL
         <button className="ak-btn ak-btn-ghost" onClick={onBackToLobby} style={{ minWidth: '200px' }}>
           {data.ctas?.backToLobby || 'ارجع للساحة'}
         </button>
+        {onViewReport && (
+          <button className="ak-btn ak-btn-ghost" onClick={onViewReport} style={{ minWidth: '200px' }}>
+            تقرير الجلسة
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1009,6 +1014,7 @@ export default function GameBoard() {
             fallbackOutcome={outcome}
             onNewGame={() => { setFinalReveal(null); setFinalRevealAiPolish(null); navigate('/lobby'); }}
             onBackToLobby={() => navigate('/lobby')}
+            onViewReport={() => navigate('/report', { state: { gameId: roomId } })}
           />
         </div>
       </>
