@@ -1,5 +1,10 @@
 const crypto = require('crypto');
 
+// JWT verification for socket authenticate — lazy so test harnesses that
+// skip the socket path don't need dotenv fully configured.
+let _jwt = null;
+let _jwtConfig = null;
+
 // AI polish (C2 / C3). Imported via lazy try/require so test harnesses
 // that do not exercise the AI path don't require the whole AI subtree.
 let _ai = null;
@@ -394,12 +399,53 @@ class GameManager {
       });
 
       socket.on('authenticate', (data) => {
-        const { user } = data || {};
-        if (user && user.id) {
-          this.userSocketMap.set(user.id, socket.id);
-          socket.userId = user.id;
-          socket.username = user.username;
+        const { token } = data || {};
+        if (!token) return;
+        // Verify JWT server-side — never trust client-provided user fields.
+        let decoded;
+        try {
+          if (!_jwt) _jwt = require('jsonwebtoken');
+          if (!_jwtConfig) _jwtConfig = require('../config/env');
+          decoded = _jwt.verify(token, _jwtConfig.jwtSecret);
+        } catch {
+          socket.emit('auth_rejected', { reason: 'invalid_token' });
+          return;
         }
+        if (!decoded || !decoded.id) {
+          socket.emit('auth_rejected', { reason: 'invalid_token' });
+          return;
+        }
+        // DB lifecycle check — do not trust JWT status/role claims alone.
+        this.db.query(
+          'SELECT status, expires_at, is_guest, is_admin FROM users WHERE id = $1',
+          [decoded.id]
+        ).then(({ rows }) => {
+          const row = rows && rows[0];
+          if (!row) {
+            socket.emit('auth_rejected', { reason: 'account_not_found' });
+            return;
+          }
+          if (row.status === 'deleted' || row.status === 'rejected') {
+            socket.emit('auth_rejected', { reason: 'account_inactive' });
+            return;
+          }
+          if (row.status === 'pending') {
+            socket.emit('auth_rejected', { reason: 'pending_approval' });
+            return;
+          }
+          if (row.is_guest && row.expires_at && new Date(row.expires_at) < new Date()) {
+            socket.emit('auth_rejected', { reason: 'guest_expired' });
+            return;
+          }
+          // All checks passed — commit identity to the socket.
+          this.userSocketMap.set(decoded.id, socket.id);
+          socket.userId   = decoded.id;
+          socket.username = decoded.username || null;
+          socket.isAdmin  = row.is_admin === true;
+        }).catch((err) => {
+          console.error('[GameManager] authenticate DB check failed:', err && err.message);
+          socket.emit('auth_rejected', { reason: 'server_error' });
+        });
       });
 
       socket.on('create_room', (data, callback) => {

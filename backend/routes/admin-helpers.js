@@ -111,6 +111,33 @@ function parseEventsQuery(query) {
 }
 
 /**
+ * Parse pagination + status filter + search for /api/admin/accounts.
+ */
+const VALID_ACCOUNT_STATUSES = new Set(['all', 'pending', 'approved', 'rejected', 'deleted']);
+
+function parseAccountsQuery(query) {
+  const q = query || {};
+  let limit = Number.parseInt(q.limit, 10);
+  if (!Number.isFinite(limit) || limit <= 0) limit = HARD_LIMITS.DEFAULT_LIMIT;
+  if (limit > HARD_LIMITS.USERS_LIMIT_MAX) limit = HARD_LIMITS.USERS_LIMIT_MAX;
+
+  let offset = Number.parseInt(q.offset, 10);
+  if (!Number.isFinite(offset) || offset < 0) offset = 0;
+
+  let search = null;
+  if (typeof q.search === 'string') {
+    const s = q.search.trim();
+    if (s) search = s.slice(0, 64);
+  }
+
+  const status = (typeof q.status === 'string' && VALID_ACCOUNT_STATUSES.has(q.status))
+    ? q.status
+    : 'all';
+
+  return { limit, offset, search, status };
+}
+
+/**
  * Parse pagination + search for /api/admin/users.
  */
 function parseUsersQuery(query) {
@@ -189,8 +216,30 @@ function shapeAdminUser(row) {
     username: row.username || null,
     isGuest: !!row.is_guest,
     isAdmin: !!row.is_admin,
+    status: row.status || 'approved',
     gamesPlayed: Number.isFinite(row.games_played) ? row.games_played : 0,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+  };
+}
+
+/**
+ * Shape one users row for the accounts management surface.
+ * Includes lifecycle timestamps. NEVER returns password_hash.
+ */
+function shapeAdminAccount(row) {
+  if (!row || typeof row !== 'object') return null;
+  return {
+    id: row.id,
+    username: row.username || null,
+    isGuest: !!row.is_guest,
+    isAdmin: !!row.is_admin,
+    status: row.status || 'approved',
+    gamesPlayed: Number.isFinite(row.games_played) ? row.games_played : 0,
+    createdAt:  row.created_at  ? new Date(row.created_at).toISOString()  : null,
+    approvedAt: row.approved_at ? new Date(row.approved_at).toISOString() : null,
+    rejectedAt: row.rejected_at ? new Date(row.rejected_at).toISOString() : null,
+    deletedAt:  row.deleted_at  ? new Date(row.deleted_at).toISOString()  : null,
+    expiresAt:  row.expires_at  ? new Date(row.expires_at).toISOString()  : null,
   };
 }
 
@@ -228,6 +277,7 @@ function shapeOverview(input) {
     guestUsers: int(i.guestUsers),
     registeredUsers: int(i.registeredUsers),
     adminUsers: int(i.adminUsers),
+    pendingAccounts: int(i.pendingAccounts),
     aiCallsLast7d: int(i.aiCallsLast7d),
     aiFailuresLast7d: int(i.aiFailuresLast7d),
   };
@@ -244,9 +294,11 @@ module.exports = {
   parseDateRange,
   parseEventsQuery,
   parseUsersQuery,
+  parseAccountsQuery,
   dropForbiddenKeys,
   shapeAdminSession,
   shapeAdminUser,
+  shapeAdminAccount,
   shapeAdminEvent,
   shapeOverview,
   HARD_LIMITS,

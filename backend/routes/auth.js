@@ -47,15 +47,17 @@ router.post('/register', async (req, res) => {
   try {
     const hash = await bcrypt.hash(password, 10);
     const { rows } = await query(
-      `INSERT INTO users (username, password_hash, is_guest)
-       VALUES ($1, $2, FALSE)
+      `INSERT INTO users (username, password_hash, is_guest, status)
+       VALUES ($1, $2, FALSE, 'pending')
        RETURNING id, username`,
       [username, hash]
     );
     const user = rows[0];
-    const token = signUserToken(user, false);
     fireEvent({ eventType: 'auth.user_registered', userId: user.id, payload: {} });
-    return res.status(201).json({ token, user: publicUser(user, false) });
+    return res.status(202).json({
+      pending: true,
+      message: 'حسابك اتسجّل وبينتظر موافقة الأدمن. هيتواصلوا معاك قريب.',
+    });
   } catch (err) {
     if (err && err.code === '23505') {
       return res.status(409).json({ error: 'الاسم ده مستخدم قبل كده.' });
@@ -74,7 +76,7 @@ router.post('/login', async (req, res) => {
 
   try {
     const { rows } = await query(
-      `SELECT id, username, password_hash, is_guest
+      `SELECT id, username, password_hash, is_guest, status
        FROM users
        WHERE username = $1`,
       [username]
@@ -88,6 +90,20 @@ router.post('/login', async (req, res) => {
     if (!ok) {
       return res.status(401).json({ error: 'بيانات الدخول غلط.' });
     }
+
+    // Status checks after password verification to avoid timing oracle.
+    if (row.status === 'pending') {
+      return res.status(403).json({ error: 'حسابك لسه بينتظر موافقة الأدمن.', pending: true });
+    }
+    if (row.status === 'rejected') {
+      return res.status(403).json({ error: 'الحساب ده مش مفعّل. تواصل مع الأدمن.' });
+    }
+    if (row.status === 'deleted') {
+      return res.status(401).json({ error: 'بيانات الدخول غلط.' });
+    }
+
+    // Record login timestamp — fire-and-forget, never blocks the response.
+    query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [row.id]).catch(() => {});
 
     const token = signUserToken(row, false);
     fireEvent({ eventType: 'auth.user_login', userId: row.id, payload: {} });
@@ -112,8 +128,8 @@ router.post('/guest', async (req, res) => {
     const candidate = attempt === 0 ? baseName : `${baseName}_${Math.floor(1000 + Math.random() * 9000)}`;
     try {
       const { rows } = await query(
-        `INSERT INTO users (username, password_hash, is_guest)
-         VALUES ($1, NULL, TRUE)
+        `INSERT INTO users (username, password_hash, is_guest, status, expires_at)
+         VALUES ($1, NULL, TRUE, 'approved', NOW() + INTERVAL '24 hours')
          RETURNING id, username`,
         [candidate]
       );
