@@ -3041,3 +3041,106 @@ html {
     width: 100%;
   }
 }
+
+/* ===========================================================================
+ * ARCHIVE SEAL STATES
+ *
+ * s-seal-waiting   — FinalRevealView !data: shown while waiting for the
+ *                    final_reveal socket event after host triggers reveal.
+ * s-archive-locked — ARCHIVE_LOCKED game state: archive is sealed but the
+ *                    game is still in active clue/vote phases.
+ * =========================================================================== */
+
+@keyframes sealPulse {
+  0%, 100% { filter: drop-shadow(0 0 28px rgba(229, 9, 20, 0.38)) drop-shadow(0 20px 40px rgba(0,0,0,.82)); }
+  50%       { filter: drop-shadow(0 0 58px rgba(229, 9, 20, 0.68)) drop-shadow(0 20px 40px rgba(0,0,0,.82)); }
+}
+
+@keyframes sealBarFill {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(0.92); }
+}
+
+/* Full-screen seal waiting — the dramatic pause between trigger and truth */
+.s-seal-waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 70vh;
+  padding: var(--ak-space-7) var(--ak-space-5);
+}
+
+.s-seal-book {
+  width: min(200px, 44vw);
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: var(--ak-radius-md);
+  margin-bottom: var(--ak-space-6);
+  animation: sealPulse 2.6s ease-in-out infinite;
+}
+
+.s-seal-overline { margin-bottom: var(--ak-space-4); }
+
+.s-seal-headline {
+  font: var(--ak-t-h1);
+  color: var(--ak-text-strong);
+  letter-spacing: var(--ak-tracking-tight);
+  margin: 0 0 var(--ak-space-3);
+}
+
+.s-seal-sub {
+  font: var(--ak-t-body);
+  color: var(--ak-text-muted);
+  max-width: 38ch;
+  margin: 0 auto var(--ak-space-5);
+}
+
+/* Indeterminate progress bar — crawls to 92% over 7s, never completes */
+.s-seal-bar {
+  width: min(320px, 78vw);
+  height: 2px;
+  background: var(--ak-border-red);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: var(--ak-space-6);
+}
+
+.s-seal-bar-fill {
+  height: 100%;
+  background: var(--ak-crimson-stage);
+  transform-origin: left;
+  animation: sealBarFill 7s var(--ak-ease-cinematic) both;
+}
+
+/* Compact archive-locked view — sits inside the arena grid */
+.s-archive-locked {
+  text-align: center;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.s-archive-locked-book {
+  width: min(130px, 32vw);
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: var(--ak-radius-sm);
+  margin-bottom: var(--ak-space-5);
+  filter: drop-shadow(0 0 22px rgba(229, 9, 20, 0.50));
+}
+
+.s-archive-locked-title {
+  font: var(--ak-t-h1);
+  color: var(--ak-crimson-stage);
+  text-shadow: var(--ak-glow-red-urgent);
+  margin: var(--ak-space-3) 0 var(--ak-space-3);
+}
+
+@media (max-width: 480px) {
+  .s-seal-book     { width: min(160px, 50vw); }
+  .s-seal-headline { font: var(--ak-t-h2); }
+  .s-archive-locked-book { width: min(100px, 38vw); }
+}
