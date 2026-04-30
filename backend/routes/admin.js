@@ -369,7 +369,9 @@ router.get('/accounts', async (req, res, next) => {
   try {
     const where = [];
     const params = [];
-    if (q.status && q.status !== 'all') {
+    if (q.status === 'guests') {
+      where.push('u.is_guest = TRUE');
+    } else if (q.status && q.status !== 'all') {
       params.push(q.status);
       where.push(`u.status = $${params.length}`);
     }

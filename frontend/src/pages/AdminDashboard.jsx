@@ -6,34 +6,25 @@ import AdminMetricCard from '../components/AdminMetricCard';
 import AdminTimeRangePicker from '../components/AdminTimeRangePicker';
 import AdminEventTable from '../components/AdminEventTable';
 
-/**
- * AdminDashboard — F4. Three primary tabs (Overview / Games / AI) plus a
- * raw events browser and a users table. All data comes from /api/admin/*
- * which is gated by the F2 admin middleware.
- *
- * Privacy:
- *   - This page never renders archive_b64, final_reveal, voting_history,
- *     roleAssignments, JWTs, or password hashes. The API never returns
- *     them; this UI is the second-line defense (it would have nothing
- *     to render even if the API regressed).
- *   - The route guard checks /api/auth/me.user.isAdmin (DB-backed in F2)
- *     and bounces non-admins to /lobby.
- *
- * Loading / error / empty states:
- *   - Each tab has its own loadKey + error slot so a transient failure
- *     in one tab doesn't blank the whole dashboard.
- */
 const TABS = [
   { id: 'overview',  label: 'نظرة عامة' },
   { id: 'accounts',  label: 'الحسابات' },
   { id: 'games',     label: 'الألعاب' },
   { id: 'ai',        label: 'الذكاء الاصطناعي' },
   { id: 'events',    label: 'الأحداث' },
-  { id: 'users',     label: 'المستخدمون' },
 ];
 
-const EVENTS_PAGE_SIZE = 25;
-const USERS_PAGE_SIZE = 25;
+const ACCOUNTS_PAGE_SIZE = 25;
+const EVENTS_PAGE_SIZE   = 25;
+
+const FILTER_LABELS = {
+  all:      'الكل',
+  pending:  'انتظار',
+  approved: 'موافق',
+  rejected: 'مرفوض',
+  deleted:  'محذوف',
+  guests:   'الضيوف',
+};
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
@@ -73,21 +64,28 @@ export default function AdminDashboard() {
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError, setEventsError] = useState('');
 
-  // Users tab
-  const [userSearch, setUserSearch] = useState('');
-  const [userOffset, setUserOffset] = useState(0);
-  const [users, setUsers] = useState({ users: [], total: 0 });
-  const [usersLoading, setUsersLoading] = useState(false);
-  const [usersError, setUsersError] = useState('');
-
-  // Accounts tab
-  const [accountsView, setAccountsView] = useState('pending'); // 'pending' | 'all'
-  const [accountsStatus, setAccountsStatus] = useState('all');
+  // Accounts tab — sub-views: 'pending' | 'all' | 'maintenance'
+  const [accountsView, setAccountsView] = useState('pending');
+  const [accountsFilter, setAccountsFilter] = useState('all');
+  const [accountsSearch, setAccountsSearch] = useState('');
   const [accountsOffset, setAccountsOffset] = useState(0);
   const [accounts, setAccounts] = useState({ accounts: [], total: 0 });
   const [accountsLoading, setAccountsLoading] = useState(false);
   const [accountsError, setAccountsError] = useState('');
-  const [accountAction, setAccountAction] = useState(null); // { id, action: 'approve'|'reject'|'delete' }
+  const [accountAction, setAccountAction] = useState(null); // { id, action, username }
+
+  // Maintenance: cleanup expired guests
+  const [cleanupPreview, setCleanupPreview] = useState(null); // { count, sample }
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [cleanupError, setCleanupError] = useState('');
+  const [cleanupConfirming, setCleanupConfirming] = useState(false);
+
+  // Maintenance: purge non-admin accounts
+  const [purgePreview, setPurgePreview] = useState(null); // { count, sample }
+  const [purgeLoading, setPurgeLoading] = useState(false);
+  const [purgeError, setPurgeError] = useState('');
+  const [purgeConfirmText, setPurgeConfirmText] = useState('');
+  const [purgeConfirming, setPurgeConfirming] = useState(false);
 
   // Bootstrapping: confirm the caller is admin before painting content.
   useEffect(() => {
@@ -164,12 +162,12 @@ export default function AdminDashboard() {
     try {
       const params = new URLSearchParams();
       if (eventType) params.set('type', eventType);
-      params.set('limit', String(EVENTS_PAGE_SIZE));
+      params.set('limit',  String(EVENTS_PAGE_SIZE));
       params.set('offset', String(offset));
       const data = await api.get(`/api/admin/events?${params}`);
       setEvents({
         events: Array.isArray(data && data.events) ? data.events : [],
-        total: (data && Number.isFinite(data.total)) ? data.total : 0,
+        total:  (data && Number.isFinite(data.total)) ? data.total : 0,
       });
       setEventOffset(offset);
     } catch (err) {
@@ -179,40 +177,24 @@ export default function AdminDashboard() {
     }
   }, [eventType]);
 
-  const loadUsers = useCallback(async (offset = 0) => {
-    setUsersLoading(true);
-    setUsersError('');
-    try {
-      const params = new URLSearchParams();
-      params.set('limit', String(USERS_PAGE_SIZE));
-      params.set('offset', String(offset));
-      if (userSearch) params.set('search', userSearch);
-      const data = await api.get(`/api/admin/users?${params}`);
-      setUsers({
-        users: Array.isArray(data && data.users) ? data.users : [],
-        total: (data && Number.isFinite(data.total)) ? data.total : 0,
-      });
-      setUserOffset(offset);
-    } catch (err) {
-      setUsersError(err.message || 'تعذّر تحميل المستخدمين.');
-    } finally {
-      setUsersLoading(false);
-    }
-  }, [userSearch]);
-
-  const loadAccounts = useCallback(async (view = accountsView, offset = 0) => {
+  const loadAccounts = useCallback(async (view, offset, filter, search) => {
+    if (view === 'maintenance') return;
     setAccountsLoading(true);
     setAccountsError('');
     try {
       let data;
       if (view === 'pending') {
         data = await api.get('/api/admin/accounts/pending');
-        setAccounts({ accounts: Array.isArray(data && data.accounts) ? data.accounts : [], total: 0 });
+        setAccounts({
+          accounts: Array.isArray(data && data.accounts) ? data.accounts : [],
+          total: 0,
+        });
       } else {
         const params = new URLSearchParams();
-        params.set('limit', String(USERS_PAGE_SIZE));
+        params.set('limit',  String(ACCOUNTS_PAGE_SIZE));
         params.set('offset', String(offset));
-        if (accountsStatus !== 'all') params.set('status', accountsStatus);
+        if (filter && filter !== 'all') params.set('status', filter);
+        if (search && search.trim()) params.set('search', search.trim());
         data = await api.get(`/api/admin/accounts?${params}`);
         setAccounts({
           accounts: Array.isArray(data && data.accounts) ? data.accounts : [],
@@ -225,7 +207,7 @@ export default function AdminDashboard() {
     } finally {
       setAccountsLoading(false);
     }
-  }, [accountsView, accountsStatus]);
+  }, []);
 
   const handleAccountAction = useCallback(async (id, action) => {
     setAccountAction(null);
@@ -238,22 +220,79 @@ export default function AdminDashboard() {
       } else if (action === 'delete') {
         await api.del(`/api/admin/accounts/${id}`);
       }
-      loadAccounts(accountsView, accountsOffset);
+      loadAccounts(accountsView, accountsOffset, accountsFilter, accountsSearch);
     } catch (err) {
       setAccountsError(err.message || 'تعذّر تنفيذ الإجراء.');
     }
-  }, [accountsView, accountsOffset, loadAccounts]);
+  }, [accountsView, accountsOffset, accountsFilter, accountsSearch, loadAccounts]);
 
-  const handleCleanupGuests = useCallback(async () => {
-    setAccountsError('');
+  const handleCleanupDryRun = useCallback(async () => {
+    setCleanupLoading(true);
+    setCleanupError('');
+    setCleanupPreview(null);
     try {
-      const data = await api.post('/api/admin/accounts/cleanup-guests');
-      alert(`تم حذف ${data.deleted || 0} حساب ضيف منتهي.`);
-      loadAccounts(accountsView, accountsOffset);
+      const data = await api.post('/api/admin/accounts/cleanup-guests', { dryRun: true });
+      setCleanupPreview({ count: data.count || 0, sample: data.sample || [] });
     } catch (err) {
-      setAccountsError(err.message || 'تعذّر تنظيف الضيوف.');
+      setCleanupError(err.message || 'تعذّر تشغيل الفحص المسبق.');
+    } finally {
+      setCleanupLoading(false);
     }
-  }, [accountsView, accountsOffset, loadAccounts]);
+  }, []);
+
+  const handleCleanupConfirm = useCallback(async () => {
+    setCleanupConfirming(true);
+    setCleanupError('');
+    try {
+      const data = await api.post('/api/admin/accounts/cleanup-guests', {
+        dryRun: false,
+        confirm: 'DELETE_EXPIRED_GUESTS',
+      });
+      setCleanupPreview(null);
+      alert(`تم حذف ${data.deleted ?? 0} حساب ضيف منتهي الصلاحية.`);
+    } catch (err) {
+      setCleanupError(err.message || 'تعذّر تنفيذ التنظيف.');
+    } finally {
+      setCleanupConfirming(false);
+    }
+  }, []);
+
+  const handlePurgeDryRun = useCallback(async () => {
+    setPurgeLoading(true);
+    setPurgeError('');
+    setPurgePreview(null);
+    setPurgeConfirmText('');
+    try {
+      const data = await api.post('/api/admin/accounts/purge-non-admin', { dryRun: true });
+      setPurgePreview({ count: data.count || 0, sample: data.sample || [] });
+    } catch (err) {
+      setPurgeError(err.message || 'تعذّر تشغيل الفحص المسبق.');
+    } finally {
+      setPurgeLoading(false);
+    }
+  }, []);
+
+  const handlePurgeConfirm = useCallback(async () => {
+    if (purgeConfirmText !== 'DELETE_NON_ADMIN_ACCOUNTS') {
+      setPurgeError('يجب كتابة نص التأكيد بالضبط: DELETE_NON_ADMIN_ACCOUNTS');
+      return;
+    }
+    setPurgeConfirming(true);
+    setPurgeError('');
+    try {
+      const data = await api.post('/api/admin/accounts/purge-non-admin', {
+        dryRun: false,
+        confirm: 'DELETE_NON_ADMIN_ACCOUNTS',
+      });
+      setPurgePreview(null);
+      setPurgeConfirmText('');
+      alert(`تم حذف ${data.count ?? 0} حساب.`);
+    } catch (err) {
+      setPurgeError(err.message || 'تعذّر تنفيذ الحذف الجماعي.');
+    } finally {
+      setPurgeConfirming(false);
+    }
+  }, [purgeConfirmText]);
 
   // Mount loads.
   useEffect(() => { if (!bootChecking && !bootError) loadOverview(); }, [bootChecking, bootError, loadOverview]);
@@ -261,11 +300,12 @@ export default function AdminDashboard() {
   // Tab-specific loads.
   useEffect(() => {
     if (bootChecking || bootError) return;
-    if (tab === 'accounts') loadAccounts(accountsView, 0);
-    if (tab === 'games') loadGames();
-    if (tab === 'ai')    loadAi();
+    if (tab === 'accounts' && accountsView !== 'maintenance') {
+      loadAccounts(accountsView, 0, accountsFilter, accountsSearch);
+    }
+    if (tab === 'games')  loadGames();
+    if (tab === 'ai')     loadAi();
     if (tab === 'events') loadEvents(0);
-    if (tab === 'users') loadUsers(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, range, accountsView, bootChecking, bootError]);
 
@@ -333,6 +373,9 @@ export default function AdminDashboard() {
         ))}
       </nav>
 
+      {/* ------------------------------------------------------------------ */}
+      {/* Overview                                                            */}
+      {/* ------------------------------------------------------------------ */}
       {tab === 'overview' && (
         <section className="s-admin-section">
           {overviewError && (
@@ -361,59 +404,93 @@ export default function AdminDashboard() {
         </section>
       )}
 
+      {/* ------------------------------------------------------------------ */}
+      {/* Accounts — unified: pending queue + all accounts + maintenance      */}
+      {/* ------------------------------------------------------------------ */}
       {tab === 'accounts' && (
         <section className="s-admin-section">
+
+          {/* Sub-view navigation */}
           <div style={{ display: 'flex', gap: 'var(--ak-space-2)', flexWrap: 'wrap', marginBottom: 'var(--ak-space-3)', alignItems: 'center' }}>
-            <button
-              type="button"
-              className={accountsView === 'pending' ? 's-admin-tab s-admin-tab-active' : 's-admin-tab'}
-              onClick={() => { setAccountsView('pending'); loadAccounts('pending', 0); }}
-            >
-              طابور الانتظار
-            </button>
-            <button
-              type="button"
-              className={accountsView === 'all' ? 's-admin-tab s-admin-tab-active' : 's-admin-tab'}
-              onClick={() => { setAccountsView('all'); loadAccounts('all', 0); }}
-            >
-              جميع الحسابات
-            </button>
-            <span style={{ flexGrow: 1 }} />
-            <AkButton
-              variant="ghost"
-              onClick={handleCleanupGuests}
-              style={{ padding: '0.4rem 0.8rem', minHeight: 'auto', fontSize: '0.85rem' }}
-            >
-              تنظيف الضيوف المنتهيين
-            </AkButton>
+            {[
+              { id: 'pending',     label: 'طابور الانتظار' },
+              { id: 'all',         label: 'جميع الحسابات' },
+              { id: 'maintenance', label: 'الصيانة الخطرة' },
+            ].map(v => (
+              <button
+                key={v.id}
+                type="button"
+                className={accountsView === v.id ? 's-admin-tab s-admin-tab-active' : 's-admin-tab'}
+                onClick={() => setAccountsView(v.id)}
+              >
+                {v.label}
+              </button>
+            ))}
           </div>
 
           {accountsError && (
             <div className="s-auth-error" style={{ marginBottom: 'var(--ak-space-3)' }}>{accountsError}</div>
           )}
 
+          {/* Search + filter bar — only in 'all' view */}
           {accountsView === 'all' && (
-            <div style={{ display: 'flex', gap: 'var(--ak-space-2)', marginBottom: 'var(--ak-space-3)', flexWrap: 'wrap' }}>
-              {['all','pending','approved','rejected','deleted'].map(s => (
-                <button
-                  key={s}
-                  type="button"
-                  className={accountsStatus === s ? 's-admin-pill' : 's-admin-pill'}
-                  style={{ opacity: accountsStatus === s ? 1 : 0.5 }}
-                  onClick={() => { setAccountsStatus(s); loadAccounts('all', 0); }}
+            <>
+              <div style={{ display: 'flex', gap: 'var(--ak-space-2)', flexWrap: 'wrap', marginBottom: 'var(--ak-space-2)', alignItems: 'flex-end' }}>
+                <label className="s-admin-rangepicker-field" style={{ flex: 1, minWidth: '180px' }}>
+                  <span>البحث باسم المستخدم</span>
+                  <input
+                    type="text"
+                    value={accountsSearch}
+                    onChange={e => setAccountsSearch(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') loadAccounts('all', 0, accountsFilter, accountsSearch); }}
+                    placeholder="اسم مستخدم…"
+                  />
+                </label>
+                <AkButton
+                  variant="ghost"
+                  onClick={() => loadAccounts('all', 0, accountsFilter, accountsSearch)}
+                  disabled={accountsLoading}
+                  style={{ padding: '0.4rem 0.9rem', minHeight: 'auto', fontSize: '0.85rem', alignSelf: 'flex-end' }}
                 >
-                  {s === 'all' ? 'الكل' : s === 'pending' ? 'انتظار' : s === 'approved' ? 'موافق' : s === 'rejected' ? 'مرفوض' : 'محذوف'}
-                </button>
-              ))}
-            </div>
+                  بحث
+                </AkButton>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: 'var(--ak-space-3)' }}>
+                {Object.entries(FILTER_LABELS).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    className="s-admin-pill"
+                    style={{ opacity: accountsFilter === key ? 1 : 0.45, cursor: 'pointer' }}
+                    onClick={() => {
+                      setAccountsFilter(key);
+                      loadAccounts('all', 0, key, accountsSearch);
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
           )}
 
+          {/* Row-level confirm dialog */}
           {accountAction && (
-            <div className="s-report-section" style={{ marginBottom: 'var(--ak-space-3)', background: 'var(--ak-crimson-bg-muted)', border: '1px solid var(--ak-border-red)', borderRadius: 'var(--ak-radius-md)', padding: 'var(--ak-space-3)' }}>
+            <div className="s-report-section" style={{
+              marginBottom: 'var(--ak-space-3)',
+              background: 'var(--ak-crimson-bg-muted)',
+              border: '1px solid var(--ak-border-red)',
+              borderRadius: 'var(--ak-radius-md)',
+              padding: 'var(--ak-space-3)',
+            }}>
               <p style={{ marginBottom: 'var(--ak-space-2)' }}>
-                تأكيد إجراء <strong style={{ color: 'var(--ak-crimson-action)' }}>
-                  {accountAction.action === 'approve' ? 'موافقة' : accountAction.action === 'reject' ? 'رفض' : 'حذف'}
-                </strong> على الحساب رقم {accountAction.id}؟
+                تأكيد إجراء{' '}
+                <strong style={{ color: 'var(--ak-crimson-action)' }}>
+                  {accountAction.action === 'approve' ? 'موافقة' :
+                   accountAction.action === 'reject'  ? 'رفض'    : 'حذف'}
+                </strong>{' '}
+                على <strong>{accountAction.username || `#${accountAction.id}`}</strong>؟
               </p>
               <div style={{ display: 'flex', gap: 'var(--ak-space-2)' }}>
                 <AkButton variant="primary" onClick={() => handleAccountAction(accountAction.id, accountAction.action)}>
@@ -426,118 +503,299 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          <div className="s-admin-event-table-scroll">
-            <table className="s-admin-event-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>الاسم</th>
-                  <th>الحالة</th>
-                  <th>الألعاب</th>
-                  <th>تاريخ الإنشاء</th>
-                  <th>إجراءات</th>
-                </tr>
-              </thead>
-              <tbody>
-                {accountsLoading && accounts.accounts.length === 0 ? (
-                  <tr><td colSpan="6"><div className="shimmer" style={{ height: '6rem' }} aria-hidden="true" /></td></tr>
-                ) : accounts.accounts.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', color: 'var(--ak-text-muted)', padding: 'var(--ak-space-4)' }}>
-                      {accountsView === 'pending' ? 'ما فيش حسابات بانتظار الموافقة.' : 'ما فيش حسابات مطابقة.'}
-                    </td>
-                  </tr>
-                ) : accounts.accounts.map(a => (
-                  <tr key={a.id}>
-                    <td>{a.id}</td>
-                    <td>
-                      {a.username || '—'}
-                      {a.isAdmin && <span className="s-admin-pill" style={{ marginInlineStart: '0.4rem' }}>مشرف</span>}
-                      {a.isGuest && <span className="s-admin-pill" style={{ marginInlineStart: '0.4rem', opacity: 0.6 }}>ضيف</span>}
-                    </td>
-                    <td>
-                      <span style={{
-                        color: a.status === 'pending' ? 'var(--ak-gold)' :
-                               a.status === 'approved' ? 'var(--ak-text-strong)' :
-                               a.status === 'rejected' ? 'var(--ak-crimson-action)' : 'var(--ak-text-muted)',
-                      }}>
-                        {a.status === 'pending' ? 'انتظار' : a.status === 'approved' ? 'موافق' : a.status === 'rejected' ? 'مرفوض' : 'محذوف'}
-                      </span>
-                    </td>
-                    <td>{a.gamesPlayed}</td>
-                    <td>{a.createdAt ? a.createdAt.slice(0, 10) : '—'}</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                        {(a.status === 'pending' || a.status === 'rejected') && !a.isAdmin && (
-                          <button
-                            type="button"
-                            className="s-admin-pill"
-                            style={{ color: 'var(--ak-text-strong)', cursor: 'pointer' }}
-                            onClick={() => setAccountAction({ id: a.id, action: 'approve' })}
-                          >
-                            موافقة
-                          </button>
-                        )}
-                        {a.status !== 'rejected' && a.status !== 'deleted' && !a.isAdmin && (
-                          <button
-                            type="button"
-                            className="s-admin-pill"
-                            style={{ color: 'var(--ak-crimson-action)', cursor: 'pointer' }}
-                            onClick={() => setAccountAction({ id: a.id, action: 'reject' })}
-                          >
-                            رفض
-                          </button>
-                        )}
-                        {a.status !== 'deleted' && !a.isAdmin && (
-                          <button
-                            type="button"
-                            className="s-admin-pill"
-                            style={{ color: 'var(--ak-text-muted)', cursor: 'pointer' }}
-                            onClick={() => setAccountAction({ id: a.id, action: 'delete' })}
-                          >
-                            حذف
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {/* Accounts table — pending + all views */}
+          {accountsView !== 'maintenance' && (
+            <>
+              <div className="s-admin-event-table-scroll">
+                <table className="s-admin-event-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>الاسم</th>
+                      <th>الحالة</th>
+                      <th>الألعاب</th>
+                      <th>تاريخ الإنشاء</th>
+                      <th>تاريخ الانتهاء</th>
+                      <th>إجراءات</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accountsLoading && accounts.accounts.length === 0 ? (
+                      <tr><td colSpan="7"><div className="shimmer" style={{ height: '6rem' }} aria-hidden="true" /></td></tr>
+                    ) : accounts.accounts.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" style={{ textAlign: 'center', color: 'var(--ak-text-muted)', padding: 'var(--ak-space-4)' }}>
+                          {accountsView === 'pending' ? 'ما فيش حسابات بانتظار الموافقة.' : 'ما فيش حسابات مطابقة.'}
+                        </td>
+                      </tr>
+                    ) : accounts.accounts.map(a => (
+                      <tr key={a.id}>
+                        <td>{a.id}</td>
+                        <td>
+                          <span>{a.username || '—'}</span>
+                          {a.isAdmin && (
+                            <span className="s-admin-pill" style={{ marginInlineStart: '0.4rem', color: 'var(--ak-gold)' }}>مشرف</span>
+                          )}
+                          {a.isGuest && (
+                            <span className="s-admin-pill" style={{ marginInlineStart: '0.4rem', opacity: 0.6 }}>ضيف</span>
+                          )}
+                        </td>
+                        <td>
+                          <span style={{
+                            color: a.status === 'pending'  ? 'var(--ak-gold)'          :
+                                   a.status === 'approved' ? 'var(--ak-text-strong)'    :
+                                   a.status === 'rejected' ? 'var(--ak-crimson-action)' :
+                                                             'var(--ak-text-muted)',
+                          }}>
+                            {a.status === 'pending'  ? 'انتظار' :
+                             a.status === 'approved' ? 'موافق'  :
+                             a.status === 'rejected' ? 'مرفوض'  : 'محذوف'}
+                          </span>
+                          {a.approvedAt && a.status === 'approved' && (
+                            <div style={{ fontSize: '0.75rem', color: 'var(--ak-text-muted)' }}>{a.approvedAt.slice(0, 10)}</div>
+                          )}
+                          {a.rejectedAt && a.status === 'rejected' && (
+                            <div style={{ fontSize: '0.75rem', color: 'var(--ak-text-muted)' }}>{a.rejectedAt.slice(0, 10)}</div>
+                          )}
+                          {a.deletedAt && a.status === 'deleted' && (
+                            <div style={{ fontSize: '0.75rem', color: 'var(--ak-text-muted)' }}>{a.deletedAt.slice(0, 10)}</div>
+                          )}
+                        </td>
+                        <td>{a.gamesPlayed}</td>
+                        <td>{a.createdAt ? a.createdAt.slice(0, 10) : '—'}</td>
+                        <td>
+                          {a.isGuest && a.expiresAt ? (
+                            <span style={{ color: new Date(a.expiresAt) < new Date() ? 'var(--ak-crimson-action)' : 'inherit' }}>
+                              {a.expiresAt.slice(0, 10)}
+                            </span>
+                          ) : '—'}
+                        </td>
+                        <td>
+                          {a.isAdmin ? (
+                            <span style={{ color: 'var(--ak-text-muted)', fontSize: '0.8rem' }}>محمي</span>
+                          ) : (
+                            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                              {(a.status === 'pending' || a.status === 'rejected') && (
+                                <button
+                                  type="button"
+                                  className="s-admin-pill"
+                                  style={{ color: 'var(--ak-text-strong)', cursor: 'pointer' }}
+                                  onClick={() => setAccountAction({ id: a.id, action: 'approve', username: a.username })}
+                                >
+                                  موافقة
+                                </button>
+                              )}
+                              {a.status !== 'rejected' && a.status !== 'deleted' && !a.isGuest && (
+                                <button
+                                  type="button"
+                                  className="s-admin-pill"
+                                  style={{ color: 'var(--ak-crimson-action)', cursor: 'pointer' }}
+                                  onClick={() => setAccountAction({ id: a.id, action: 'reject', username: a.username })}
+                                >
+                                  رفض
+                                </button>
+                              )}
+                              {a.status !== 'deleted' && (
+                                <button
+                                  type="button"
+                                  className="s-admin-pill"
+                                  style={{ color: 'var(--ak-text-muted)', cursor: 'pointer' }}
+                                  onClick={() => setAccountAction({ id: a.id, action: 'delete', username: a.username })}
+                                >
+                                  حذف
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
-          {accountsView === 'all' && accounts.total > USERS_PAGE_SIZE && (
-            <div className="s-admin-pagination">
-              <button
-                type="button"
-                className="s-admin-pill"
-                disabled={accountsOffset === 0 || accountsLoading}
-                onClick={() => loadAccounts('all', Math.max(0, accountsOffset - USERS_PAGE_SIZE))}
-              >
-                السابق
-              </button>
-              <span>
-                {accountsOffset + 1}–{Math.min(accountsOffset + USERS_PAGE_SIZE, accounts.total)} من {accounts.total}
-              </span>
-              <button
-                type="button"
-                className="s-admin-pill"
-                disabled={accountsOffset + USERS_PAGE_SIZE >= accounts.total || accountsLoading}
-                onClick={() => loadAccounts('all', accountsOffset + USERS_PAGE_SIZE)}
-              >
-                التالي
-              </button>
-            </div>
+              {accountsView === 'all' && accounts.total > ACCOUNTS_PAGE_SIZE && (
+                <div className="s-admin-pagination">
+                  <button
+                    type="button"
+                    className="s-admin-pill"
+                    disabled={accountsOffset === 0 || accountsLoading}
+                    onClick={() => loadAccounts('all', Math.max(0, accountsOffset - ACCOUNTS_PAGE_SIZE), accountsFilter, accountsSearch)}
+                  >
+                    السابق
+                  </button>
+                  <span>
+                    {accountsOffset + 1}–{Math.min(accountsOffset + ACCOUNTS_PAGE_SIZE, accounts.total)} من {accounts.total}
+                  </span>
+                  <button
+                    type="button"
+                    className="s-admin-pill"
+                    disabled={accountsOffset + ACCOUNTS_PAGE_SIZE >= accounts.total || accountsLoading}
+                    onClick={() => loadAccounts('all', accountsOffset + ACCOUNTS_PAGE_SIZE, accountsFilter, accountsSearch)}
+                  >
+                    التالي
+                  </button>
+                </div>
+              )}
+
+              <div style={{ marginTop: 'var(--ak-space-3)', textAlign: 'end' }}>
+                <AkButton
+                  variant="ghost"
+                  onClick={() => loadAccounts(accountsView, accountsView === 'all' ? accountsOffset : 0, accountsFilter, accountsSearch)}
+                  disabled={accountsLoading}
+                >
+                  تحديث
+                </AkButton>
+              </div>
+            </>
           )}
 
-          <div style={{ marginTop: 'var(--ak-space-3)', textAlign: 'end' }}>
-            <AkButton variant="ghost" onClick={() => loadAccounts(accountsView, accountsOffset)} disabled={accountsLoading}>
-              تحديث
-            </AkButton>
-          </div>
+          {/* Maintenance panel */}
+          {accountsView === 'maintenance' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--ak-space-4)' }}>
+
+              {/* Cleanup expired guests */}
+              <div style={{ border: '1px solid var(--ak-border)', borderRadius: 'var(--ak-radius-md)', padding: 'var(--ak-space-3)' }}>
+                <h3 className="section-title" style={{ marginTop: 0 }}>تنظيف الضيوف المنتهيين</h3>
+                <p style={{ color: 'var(--ak-text-muted)', marginBottom: 'var(--ak-space-3)', fontSize: '0.9rem' }}>
+                  حذف ناعم لحسابات الضيوف التي انتهت صلاحيتها. لا يحذف سجلات الجلسات أو بيانات المشاركة.
+                </p>
+
+                {cleanupError && (
+                  <div className="s-auth-error" style={{ marginBottom: 'var(--ak-space-2)' }}>{cleanupError}</div>
+                )}
+
+                {!cleanupPreview ? (
+                  <AkButton variant="ghost" onClick={handleCleanupDryRun} disabled={cleanupLoading}>
+                    {cleanupLoading ? 'جاري الفحص...' : 'فحص مسبق dry-run'}
+                  </AkButton>
+                ) : (
+                  <div>
+                    <div style={{
+                      background: 'var(--ak-crimson-bg-muted)',
+                      border: '1px solid var(--ak-border-red)',
+                      borderRadius: 'var(--ak-radius-md)',
+                      padding: 'var(--ak-space-2)',
+                      marginBottom: 'var(--ak-space-2)',
+                    }}>
+                      <p style={{ marginBottom: 'var(--ak-space-1)', fontWeight: 600 }}>
+                        عدد الحسابات المؤهلة للحذف:{' '}
+                        <span style={{ color: 'var(--ak-crimson-action)' }}>{cleanupPreview.count}</span>
+                      </p>
+                      {cleanupPreview.sample.length > 0 && (
+                        <ul style={{ margin: 0, paddingInlineStart: '1rem', color: 'var(--ak-text-muted)', fontSize: '0.85rem' }}>
+                          {cleanupPreview.sample.slice(0, 5).map(s => (
+                            <li key={s.id}>
+                              {s.username || `#${s.id}`} — انتهى: {s.expiresAt ? s.expiresAt.slice(0, 10) : '—'}
+                            </li>
+                          ))}
+                          {cleanupPreview.sample.length > 5 && <li>وغيرهم…</li>}
+                        </ul>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 'var(--ak-space-2)', flexWrap: 'wrap' }}>
+                      {cleanupPreview.count > 0 && (
+                        <AkButton variant="primary" onClick={handleCleanupConfirm} disabled={cleanupConfirming}>
+                          {cleanupConfirming ? 'جاري الحذف...' : `تأكيد حذف ${cleanupPreview.count} حساب`}
+                        </AkButton>
+                      )}
+                      <AkButton variant="ghost" onClick={() => { setCleanupPreview(null); setCleanupError(''); }}>
+                        إلغاء
+                      </AkButton>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Purge non-admin accounts */}
+              <div style={{
+                border: '1px solid var(--ak-border-red)',
+                borderRadius: 'var(--ak-radius-md)',
+                padding: 'var(--ak-space-3)',
+                background: 'var(--ak-crimson-bg-muted)',
+              }}>
+                <h3 className="section-title" style={{ marginTop: 0, color: 'var(--ak-crimson-action)' }}>
+                  حذف جميع الحسابات غير المشرفين
+                </h3>
+                <p style={{ color: 'var(--ak-text-muted)', marginBottom: 'var(--ak-space-3)', fontSize: '0.9rem' }}>
+                  عملية خطرة: تحذف ناعماً جميع الحسابات المسجَّلة وحسابات الضيوف غير المحذوفة بالفعل.
+                  المشرفون محميون. البيانات المرتبطة (الجلسات) تُحفظ.
+                </p>
+
+                {purgeError && (
+                  <div className="s-auth-error" style={{ marginBottom: 'var(--ak-space-2)' }}>{purgeError}</div>
+                )}
+
+                {!purgePreview ? (
+                  <AkButton variant="ghost" onClick={handlePurgeDryRun} disabled={purgeLoading}>
+                    {purgeLoading ? 'جاري الفحص...' : 'فحص مسبق dry-run'}
+                  </AkButton>
+                ) : (
+                  <div>
+                    <div style={{
+                      background: 'rgba(0,0,0,0.25)',
+                      border: '1px solid var(--ak-border-red)',
+                      borderRadius: 'var(--ak-radius-md)',
+                      padding: 'var(--ak-space-2)',
+                      marginBottom: 'var(--ak-space-2)',
+                    }}>
+                      <p style={{ marginBottom: 'var(--ak-space-1)', fontWeight: 600 }}>
+                        عدد الحسابات المؤهلة للحذف:{' '}
+                        <span style={{ color: 'var(--ak-crimson-action)' }}>{purgePreview.count}</span>
+                      </p>
+                      {purgePreview.sample.length > 0 && (
+                        <ul style={{ margin: 0, paddingInlineStart: '1rem', color: 'var(--ak-text-muted)', fontSize: '0.85rem' }}>
+                          {purgePreview.sample.slice(0, 5).map(s => (
+                            <li key={s.id}>{s.username || `#${s.id}`} ({s.status})</li>
+                          ))}
+                          {purgePreview.sample.length > 5 && <li>وغيرهم…</li>}
+                        </ul>
+                      )}
+                    </div>
+
+                    {purgePreview.count > 0 && (
+                      <div style={{ marginBottom: 'var(--ak-space-2)' }}>
+                        <label className="s-admin-rangepicker-field">
+                          <span style={{ color: 'var(--ak-crimson-action)' }}>
+                            اكتب <code>DELETE_NON_ADMIN_ACCOUNTS</code> للتأكيد:
+                          </span>
+                          <input
+                            type="text"
+                            value={purgeConfirmText}
+                            onChange={e => setPurgeConfirmText(e.target.value)}
+                            placeholder="DELETE_NON_ADMIN_ACCOUNTS"
+                            style={{ fontFamily: 'monospace' }}
+                          />
+                        </label>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: 'var(--ak-space-2)', flexWrap: 'wrap' }}>
+                      {purgePreview.count > 0 && (
+                        <AkButton
+                          variant="primary"
+                          onClick={handlePurgeConfirm}
+                          disabled={purgeConfirming || purgeConfirmText !== 'DELETE_NON_ADMIN_ACCOUNTS'}
+                          style={{ opacity: purgeConfirmText !== 'DELETE_NON_ADMIN_ACCOUNTS' ? 0.45 : 1 }}
+                        >
+                          {purgeConfirming ? 'جاري الحذف...' : `تأكيد حذف ${purgePreview.count} حساب`}
+                        </AkButton>
+                      )}
+                      <AkButton variant="ghost" onClick={() => { setPurgePreview(null); setPurgeConfirmText(''); setPurgeError(''); }}>
+                        إلغاء
+                      </AkButton>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </section>
       )}
 
+      {/* ------------------------------------------------------------------ */}
+      {/* Games                                                               */}
+      {/* ------------------------------------------------------------------ */}
       {tab === 'games' && (
         <section className="s-admin-section">
           <AdminTimeRangePicker value={range} onChange={setRange} />
@@ -563,6 +821,9 @@ export default function AdminDashboard() {
         </section>
       )}
 
+      {/* ------------------------------------------------------------------ */}
+      {/* AI                                                                  */}
+      {/* ------------------------------------------------------------------ */}
       {tab === 'ai' && (
         <section className="s-admin-section">
           <AdminTimeRangePicker value={range} onChange={setRange} />
@@ -638,6 +899,9 @@ export default function AdminDashboard() {
         </section>
       )}
 
+      {/* ------------------------------------------------------------------ */}
+      {/* Events                                                              */}
+      {/* ------------------------------------------------------------------ */}
       {tab === 'events' && (
         <section className="s-admin-section">
           <div className="s-admin-rangepicker-inputs" style={{ marginBottom: 'var(--ak-space-3)' }}>
@@ -663,84 +927,6 @@ export default function AdminDashboard() {
             offset={eventOffset}
             onChangePage={(off) => loadEvents(off)}
           />
-        </section>
-      )}
-
-      {tab === 'users' && (
-        <section className="s-admin-section">
-          <div className="s-admin-rangepicker-inputs" style={{ marginBottom: 'var(--ak-space-3)' }}>
-            <label className="s-admin-rangepicker-field" style={{ flex: 1 }}>
-              <span>البحث</span>
-              <input
-                type="text"
-                value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
-                placeholder="اسم مستخدم"
-              />
-            </label>
-            <AkButton variant="ghost" onClick={() => loadUsers(0)} disabled={usersLoading}>
-              بحث
-            </AkButton>
-          </div>
-          {usersError && (
-            <div className="s-auth-error" style={{ marginBottom: 'var(--ak-space-3)' }}>{usersError}</div>
-          )}
-          <div className="s-admin-event-table-scroll">
-            <table className="s-admin-event-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>الاسم</th>
-                  <th>نوع الحساب</th>
-                  <th>الألعاب</th>
-                  <th>تاريخ الإنشاء</th>
-                </tr>
-              </thead>
-              <tbody>
-                {usersLoading && users.users.length === 0 ? (
-                  <tr><td colSpan="5"><div className="shimmer" style={{ height: '6rem' }} aria-hidden="true" /></td></tr>
-                ) : users.users.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" style={{ textAlign: 'center', color: 'var(--ak-text-muted)', padding: 'var(--ak-space-4)' }}>
-                      ما فيش مستخدمين مطابقين.
-                    </td>
-                  </tr>
-                ) : users.users.map(u => (
-                  <tr key={u.id}>
-                    <td>{u.id}</td>
-                    <td>
-                      {u.username || '—'}
-                      {u.isAdmin && <span className="s-admin-pill" style={{ marginInlineStart: '0.4rem' }}>مشرف</span>}
-                    </td>
-                    <td>{u.isGuest ? 'ضيف' : 'مسجَّل'}</td>
-                    <td>{u.gamesPlayed}</td>
-                    <td>{u.createdAt ? u.createdAt.slice(0, 10) : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="s-admin-pagination">
-            <button
-              type="button"
-              className="s-admin-pill"
-              disabled={userOffset === 0 || usersLoading}
-              onClick={() => loadUsers(Math.max(0, userOffset - USERS_PAGE_SIZE))}
-            >
-              السابق
-            </button>
-            <span>
-              {userOffset + 1}–{Math.min(userOffset + USERS_PAGE_SIZE, users.total)} من {users.total}
-            </span>
-            <button
-              type="button"
-              className="s-admin-pill"
-              disabled={userOffset + USERS_PAGE_SIZE >= users.total || usersLoading}
-              onClick={() => loadUsers(userOffset + USERS_PAGE_SIZE)}
-            >
-              التالي
-            </button>
-          </div>
         </section>
       )}
 
