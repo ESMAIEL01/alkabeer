@@ -59,11 +59,13 @@ export default function AuthPage() {
         <h1>الأرشيف المختوم بانتظارك</h1>
         <p className="auth-sub">سجّل دخولك أو ادخل كضيف لتبدأ التحقيق.</p>
 
-        <div className="s-auth-tabs" role="tablist">
+        <div className="s-auth-tabs" role="tablist" aria-label="نوع الدخول">
           <button
             role="tab"
             type="button"
-            aria-pressed={activeTab === 'login'}
+            id="tab-login"
+            aria-selected={activeTab === 'login'}
+            aria-controls="tabpanel-auth"
             className="s-auth-tab"
             onClick={() => { setActiveTab('login'); setError(''); }}
           >
@@ -72,7 +74,9 @@ export default function AuthPage() {
           <button
             role="tab"
             type="button"
-            aria-pressed={activeTab === 'register'}
+            id="tab-register"
+            aria-selected={activeTab === 'register'}
+            aria-controls="tabpanel-auth"
             className="s-auth-tab"
             onClick={() => { setActiveTab('register'); setError(''); }}
           >
@@ -81,7 +85,9 @@ export default function AuthPage() {
           <button
             role="tab"
             type="button"
-            aria-pressed={activeTab === 'guest'}
+            id="tab-guest"
+            aria-selected={activeTab === 'guest'}
+            aria-controls="tabpanel-auth"
             className="s-auth-tab"
             onClick={() => { setActiveTab('guest'); setError(''); }}
           >
@@ -89,10 +95,20 @@ export default function AuthPage() {
           </button>
         </div>
 
-        {error && <div className="s-auth-error">⚠ {error}</div>}
+        {error && <div className="s-auth-error" role="alert">{error}</div>}
 
-        <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--ak-space-3)' }}>
+        <form
+          id="tabpanel-auth"
+          role="tabpanel"
+          aria-labelledby={`tab-${activeTab}`}
+          onSubmit={handleAuth}
+          style={{ display: 'flex', flexDirection: 'column', gap: 'var(--ak-space-3)' }}
+        >
+          <label htmlFor="auth-username" className="sr-only">
+            {activeTab === 'guest' ? 'اسمك كضيف (اختياري)' : 'اسم المستخدم'}
+          </label>
           <input
+            id="auth-username"
             type="text"
             placeholder={placeholderName}
             className="s-auth-field"
@@ -101,14 +117,18 @@ export default function AuthPage() {
             required={activeTab !== 'guest'}
           />
           {activeTab !== 'guest' && (
-            <input
-              type="password"
-              placeholder="شفرة المرور"
-              className="s-auth-field"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
+            <>
+              <label htmlFor="auth-password" className="sr-only">شفرة المرور</label>
+              <input
+                id="auth-password"
+                type="password"
+                placeholder="شفرة المرور"
+                className="s-auth-field"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+            </>
           )}
           <AkButton
             variant="primary"

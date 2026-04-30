@@ -803,10 +803,9 @@ export default function GameBoard() {
         <ConnectionBanner status={connectionStatus} />
         <div className="container animate-fade-in" style={{ alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
           <div className="card text-center max-w-md mx-auto" style={{ padding: '2.5rem' }}>
-            <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🚪</div>
             <h2 className="cinematic-glow mb-3">المضيف أنهى الجلسة</h2>
             <p className="text-muted mb-6">يلا نبدأ غرفة جديدة؟</p>
-            <button className="btn-primary" onClick={() => navigate('/lobby')}>ارجع للساحة</button>
+            <button className="ak-btn ak-btn-primary" onClick={() => navigate('/lobby')}>ارجع للساحة</button>
           </div>
         </div>
       </>
@@ -819,10 +818,9 @@ export default function GameBoard() {
         <ConnectionBanner status={connectionStatus} />
         <div className="container animate-fade-in" style={{ alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
           <div className="card text-center max-w-md mx-auto" style={{ padding: '2.5rem' }}>
-            <div style={{ fontSize: '4rem', marginBottom: '1rem', filter: 'drop-shadow(0 0 20px rgba(229,9,20,0.4))' }}>🚪</div>
             <h2 className="cinematic-glow mb-4">تعذر استعادة الغرفة</h2>
             <p className="text-muted mb-6">الغرفة انتهت أو غير موجودة. ارجع للساحة وابدأ غرفة جديدة.</p>
-            <button className="btn-primary" onClick={() => navigate('/lobby')}>ارجع للساحة</button>
+            <button className="ak-btn ak-btn-primary" onClick={() => navigate('/lobby')}>ارجع للساحة</button>
           </div>
         </div>
       </>
@@ -834,7 +832,7 @@ export default function GameBoard() {
         <ConnectionBanner status={connectionStatus} />
         <div className="container animate-fade-in" style={{ alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
           <div className="card text-center max-w-md mx-auto" style={{ padding: '2.5rem' }}>
-            <div className="pulse-animation" style={{ fontSize: '5rem', marginBottom: '1rem', filter: 'drop-shadow(0 0 25px rgba(229,9,20,0.6))' }}>🔴</div>
+            <div className="ak-loading-dot pulse-animation" aria-hidden="true" />
             <h2 className="cinematic-glow mb-2">جاري استعادة حالة اللعبة...</h2>
             <p className="text-muted">الكبير بيفتح الأرشيف، استنى لحظة.</p>
             {roomId && (

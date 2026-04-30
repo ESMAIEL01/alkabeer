@@ -8,7 +8,7 @@ export default function ExplainPage() {
     <div className="container mt-4 animate-fade-in">
       <div className="flex justify-between items-center mb-4 border-b">
         <h2 className="golden-text">قوانين الساحة</h2>
-        <button className="btn-secondary" onClick={() => navigate(-1)} style={{ width: 'auto' }}>عودة</button>
+        <button className="ak-btn ak-btn-ghost" onClick={() => navigate(-1)} style={{ width: 'auto' }}>عودة</button>
       </div>
 
       <div className="card mx-auto max-w-md">
