@@ -1112,7 +1112,7 @@ export default function GameBoard() {
                 {canReady && (
                   <div className="s-ready-block" style={{ marginTop: 'var(--ak-space-5)', textAlign: 'center' }}>
                     {readyError && (
-                      <div className="s-vote-banner error" style={{ marginBottom: 'var(--ak-space-3)' }}>⚠ {readyError}</div>
+                      <div className="s-vote-banner error" style={{ marginBottom: 'var(--ak-space-3)' }}>{readyError}</div>
                     )}
                     {!iAmReady ? (
                       <button
@@ -1123,7 +1123,7 @@ export default function GameBoard() {
                         التصويت الآن
                       </button>
                     ) : (
-                      <div className="s-vote-banner waiting">✓ تم تسجيل استعدادك للتصويت</div>
+                      <div className="s-vote-banner waiting">تم تسجيل استعدادك للتصويت</div>
                     )}
                     <div className="progress" style={{ marginTop: 'var(--ak-space-3)' }}>
                       جاهز للتصويت: {readyProgress.ready} من {readyProgress.total}
@@ -1156,15 +1156,15 @@ export default function GameBoard() {
                 <p style={{ color: 'var(--ak-text-muted)', marginBottom: 'var(--ak-space-2)' }}>مين المشتبه فيه النوبة دي؟</p>
                 <div className="progress">صوّت {votingProgress.voted} من {votingProgress.total}</div>
 
-                {voteError    && <div className="s-vote-banner error">⚠ {voteError}</div>}
+                {voteError    && <div className="s-vote-banner error">{voteError}</div>}
                 {amIHost      && <div className="s-vote-banner host">المضيف لا يصوّت. تابع تقدّم اللاعبين.</div>}
                 {iAmEliminated && <div className="s-vote-banner elim">خرجت من دائرة الاتهام، لكن صوتك لسه مؤثر في الساحة.</div>}
                 {iHaveVoted && !everyoneVoted && (
-                  <div className="s-vote-banner waiting">✓ صوّتت — مستني باقي اللاعبين ({votingProgress.total - votingProgress.voted} متبقي)</div>
+                  <div className="s-vote-banner waiting">صوّتت — مستني باقي اللاعبين ({votingProgress.total - votingProgress.voted} متبقي)</div>
                 )}
-                {extError && <div className="s-vote-banner error">⚠ {extError}</div>}
+                {extError && <div className="s-vote-banner error">{extError}</div>}
                 {voteExt.activated && (Date.now() - extJustAddedAt) < 6000 && (
-                  <div className="s-vote-banner waiting">✓ تم تمديد التصويت 15 ثانية</div>
+                  <div className="s-vote-banner waiting">تم تمديد التصويت 15 ثانية</div>
                 )}
                 {/* Player-driven 15s extension. Threshold ceil(70%) of voting
                     participants (eliminated jurors included); one extension
@@ -1180,7 +1180,7 @@ export default function GameBoard() {
                         طلب 15 ثانية إضافية
                       </button>
                     ) : (
-                      <div className="s-vote-banner waiting" style={{ margin: 0 }}>✓ طلب التمديد متسجّل</div>
+                      <div className="s-vote-banner waiting" style={{ margin: 0 }}>طلب التمديد متسجّل</div>
                     )}
                     <div className="progress">
                       طلبات التمديد: {voteExt.requested} من {voteExt.total} · المطلوب {voteExt.required}
@@ -1198,7 +1198,8 @@ export default function GameBoard() {
                         disabled={!canVote}
                         onClick={() => canVote && handleVote(p.id)}
                       >
-                        <span>{p.username}</span>
+                        <span className="s-vote-monogram" aria-hidden>{initial(p.username)}</span>
+                        <span className="s-vote-name">{p.username}</span>
                       </button>
                     );
                   })}
@@ -1206,11 +1207,11 @@ export default function GameBoard() {
                     const skipSelected = myVote === 'skip';
                     return (
                       <button
-                        className={`s-vote-candidate${skipSelected ? ' selected skip' : ''}`}
+                        className={`s-vote-candidate skip-btn${skipSelected ? ' selected skip' : ''}`}
                         disabled={!canVote}
                         onClick={() => canVote && handleVote('skip')}
                       >
-                        <span>امتناع عن التصويت</span>
+                        <span className="s-vote-name">امتناع عن التصويت</span>
                       </button>
                     );
                   })()}
@@ -1264,14 +1265,10 @@ export default function GameBoard() {
             const accentClass = voteResult.reason === 'majority' && voteResult.wasMafiozo
               ? 'gold'
               : voteResult.reason === 'majority' ? 'crimson' : 'muted';
-            // Safe Unicode glyphs — no font dependency, no FOUT risk.
-            const glyph = voteResult.wasMafiozo ? '▲'
-                       : voteResult.eliminatedId ? '◆'
-                       : '◌';
             return (
               <div className="s-result animate-fade-in">
                 <span className="ak-overline">Verdict · Round {voteResult.round} / {totalClues}</span>
-                <span className={`s-result-icon ${accentClass}`} aria-hidden style={{ fontSize: '5rem', display: 'block', marginTop: 'var(--ak-space-3)', lineHeight: 1 }}>{glyph}</span>
+                <div className={`s-verdict-seal ${accentClass}`} aria-hidden>{voteResult.round}</div>
                 <h1 className={accentClass}>{titleText}</h1>
                 <p className="s-result-sub">{subText}</p>
                 {voteResultFlavor && voteResultFlavor.line && (
@@ -1318,8 +1315,8 @@ export default function GameBoard() {
                 <span className="icon" aria-hidden style={{ fontSize: '1.2rem', lineHeight: 1, color: 'var(--ak-gold)' }}>▲</span>
               </div>
 
-              {hostError && <div className="s-host-toast err">⚠ {hostError}</div>}
-              {hostSuccess && !hostError && <div className="s-host-toast ok">✓ {hostSuccess}</div>}
+              {hostError && <div className="s-host-toast err">{hostError}</div>}
+              {hostSuccess && !hostError && <div className="s-host-toast ok">{hostSuccess}</div>}
 
               {(gameState === 'CLUE_REVEAL' || gameState === 'VOTING' || gameState === 'VOTE_RESULT' || gameState === 'PUBLIC_CHARACTER_OVERVIEW' || gameState === 'ROLE_REVEAL') && (
                 <>
