@@ -539,6 +539,7 @@ export default function GameBoard() {
   const [hostSuccess, setHostSuccess] = useState(''); // brief confirmation for host actions
   const [sessionEnded, setSessionEnded] = useState(false);
   const [finalReveal, setFinalReveal] = useState(null);
+  const [roleConfirmed, setRoleConfirmed] = useState(false);
   // Optional AI polish lines (C2 / C3). All start null and remain so when
   // the AI fails or is slow — deterministic copy renders on its own.
   const [voteResultFlavor, setVoteResultFlavor] = useState(null);     // { round, line }
@@ -546,6 +547,9 @@ export default function GameBoard() {
   const [finalRevealAiPolish, setFinalRevealAiPolish] = useState(null);   // { heroSubtitle?, ... }
   // Connection: 'connected' | 'reconnecting' | 'disconnected' | 'recently_reconnected'
   const [connectionStatus, setConnectionStatus] = useState(socket.connected ? 'connected' : 'reconnecting');
+
+  // Reset confirm state whenever a new roleCard arrives.
+  useEffect(() => { setRoleConfirmed(false); }, [roleCard]);
 
   // Reset per-round transient state when we enter a new VOTING round.
   useEffect(() => {
@@ -897,7 +901,7 @@ export default function GameBoard() {
           )}
         </div>
       ) : (
-        // -------- Player view: private role card -----------------------
+        // -------- Player view: cinematic role card ---------------------
         <div className="s-reveal">
           <div className="s-reveal-shell">
             <div className="s-reveal-timer">00:{Math.max(0, timer).toString().padStart(2, '0')}</div>
@@ -909,39 +913,71 @@ export default function GameBoard() {
                 <h3 className="character-name" style={{ font: 'var(--ak-t-h3)' }}>الكبير بيوزع البطاقات</h3>
                 <p className="character-role">استنى لحظة...</p>
               </div>
+            ) : roleConfirmed ? (
+              <div className="role-card-confirmed animate-fade-in">
+                <p className="ak-overline" style={{ textAlign: 'center' }}>الدور مؤكد ومحفوظ</p>
+                <p style={{ color: 'var(--ak-text-faint)', font: 'var(--ak-t-caption)', textAlign: 'center', marginTop: 'var(--ak-space-3)' }}>
+                  لا تكشف بطاقتك. استنى إشارة الكبير.
+                </p>
+              </div>
             ) : (
-              <div className={`role-card animate-fade-in${isBlind ? ' blind' : ''}`}>
-                <span className="ov">Your Identity</span>
-                <div className="seal" aria-hidden>
-                  {isBlind ? '?' : (roleCard.storyCharacterName || '?').trim().charAt(0)}
-                </div>
-                <div>
-                  <h3 className="character-name">{roleCard.storyCharacterName}</h3>
-                  <p className="character-role">{roleCard.storyCharacterRole}</p>
-                </div>
+              <div className={`role-card role-card-cinematic${isBlind ? ' blind' : ''} ${roleCard.gameRole === 'mafiozo' ? 'is-mafiozo' : roleCard.gameRole === 'obvious_suspect' ? 'is-suspect' : 'is-innocent'}`}>
 
-                <div className="role-section">
-                  <span className="label">التفصيلة المريبة</span>
-                  <div className="value">!!{roleCard.suspiciousDetail}!!</div>
-                </div>
+                {/* Overline */}
+                <span className="ov">YOUR SECRET IDENTITY · هويتك السرية</span>
 
+                {/* Dominant role name */}
                 {!isBlind && roleCard.gameRole && (
-                  <div className={`secret-banner${roleCard.gameRole === 'mafiozo' ? '' : roleCard.gameRole === 'obvious_suspect' ? ' gold' : ' muted'}`}>
-                    <span className="label-en">Hidden Identity</span>
-                    <h3>{roleCard.roleLabelArabic}</h3>
-                    {roleCard.objective && <p>{roleCard.objective}</p>}
+                  <div className="reveal-role">
+                    <h2 className="reveal-role-name">{roleCard.roleLabelArabic}</h2>
+                  </div>
+                )}
+
+                {/* Character identity */}
+                <div className="reveal-character">
+                  <div className="seal" aria-hidden>
+                    {isBlind ? '?' : (roleCard.storyCharacterName || '?').trim().charAt(0)}
+                  </div>
+                  <div className="reveal-character-text">
+                    <h3 className="character-name">{roleCard.storyCharacterName}</h3>
+                    <p className="character-role">{roleCard.storyCharacterRole}</p>
+                  </div>
+                </div>
+
+                {/* Objective */}
+                {!isBlind && roleCard.objective && (
+                  <div className="role-section">
+                    <span className="label">المهمة</span>
+                    <div className="value">{roleCard.objective}</div>
                   </div>
                 )}
 
                 {isBlind && (
-                  <div className="secret-banner">
-                    <span className="label-en">Blind Mode</span>
-                    <h3>الحقيقة مش كاملة عند حد</h3>
-                    <p>{roleCard.objective || 'راقب، اسأل، ودافع عن نفسك. الحقيقة الكاملة بتظهر في الكشف النهائي.'}</p>
+                  <div className="role-section">
+                    <span className="label">وضع أعمى</span>
+                    <div className="value">{roleCard.objective || 'راقب، اسأل، ودافع عن نفسك. الحقيقة الكاملة بتظهر في الكشف النهائي.'}</div>
                   </div>
                 )}
 
-                <p className="warning">⚠ {roleCard.warning || 'ممنوع تكشف بطاقتك للاعبين التانيين.'}</p>
+                {/* Suspicious detail */}
+                {roleCard.suspiciousDetail && (
+                  <div className="role-section">
+                    <span className="label">التفصيلة المريبة</span>
+                    <div className="value">{roleCard.suspiciousDetail}</div>
+                  </div>
+                )}
+
+                {/* Confirm CTA */}
+                <button
+                  className="ak-btn ak-btn-primary"
+                  onClick={() => setRoleConfirmed(true)}
+                  style={{ width: '100%', marginTop: 'var(--ak-space-2)' }}
+                >
+                  تأكيد وإخفاء البطاقة
+                </button>
+
+                {/* Warning stamp */}
+                <p className="warning">{roleCard.warning || 'لا تكشف بطاقتك للاعبين التانيين.'}</p>
               </div>
             )}
           </div>

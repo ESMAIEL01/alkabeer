@@ -718,7 +718,7 @@ html {
   background: radial-gradient(circle at 50% 50%, rgba(229,9,20,0.18) 0%, transparent 60%);
   pointer-events: none;
 }
-.s-reveal-shell { position: relative; width: min(420px, 92vw); }
+.s-reveal-shell { position: relative; width: min(520px, 92vw); }
 .s-reveal-timer {
   text-align: center;
   font: var(--ak-t-mono);
@@ -794,6 +794,113 @@ html {
   text-align: center;
   font: var(--ak-t-caption);
   color: var(--ak-text-muted);
+}
+
+/* ===========================================================================
+ * CINEMATIC ROLE REVEAL — upgrades to .role-card
+ * Extends the existing playing-card pattern into a full-screen reveal moment.
+ * =========================================================================== */
+
+@keyframes revealIn {
+  from { opacity: 0; transform: scale(0.93) translateY(14px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+
+/* Cinematic base — replaces animate-fade-in for the revealed card */
+.role-card-cinematic {
+  animation: revealIn var(--ak-dur-cinematic) var(--ak-ease-cinematic) both;
+  gap: var(--ak-space-5);
+}
+
+/* Role-specific border + glow overrides */
+.role-card.is-mafiozo {
+  border-color: var(--ak-crimson-stage);
+  box-shadow: 0 0 80px var(--ak-crimson-glow), inset 0 0 40px rgba(0,0,0,.65);
+}
+.role-card.is-mafiozo::before { border-color: var(--ak-border-red); }
+
+.role-card.is-suspect {
+  border-color: var(--ak-gold);
+  box-shadow: 0 0 60px var(--ak-gold-glow), inset 0 0 40px rgba(0,0,0,.6);
+}
+.role-card.is-suspect::before { border-color: var(--ak-border-gold); }
+
+.role-card.is-innocent {
+  border-color: var(--ak-border-soft-strong);
+  box-shadow: var(--ak-shadow-elevated);
+}
+
+/* Dominant role name — the hero text, must be the first thing eyes land on */
+.reveal-role {
+  text-align: center;
+  padding: var(--ak-space-3) 0;
+  border-bottom: 1px solid var(--ak-border-soft);
+}
+
+.reveal-role-name {
+  font: 800 3rem/1.05 var(--ak-font-display);
+  letter-spacing: var(--ak-tracking-tight);
+  color: var(--ak-text-strong);
+  margin: 0;
+}
+
+.role-card.is-mafiozo .reveal-role-name {
+  color: var(--ak-crimson-stage);
+  text-shadow: 0 0 30px var(--ak-crimson-glow);
+}
+
+.role-card.is-suspect .reveal-role-name {
+  color: var(--ak-gold);
+  text-shadow: 0 0 20px var(--ak-gold-glow);
+}
+
+/* Character identity row — seal + name side by side */
+.reveal-character {
+  display: flex;
+  align-items: center;
+  gap: var(--ak-space-4);
+  padding: var(--ak-space-3) 0;
+  border-top: 1px solid var(--ak-border-soft);
+  border-bottom: 1px solid var(--ak-border-soft);
+}
+
+.reveal-character .seal {
+  width: 64px;
+  height: 64px;
+  margin: 0;
+  font-size: 1.75rem;
+  flex-shrink: 0;
+}
+
+.reveal-character-text { flex: 1; text-align: right; }
+
+.reveal-character .character-name {
+  text-align: right;
+  font: var(--ak-t-h3);
+  text-shadow: none;
+  margin: 0 0 var(--ak-space-1);
+}
+
+.reveal-character .character-role { text-align: right; }
+
+/* Confirmed/hidden state — minimal, no data exposed */
+.role-card-confirmed {
+  background: var(--ak-surface-1);
+  border: 1.5px solid var(--ak-border-soft-strong);
+  border-radius: var(--ak-radius-card);
+  padding: var(--ak-space-7) var(--ak-space-6);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  box-shadow: var(--ak-shadow-elevated);
+  text-align: center;
+}
+
+@media (max-width: 480px) {
+  .s-reveal-shell { width: min(460px, 92vw); }
+  .reveal-role-name { font-size: 2.4rem; }
+  .reveal-character { gap: var(--ak-space-3); }
 }
 
 /* Host overview during ROLE_REVEAL — simple list, no glow */
