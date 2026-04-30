@@ -961,8 +961,9 @@ html {
 /* ----- VOTING — judgment table ------------------------------------------- */
 .s-vote { width: 100%; max-width: 760px; text-align: center; }
 .s-vote h1 {
-  font: var(--ak-t-h1);
-  margin: var(--ak-space-3) 0 var(--ak-space-2);
+  font: var(--ak-t-display);
+  letter-spacing: var(--ak-tracking-tight);
+  margin: var(--ak-space-4) 0 var(--ak-space-3);
 }
 .s-vote .progress {
   font: var(--ak-t-mono);
@@ -1024,17 +1025,71 @@ html {
   color: var(--ak-text-strong);
 }
 
+/* Skip button — no monogram, text only, subdued */
+.s-vote-candidate.skip-btn { font: var(--ak-t-label); color: var(--ak-text-muted); }
+.s-vote-candidate.skip-btn.selected { color: var(--ak-text-strong); }
+
+/* Suspect monogram circle inside candidate button */
+.s-vote-monogram {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: var(--ak-surface-2);
+  border: 1.5px solid var(--ak-border-soft-strong);
+  display: grid; place-items: center;
+  font: 700 1.15rem/1 var(--ak-font-display);
+  color: var(--ak-text-muted);
+  flex-shrink: 0;
+  transition:
+    background var(--ak-dur-fast) var(--ak-ease-cinematic),
+    border-color var(--ak-dur-fast) var(--ak-ease-cinematic),
+    color var(--ak-dur-fast) var(--ak-ease-cinematic);
+}
+
+.s-vote-candidate.selected .s-vote-monogram {
+  background: rgba(229, 9, 20, 0.28);
+  border-color: var(--ak-crimson-stage);
+  color: var(--ak-text-strong);
+}
+
+.s-vote-name { flex: 1; }
+
 /* ----- VOTE_RESULT — verdict panel --------------------------------------- */
 .s-result { width: 100%; max-width: 640px; text-align: center; }
-.s-result-icon {
-  font: 800 3rem/1 var(--ak-font-display);
-  margin-bottom: var(--ak-space-3);
+
+/* Verdict seal — round number in an outcome-coloured circle */
+.s-verdict-seal {
+  width: 100px; height: 100px;
+  border-radius: 50%;
+  margin: var(--ak-space-5) auto var(--ak-space-4);
+  display: grid; place-items: center;
+  font: 800 2.2rem/1 var(--ak-font-display);
+  letter-spacing: var(--ak-tracking-tight);
+  animation: revealIn var(--ak-dur-cinematic) var(--ak-ease-cinematic) both;
 }
-.s-result-icon.gold   { color: var(--ak-gold); text-shadow: var(--ak-glow-gold-reveal); }
-.s-result-icon.crimson { color: var(--ak-crimson-stage); text-shadow: var(--ak-glow-red-reveal); }
-.s-result-icon.muted   { color: var(--ak-text-muted); }
+
+.s-verdict-seal.gold {
+  background: rgba(212, 175, 55, 0.12);
+  border: 2px solid var(--ak-gold);
+  color: var(--ak-gold);
+  box-shadow: var(--ak-glow-gold-seal);
+}
+
+.s-verdict-seal.crimson {
+  background: var(--ak-crimson-bg-muted);
+  border: 2px solid var(--ak-crimson-stage);
+  color: var(--ak-crimson-stage);
+  box-shadow: var(--ak-glow-red-urgent);
+}
+
+.s-verdict-seal.muted {
+  background: var(--ak-surface-2);
+  border: 2px solid var(--ak-border-soft-strong);
+  color: var(--ak-text-faint);
+}
+
 .s-result h1 {
-  font: var(--ak-t-h1);
+  font: var(--ak-t-display);
+  letter-spacing: var(--ak-tracking-tight);
   margin: 0 0 var(--ak-space-3);
 }
 .s-result h1.gold    { color: var(--ak-gold); text-shadow: var(--ak-glow-gold-reveal); }
