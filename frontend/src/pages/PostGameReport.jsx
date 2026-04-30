@@ -19,7 +19,7 @@ export default function PostGameReport() {
   return (
     <div className="container animate-fade-in text-center mt-4">
       <h2 style={{ fontSize: '2.5rem', color: mockReport.mafiozoCaught ? 'var(--text-main)' : 'var(--accent-red)' }} className="mb-4">
-        {mockReport.mafiozoCaught ? "🎉 انتصر المستثمرون 🎉" : "💀 المافيوزو انتصر 💀"}
+        {mockReport.mafiozoCaught ? "انتصر المستثمرون" : "المافيوزو انتصر"}
       </h2>
       
       <div className="card max-w-md mx-auto mb-4 text-right">
@@ -35,15 +35,15 @@ export default function PostGameReport() {
         </ul>
         
         <p className="cinematic-glow" style={{ fontSize: '1.2rem', color: 'var(--accent-gold)'}}>
-          "الدليل كان قدام عينيكم.. بس الأرشيف مسجل كل حاجة 🔴" - الكبير
+          "الدليل كان قدام عينيكم.. بس الأرشيف مسجل كل حاجة" - الكبير
         </p>
       </div>
 
       <div className="flex justify-center flex-wrap" style={{ gap: '1rem' }}>
-        <button className="btn-primary" style={{ width: 'auto' }} onClick={() => navigate('/lobby')}>
+        <button className="ak-btn ak-btn-primary" style={{ width: 'auto' }} onClick={() => navigate('/lobby')}>
           لعبة جديدة لنفس الفريق
         </button>
-        <button className="btn-secondary" style={{ width: 'auto' }} onClick={() => navigate('/profile')}>
+        <button className="ak-btn ak-btn-ghost" style={{ width: 'auto' }} onClick={() => navigate('/profile')}>
           إحصائياتي والألقاب
         </button>
       </div>
