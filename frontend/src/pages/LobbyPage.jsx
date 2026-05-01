@@ -51,10 +51,12 @@ function AiHostReadyPanel({ progress, imReady, busy, onToggle, error, amISuspect
     statusLine = 'اضغط جاهز، ولما 3 لاعبين يجهزوا الكبير هيبدأ القضية.';
   }
 
-  // Secondary line — always shows BOTH counts so the user understands
-  // the difference between "players present" and "players ready".
-  const secondaryLine = (!inProgress && enoughSuspects && customSeatGate)
-    ? `اللاعبون: ${total} • الجاهزون: ${ready} / ${required}`
+  // Secondary line — Phase 2A: only show the player count here. The
+  // ready/required count is already in `statusLine`, so repeating it
+  // doubles the cognitive load. Hide when "الكل جاهز" (status fully
+  // covers the situation) or before the quorum gate is met.
+  const secondaryLine = (!inProgress && enoughSuspects && customSeatGate && ready < required)
+    ? `الموجود في الغرفة: ${total} لاعبين`
     : null;
 
   return (

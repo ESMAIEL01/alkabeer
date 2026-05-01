@@ -9,11 +9,11 @@ import { getStoredUser } from '../services/api';
 // =============================================================================
 function ConnectionBanner({ status }) {
   if (status === 'connected') return null;
-  let cls = 'info', text = '';
+  let cls = 'info', text = '', role = 'status', live = 'polite';
   if (status === 'reconnecting') { cls = 'info'; text = 'إعادة الاتصال...'; }
-  else if (status === 'disconnected') { cls = 'warn'; text = 'انقطع الاتصال — جار المحاولة'; }
+  else if (status === 'disconnected') { cls = 'warn'; text = 'انقطع الاتصال — جار المحاولة'; role = 'alert'; live = 'assertive'; }
   else if (status === 'recently_reconnected') { cls = 'ok'; text = 'الاتصال رجع تاني ✓'; }
-  return <div className={`connection-banner ${cls}`}>{text}</div>;
+  return <div className={`connection-banner ${cls}`} role={role} aria-live={live}>{text}</div>;
 }
 
 // =============================================================================
@@ -904,7 +904,7 @@ export default function GameBoard() {
             <button className="ak-btn ak-btn-ghost" onClick={confirmEndSession}>إنهاء الجلسة</button>
           </div>
           {hostError && (
-            <div className="s-auth-error" style={{ marginTop: 'var(--ak-space-3)', maxWidth: '480px', marginInline: 'auto' }}>⚠ {hostError}</div>
+            <div className="s-auth-error" role="alert" style={{ marginTop: 'var(--ak-space-3)', maxWidth: '480px', marginInline: 'auto' }}>⚠ {hostError}</div>
           )}
         </div>
       ) : (
@@ -1004,7 +1004,7 @@ export default function GameBoard() {
               تخطّي العرض (اختياري)
             </button>
             {hostError && (
-              <div className="s-auth-error" style={{ marginTop: 'var(--ak-space-3)', maxWidth: '480px', marginInline: 'auto' }}>⚠ {hostError}</div>
+              <div className="s-auth-error" role="alert" style={{ marginTop: 'var(--ak-space-3)', maxWidth: '480px', marginInline: 'auto' }}>⚠ {hostError}</div>
             )}
           </div>
         )}
@@ -1141,7 +1141,7 @@ export default function GameBoard() {
                 {canReady && (
                   <div className="s-ready-block" style={{ marginTop: 'var(--ak-space-5)', textAlign: 'center' }}>
                     {readyError && (
-                      <div className="s-vote-banner error" style={{ marginBottom: 'var(--ak-space-3)' }}>{readyError}</div>
+                      <div className="s-vote-banner error" role="alert" style={{ marginBottom: 'var(--ak-space-3)' }}>{readyError}</div>
                     )}
                     {!iAmReady ? (
                       <button
@@ -1152,15 +1152,15 @@ export default function GameBoard() {
                         التصويت الآن
                       </button>
                     ) : (
-                      <div className="s-vote-banner waiting">تم تسجيل استعدادك للتصويت</div>
+                      <div className="s-vote-banner waiting" role="status">تم تسجيل استعدادك للتصويت</div>
                     )}
-                    <div className="progress" style={{ marginTop: 'var(--ak-space-3)' }}>
+                    <div className="progress" role="status" aria-live="polite" style={{ marginTop: 'var(--ak-space-3)' }}>
                       جاهز للتصويت: {readyProgress.ready} من {readyProgress.total}
                     </div>
                   </div>
                 )}
                 {amIHost && (
-                  <div className="progress" style={{ marginTop: 'var(--ak-space-4)', textAlign: 'center' }}>
+                  <div className="progress" role="status" aria-live="polite" style={{ marginTop: 'var(--ak-space-4)', textAlign: 'center' }}>
                     جاهز للتصويت: {readyProgress.ready} من {readyProgress.total}
                   </div>
                 )}
@@ -1183,17 +1183,17 @@ export default function GameBoard() {
                 <span className="ak-overline" style={{ color: 'var(--ak-crimson-stage)' }}>Vote · Round {Math.min(clueIndex + 1, totalClues)} / {totalClues}</span>
                 <h1>حان وقت الحُكم</h1>
                 <p style={{ color: 'var(--ak-text-muted)', marginBottom: 'var(--ak-space-2)' }}>مين المشتبه فيه النوبة دي؟</p>
-                <div className="progress">صوّت {votingProgress.voted} من {votingProgress.total}</div>
+                <div className="progress" role="status" aria-live="polite">صوّت {votingProgress.voted} من {votingProgress.total} مصوّت</div>
 
-                {voteError    && <div className="s-vote-banner error">{voteError}</div>}
+                {voteError    && <div className="s-vote-banner error" role="alert">{voteError}</div>}
                 {amIHost      && <div className="s-vote-banner host">المضيف لا يصوّت. تابع تقدّم اللاعبين.</div>}
                 {iAmEliminated && <div className="s-vote-banner elim">خرجت من دائرة الاتهام، لكن صوتك لسه مؤثر في الساحة.</div>}
                 {iHaveVoted && !everyoneVoted && (
-                  <div className="s-vote-banner waiting">صوّتت — مستني باقي اللاعبين ({votingProgress.total - votingProgress.voted} متبقي)</div>
+                  <div className="s-vote-banner waiting" role="status" aria-live="polite">صوّتت — مستني باقي اللاعبين ({votingProgress.total - votingProgress.voted} متبقي)</div>
                 )}
-                {extError && <div className="s-vote-banner error">{extError}</div>}
+                {extError && <div className="s-vote-banner error" role="alert">{extError}</div>}
                 {voteExt.activated && (Date.now() - extJustAddedAt) < 6000 && (
-                  <div className="s-vote-banner waiting">تم تمديد التصويت 15 ثانية</div>
+                  <div className="s-vote-banner waiting" role="status">تم تمديد التصويت 15 ثانية</div>
                 )}
                 {/* Player-driven 15s extension. Threshold ceil(70%) of voting
                     participants (eliminated jurors included); one extension
@@ -1209,10 +1209,10 @@ export default function GameBoard() {
                         طلب 15 ثانية إضافية
                       </button>
                     ) : (
-                      <div className="s-vote-banner waiting" style={{ margin: 0 }}>طلب التمديد متسجّل</div>
+                      <div className="s-vote-banner waiting" role="status" style={{ margin: 0 }}>طلب التمديد متسجّل</div>
                     )}
-                    <div className="progress">
-                      طلبات التمديد: {voteExt.requested} من {voteExt.total} · المطلوب {voteExt.required}
+                    <div className="progress" role="status" aria-live="polite">
+                      طلب التمديد: {voteExt.requested} / {voteExt.required}
                     </div>
                   </div>
                 )}
@@ -1344,8 +1344,8 @@ export default function GameBoard() {
                 <span className="icon" aria-hidden style={{ fontSize: '1.2rem', lineHeight: 1, color: 'var(--ak-gold)' }}>▲</span>
               </div>
 
-              {hostError && <div className="s-host-toast err">{hostError}</div>}
-              {hostSuccess && !hostError && <div className="s-host-toast ok">{hostSuccess}</div>}
+              {hostError && <div className="s-host-toast err" role="alert">{hostError}</div>}
+              {hostSuccess && !hostError && <div className="s-host-toast ok" role="status" aria-live="polite">{hostSuccess}</div>}
 
               {(gameState === 'CLUE_REVEAL' || gameState === 'VOTING' || gameState === 'VOTE_RESULT' || gameState === 'PUBLIC_CHARACTER_OVERVIEW' || gameState === 'ROLE_REVEAL') && (
                 <>

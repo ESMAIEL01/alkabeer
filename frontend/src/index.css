@@ -1824,18 +1824,20 @@ html {
   to   { transform: translateY(0);     opacity: 1; }
 }
 .connection-banner {
-  position: fixed;
-  top: 0; left: 0; right: 0;
+  /* Phase 2A: sticky so the banner reserves layout instead of overlaying
+     the arena top bar (timer/phase). When the socket is healthy the
+     component returns null and the banner takes no vertical space. */
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
   padding: 0.55rem 1rem;
   text-align: center;
   font-size: 0.92rem;
   font-weight: 700;
   color: var(--text-main);
-  z-index: 100;
   animation: connectionBannerIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   backdrop-filter: blur(8px);
-}
-.connection-banner {
   font: var(--ak-t-button);
   z-index: var(--ak-z-banner);
 }
