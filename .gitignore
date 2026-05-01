@@ -11,3 +11,8 @@ database.sqlite
 # frontend/src/styles/ak-tokens.css.
 Mafiozo Design System/
 photos/
+.agents/
+skills/
+plugins/
+skills-lock.json
+brand-kit.html
