@@ -4,6 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { socket, connectSocket, setActiveRoomId, clearActiveRoomId, emitWithAck } from '../services/socket';
 import { api, getToken, getStoredUser, clearSession } from '../services/api';
 import AkButton from '../components/AkButton';
+import EmptyState from '../components/EmptyState';
 
 /**
  * AiHostReadyPanel (FixPack v2 / Commit 3) — quorum panel for AI Host rooms.
@@ -531,7 +532,9 @@ export default function LobbyPage() {
           <section className="ak-card ak-card-surface">
             <span className="s-lobby-step-label">المشتبه بهم ({players.length})</span>
             <div className="s-lobby-roster" style={{ marginTop: 'var(--ak-space-3)', marginBottom: 'var(--ak-space-4)' }}>
-              {players.length === 0 && <p className="auth-sub">لا يوجد أحد هنا بعد...</p>}
+              {players.length === 0 && (
+                <EmptyState tone="compact" title="لا يوجد أحد هنا بعد" />
+              )}
               {players.map(p => (
                 <div key={p.id} className={`s-lobby-seat${p.isHost ? ' host' : ''}`}>
                   <div className="av">{initial(p.username)}</div>

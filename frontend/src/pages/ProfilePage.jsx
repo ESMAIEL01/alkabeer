@@ -5,6 +5,7 @@ import AvatarMark from '../components/AvatarMark';
 import StatsGrid from '../components/StatsGrid';
 import MatchHistoryRow from '../components/MatchHistoryRow';
 import AkButton from '../components/AkButton';
+import EmptyState from '../components/EmptyState';
 import {
   getProfileInsight,
   getRoleTendency,
@@ -698,17 +699,15 @@ export default function ProfilePage() {
         )}
 
         {!historyLoading && history.length === 0 && !historyError && (
-          <div className="s-profile-empty-state">
-            <p className="s-profile-empty-title">الأرشيف فاضي لسه.</p>
-            <p className="s-profile-empty-sub">
-              العب أول قضية عشان تظهر شخصيتك الحقيقية.
-            </p>
-            <div style={{ marginTop: 'var(--ak-space-3)' }}>
+          <EmptyState
+            title="الأرشيف فاضي لسه"
+            description="العب أول قضية عشان تظهر شخصيتك الحقيقية."
+            cta={
               <AkButton variant="primary" onClick={() => navigate('/lobby')}>
                 ابدأ لعبة جديدة
               </AkButton>
-            </div>
-          </div>
+            }
+          />
         )}
 
         {!historyLoading && history.length > 0 && (

@@ -5,6 +5,7 @@ import AkButton from '../components/AkButton';
 import AdminMetricCard from '../components/AdminMetricCard';
 import AdminTimeRangePicker from '../components/AdminTimeRangePicker';
 import AdminEventTable from '../components/AdminEventTable';
+import EmptyState from '../components/EmptyState';
 
 const TABS = [
   { id: 'overview',  label: 'نظرة عامة' },
@@ -971,9 +972,7 @@ function BarBreakdown({ title, data, loading }) {
     return (
       <>
         <h3 className="section-title">{title}</h3>
-        <div style={{ color: 'var(--ak-text-muted)', padding: 'var(--ak-space-3)' }}>
-          ما فيش بيانات.
-        </div>
+        <EmptyState tone="compact" title="ما فيش بيانات في النطاق ده" />
       </>
     );
   }
