@@ -241,7 +241,7 @@ function FinalRevealView({ data, aiPolish, fallbackOutcome, onNewGame, onBackToL
                 <div style={{ font: 'var(--ak-t-caption)', color: 'var(--ak-text-muted)', marginBottom: 'var(--ak-space-2)', letterSpacing: 'var(--ak-tracking-wide)' }}>
                   التفصيلة المريبة
                 </div>
-                <p className="detail">!!{m.suspiciousDetail}!!</p>
+                <p className="detail s-suspicious-detail">{m.suspiciousDetail}</p>
                 <p className="explanation">{m.explanation}</p>
                 {m.eliminatedAtRound != null && (
                   <p style={{ color: 'var(--ak-gold)', font: 'var(--ak-t-caption)', marginTop: 'var(--ak-space-2)' }}>
@@ -307,7 +307,7 @@ function FinalRevealView({ data, aiPolish, fallbackOutcome, onNewGame, onBackToL
               {data.obviousSuspect.characterName}
               <span style={{ color: 'var(--ak-text-muted)' }}> — {data.obviousSuspect.storyRole}</span>
             </p>
-            <p className="detail">!!{data.obviousSuspect.suspiciousDetail}!!</p>
+            <p className="detail s-suspicious-detail">{data.obviousSuspect.suspiciousDetail}</p>
             <p>{data.obviousSuspect.explanation}</p>
           </div>
         </section>
@@ -328,7 +328,7 @@ function FinalRevealView({ data, aiPolish, fallbackOutcome, onNewGame, onBackToL
                   <div className="ch">
                     {p.characterName}<span className="role"> — {p.storyRole}</span>
                   </div>
-                  <div className="det">!!{p.suspiciousDetail}!!</div>
+                  <div className="det s-suspicious-detail">{p.suspiciousDetail}</div>
                   <div className="row">
                     <span className="role-tag">{p.roleLabelArabic || '—'}</span>
                     <span className="status">{p.survived ? '✓ نجا' : `✕ خرج في الجولة ${p.eliminatedRound || '?'}`}</span>
@@ -890,8 +890,8 @@ export default function GameBoard() {
                   {c.storyCharacterName}
                   <span style={{ color: 'var(--ak-text-muted)' }}> — {c.storyCharacterRole}</span>
                 </div>
-                <div style={{ color: 'var(--ak-text-muted)', font: 'var(--ak-t-body-sm)', fontStyle: 'italic' }}>
-                  !!{c.suspiciousDetail}!!
+                <div className="s-suspicious-detail" style={{ color: 'var(--ak-text-muted)', font: 'var(--ak-t-body-sm)' }}>
+                  {c.suspiciousDetail}
                 </div>
               </div>
             ))}
@@ -933,7 +933,7 @@ export default function GameBoard() {
 
                 <div className="role-section">
                   <span className="label">التفصيلة المريبة</span>
-                  <div className="value">!!{roleCard.suspiciousDetail}!!</div>
+                  <div className="value s-suspicious-detail">{roleCard.suspiciousDetail}</div>
                 </div>
 
                 {!isBlind && roleCard.gameRole && (
@@ -988,7 +988,7 @@ export default function GameBoard() {
               <div className="character">
                 {c.storyCharacterName}<span className="role"> — {c.storyCharacterRole}</span>
               </div>
-              <div className="detail">!!{c.suspiciousDetail}!!</div>
+              <div className="detail s-suspicious-detail">{c.suspiciousDetail}</div>
             </div>
           ))}
         </div>
@@ -1076,8 +1076,37 @@ export default function GameBoard() {
               <p style={{ color: 'var(--ak-text-muted)', marginBottom: 'var(--ak-space-4)' }}>
                 تم تشفير الحقيقة. القصة ثابتة ولا مجال لتغييرها الآن.
               </p>
-              <div style={{ background: 'var(--ak-crimson-bg-muted)', border: '1px solid var(--ak-border-red)', borderRadius: 'var(--ak-radius-md)', padding: 'var(--ak-space-3)', font: 'var(--ak-t-mono)', fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)', wordBreak: 'break-all', direction: 'ltr', textAlign: 'left', marginBottom: 'var(--ak-space-4)' }}>
-                PROTOCOL_ZERO_HASH:<br />{archiveBase64.slice(0, 200)}{archiveBase64.length > 200 ? '…' : ''}
+              <div style={{
+                background: 'rgba(0, 0, 0, 0.45)',
+                border: '1px solid var(--ak-border-gold)',
+                borderRadius: 'var(--ak-radius-md)',
+                padding: 'var(--ak-space-3) var(--ak-space-4)',
+                marginBottom: 'var(--ak-space-4)',
+                textAlign: 'center',
+                boxShadow: 'inset 0 0 24px rgba(0, 0, 0, 0.5)',
+              }}>
+                <span className="ak-overline" style={{ display: 'block', marginBottom: 'var(--ak-space-2)' }}>
+                  بصمة الأرشيف المختوم
+                </span>
+                <div style={{
+                  font: 'var(--ak-t-mono)',
+                  fontSize: '0.95rem',
+                  color: 'var(--ak-gold)',
+                  direction: 'ltr',
+                  letterSpacing: '0.12em',
+                }}>
+                  {archiveBase64
+                    ? `${archiveBase64.slice(0, 8)} ⋯ ${archiveBase64.slice(-8)}`
+                    : '— — —'}
+                </div>
+                <span style={{
+                  display: 'block',
+                  marginTop: 'var(--ak-space-2)',
+                  font: 'var(--ak-t-caption)',
+                  color: 'var(--ak-text-muted)',
+                }}>
+                  بصمة الأرشيف المختوم — لا تتغير بعد الختم.
+                </span>
               </div>
               <p style={{ color: 'var(--ak-gold)', font: 'var(--ak-t-h4)' }}>بانتظار نطق الدليل...</p>
             </div>

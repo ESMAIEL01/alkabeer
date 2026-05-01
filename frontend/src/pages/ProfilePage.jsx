@@ -416,7 +416,7 @@ export default function ProfilePage() {
                 value={draft.displayName}
                 onChange={(e) => setDraft(d => ({ ...d, displayName: e.target.value }))}
                 placeholder="من 2 لـ 32 حرف"
-                maxLength={64}
+                maxLength={32}
               />
             </label>
             <label className="s-profile-field">
@@ -432,7 +432,7 @@ export default function ProfilePage() {
                   value={draft.avatarUrl}
                   onChange={(e) => setDraft(d => ({ ...d, avatarUrl: e.target.value }))}
                   placeholder="https://example.com/avatar.png"
-                  maxLength={520}
+                  maxLength={500}
                   inputMode="url"
                   style={{ flex: 1, minWidth: 0 }}
                 />
@@ -458,7 +458,7 @@ export default function ProfilePage() {
                 value={draft.bio}
                 onChange={(e) => setDraft(d => ({ ...d, bio: e.target.value }))}
                 placeholder="جملتين عن أسلوبك في اللعب."
-                maxLength={520}
+                maxLength={500}
               />
               <small style={{ color: 'var(--ak-text-muted)', font: 'var(--ak-t-caption)' }}>
                 {draft.bio.trim().length} / 500

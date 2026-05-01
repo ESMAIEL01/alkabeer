@@ -79,6 +79,7 @@ export default function AdminDashboard() {
   const [cleanupLoading, setCleanupLoading] = useState(false);
   const [cleanupError, setCleanupError] = useState('');
   const [cleanupConfirming, setCleanupConfirming] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState('');
 
   // Maintenance: purge non-admin accounts
   const [purgePreview, setPurgePreview] = useState(null); // { count, sample }
@@ -86,6 +87,7 @@ export default function AdminDashboard() {
   const [purgeError, setPurgeError] = useState('');
   const [purgeConfirmText, setPurgeConfirmText] = useState('');
   const [purgeConfirming, setPurgeConfirming] = useState(false);
+  const [purgeResult, setPurgeResult] = useState('');
 
   // Bootstrapping: confirm the caller is admin before painting content.
   useEffect(() => {
@@ -230,6 +232,7 @@ export default function AdminDashboard() {
     setCleanupLoading(true);
     setCleanupError('');
     setCleanupPreview(null);
+    setCleanupResult('');
     try {
       const data = await api.post('/api/admin/accounts/cleanup-guests', { dryRun: true });
       setCleanupPreview({ count: data.count || 0, sample: data.sample || [] });
@@ -243,13 +246,14 @@ export default function AdminDashboard() {
   const handleCleanupConfirm = useCallback(async () => {
     setCleanupConfirming(true);
     setCleanupError('');
+    setCleanupResult('');
     try {
       const data = await api.post('/api/admin/accounts/cleanup-guests', {
         dryRun: false,
         confirm: 'DELETE_EXPIRED_GUESTS',
       });
       setCleanupPreview(null);
-      alert(`تم حذف ${data.deleted ?? 0} حساب ضيف منتهي الصلاحية.`);
+      setCleanupResult(`تم حذف ${data.deleted ?? 0} حساب ضيف منتهي الصلاحية.`);
     } catch (err) {
       setCleanupError(err.message || 'تعذّر تنفيذ التنظيف.');
     } finally {
@@ -262,6 +266,7 @@ export default function AdminDashboard() {
     setPurgeError('');
     setPurgePreview(null);
     setPurgeConfirmText('');
+    setPurgeResult('');
     try {
       const data = await api.post('/api/admin/accounts/purge-non-admin', { dryRun: true });
       setPurgePreview({ count: data.count || 0, sample: data.sample || [] });
@@ -279,6 +284,7 @@ export default function AdminDashboard() {
     }
     setPurgeConfirming(true);
     setPurgeError('');
+    setPurgeResult('');
     try {
       const data = await api.post('/api/admin/accounts/purge-non-admin', {
         dryRun: false,
@@ -286,7 +292,7 @@ export default function AdminDashboard() {
       });
       setPurgePreview(null);
       setPurgeConfirmText('');
-      alert(`تم حذف ${data.count ?? 0} حساب.`);
+      setPurgeResult(`تم حذف ${data.count ?? 0} حساب.`);
     } catch (err) {
       setPurgeError(err.message || 'تعذّر تنفيذ الحذف الجماعي.');
     } finally {
@@ -664,6 +670,11 @@ export default function AdminDashboard() {
                 {cleanupError && (
                   <div className="s-auth-error" style={{ marginBottom: 'var(--ak-space-2)' }}>{cleanupError}</div>
                 )}
+                {cleanupResult && (
+                  <div className="s-host-toast ok" role="status" style={{ display: 'block', marginBottom: 'var(--ak-space-2)' }}>
+                    {cleanupResult}
+                  </div>
+                )}
 
                 {!cleanupPreview ? (
                   <AkButton variant="ghost" onClick={handleCleanupDryRun} disabled={cleanupLoading}>
@@ -699,7 +710,7 @@ export default function AdminDashboard() {
                           {cleanupConfirming ? 'جاري الحذف...' : `تأكيد حذف ${cleanupPreview.count} حساب`}
                         </AkButton>
                       )}
-                      <AkButton variant="ghost" onClick={() => { setCleanupPreview(null); setCleanupError(''); }}>
+                      <AkButton variant="ghost" onClick={() => { setCleanupPreview(null); setCleanupError(''); setCleanupResult(''); }}>
                         إلغاء
                       </AkButton>
                     </div>
@@ -724,6 +735,11 @@ export default function AdminDashboard() {
 
                 {purgeError && (
                   <div className="s-auth-error" style={{ marginBottom: 'var(--ak-space-2)' }}>{purgeError}</div>
+                )}
+                {purgeResult && (
+                  <div className="s-host-toast ok" role="status" style={{ display: 'block', marginBottom: 'var(--ak-space-2)' }}>
+                    {purgeResult}
+                  </div>
                 )}
 
                 {!purgePreview ? (
@@ -781,7 +797,7 @@ export default function AdminDashboard() {
                           {purgeConfirming ? 'جاري الحذف...' : `تأكيد حذف ${purgePreview.count} حساب`}
                         </AkButton>
                       )}
-                      <AkButton variant="ghost" onClick={() => { setPurgePreview(null); setPurgeConfirmText(''); setPurgeError(''); }}>
+                      <AkButton variant="ghost" onClick={() => { setPurgePreview(null); setPurgeConfirmText(''); setPurgeError(''); setPurgeResult(''); }}>
                         إلغاء
                       </AkButton>
                     </div>

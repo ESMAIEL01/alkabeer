@@ -291,7 +291,7 @@ export default function HostDashboard() {
 
       {/* Seal action */}
       {scenarioText && (
-        <div style={{ position: 'sticky', bottom: 0, padding: 'var(--ak-space-4) 0', background: 'linear-gradient(to top, var(--ak-bg-deep) 70%, transparent)' }}>
+        <div style={{ position: 'sticky', bottom: 0, padding: 'var(--ak-space-4) 0 calc(var(--ak-space-4) + env(safe-area-inset-bottom)) 0', background: 'linear-gradient(to top, var(--ak-bg-deep) 70%, transparent)' }}>
           <AkButton
             variant="primary"
             onClick={finalizeScenario}

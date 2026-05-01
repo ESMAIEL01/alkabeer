@@ -456,9 +456,12 @@ export default function LobbyPage() {
           <div className="divider"></div>
           <section style={{ textAlign: 'center' }}>
             <h3 className="s-lobby-step-label" style={{ marginBottom: 'var(--ak-space-3)' }}>أو ادخل غرفة قائمة</h3>
+            <label htmlFor="lobby-room-code" className="sr-only">شفرة الغرفة</label>
             <input
+              id="lobby-room-code"
               type="text"
               placeholder="شفرة الغرفة"
+              aria-label="شفرة الغرفة"
               className="s-auth-field"
               style={{ textAlign: 'center', font: '700 1.5rem/1 var(--ak-font-mono)', letterSpacing: '8px', maxWidth: '320px', margin: '0 auto' }}
               value={roomCode}
@@ -498,14 +501,25 @@ export default function LobbyPage() {
               </div>
             )}
             <p className="auth-sub">شارك الكود أو الرابط لدعوة اللاعبين</p>
-            <div style={{ background: '#fff', padding: 'var(--ak-space-3)', borderRadius: 'var(--ak-radius-md)', display: 'inline-block', marginBottom: 'var(--ak-space-3)' }}>
-              <QRCodeSVG value={roomLink} size={160} />
+            <div style={{
+              background: '#f3e6c4',
+              padding: 'var(--ak-space-3)',
+              borderRadius: 'var(--ak-radius-md)',
+              border: '1px solid var(--ak-border-gold-strong)',
+              boxShadow: 'var(--ak-glow-gold-soft)',
+              display: 'inline-block',
+              marginBottom: 'var(--ak-space-3)',
+            }}>
+              <QRCodeSVG value={roomLink} size={160} bgColor="transparent" fgColor="#1a0d05" />
             </div>
+            <label htmlFor="lobby-room-link" className="sr-only">رابط الغرفة</label>
             <input
+              id="lobby-room-link"
               type="text"
               readOnly
               value={roomLink}
               className="s-auth-field"
+              aria-label="رابط الغرفة"
               style={{ font: 'var(--ak-t-mono)', fontSize: '0.85rem', textAlign: 'center', direction: 'ltr' }}
               onClick={e => e.target.select()}
             />
