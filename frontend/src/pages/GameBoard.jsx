@@ -548,6 +548,7 @@ export default function GameBoard() {
   const [totalClues, setTotalClues] = useState(3);
   const [hostError, setHostError] = useState('');     // Arabic error from rejected host action
   const [hostSuccess, setHostSuccess] = useState(''); // brief confirmation for host actions
+  const [endSessionConfirm, setEndSessionConfirm] = useState(false); // themed in-app confirm for end_session
   const [sessionEnded, setSessionEnded] = useState(false);
   const [finalReveal, setFinalReveal] = useState(null);
   // Optional AI polish lines (C2 / C3). All start null and remain so when
@@ -790,11 +791,67 @@ export default function GameBoard() {
       }
     });
   };
+  // Open the themed in-app confirm card. The destructive call only fires
+  // from the card's "Confirm" button — never directly from the trigger.
   const confirmEndSession = () => {
-    if (window.confirm('متأكد إنك عايز تنهي الجلسة دلوقتي؟')) {
-      handleHostAction('end_session');
-    }
+    setEndSessionConfirm(true);
   };
+
+  // Dismiss the end-session confirm with Escape, matching standard dialog UX.
+  useEffect(() => {
+    if (!endSessionConfirm) return;
+    const onKey = (e) => { if (e.key === 'Escape') setEndSessionConfirm(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [endSessionConfirm]);
+
+  const endSessionConfirmCard = endSessionConfirm ? (
+    <div
+      role="alertdialog"
+      aria-labelledby="end-session-title"
+      aria-describedby="end-session-desc"
+      className="ak-card ak-card-danger"
+      style={{
+        maxWidth: '480px',
+        marginInline: 'auto',
+        marginTop: 'var(--ak-space-3)',
+        textAlign: 'center',
+      }}
+    >
+      <h3
+        id="end-session-title"
+        style={{ font: 'var(--ak-t-h3)', color: 'var(--ak-crimson-stage)', margin: '0 0 var(--ak-space-2)' }}
+      >
+        تأكيد إنهاء الجلسة
+      </h3>
+      <p
+        id="end-session-desc"
+        style={{ color: 'var(--ak-pair-panel-danger-fg)', margin: '0 0 var(--ak-space-4)', lineHeight: 1.7 }}
+      >
+        هذا الإجراء سينهي الجلسة الحالية لكل اللاعبين. لا يمكن التراجع عنه.
+      </p>
+      <div style={{ display: 'flex', gap: 'var(--ak-space-3)', justifyContent: 'center', flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          className="ak-btn ak-btn-primary"
+          onClick={() => {
+            setEndSessionConfirm(false);
+            handleHostAction('end_session');
+          }}
+        >
+          إنهاء الجلسة
+        </button>
+        <button
+          type="button"
+          className="ak-btn ak-btn-ghost"
+          autoFocus
+          onClick={() => setEndSessionConfirm(false)}
+        >
+          إلغاء
+        </button>
+      </div>
+    </div>
+  ) : null;
   const handleVote = (targetId) => socket.emit('submit_vote', { roomId, targetId });
 
   // Player-driven flow: declare readiness during CLUE_REVEAL.
@@ -903,6 +960,7 @@ export default function GameBoard() {
             </button>
             <button className="ak-btn ak-btn-ghost" onClick={confirmEndSession}>إنهاء الجلسة</button>
           </div>
+          {endSessionConfirmCard}
           {hostError && (
             <div className="s-auth-error" role="alert" style={{ marginTop: 'var(--ak-space-3)', maxWidth: '480px', marginInline: 'auto' }}>⚠ {hostError}</div>
           )}
@@ -1381,6 +1439,7 @@ export default function GameBoard() {
                 <button className="ak-btn ak-btn-host" onClick={() => handleHostAction('trigger_final_reveal')}>اعرض الكشف النهائي</button>
                 <button className="ak-btn ak-btn-host danger" onClick={confirmEndSession}>إنهاء الجلسة</button>
               </div>
+              {endSessionConfirmCard}
             </div>
           )}
 
