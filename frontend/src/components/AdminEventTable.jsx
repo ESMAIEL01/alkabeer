@@ -1,4 +1,5 @@
 import React from 'react';
+import EmptyStateRow from './EmptyStateRow';
 
 /**
  * AdminEventTable — render F1 analytics_events rows in a paginated table.
@@ -59,11 +60,7 @@ export default function AdminEventTable({ events, loading, error, total, limit, 
                 </tr>
               ))
             ) : (
-              <tr>
-                <td colSpan="5" style={{ textAlign: 'center', color: 'var(--ak-text-muted)', padding: 'var(--ak-space-4)' }}>
-                  ما فيش أحداث في النطاق ده.
-                </td>
-              </tr>
+              <EmptyStateRow colSpan={5} title="ما فيش أحداث في النطاق ده" />
             )}
           </tbody>
         </table>

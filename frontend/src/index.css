@@ -3442,3 +3442,20 @@ html {
 .s-empty-state-cta {
   margin-top: var(--ak-space-3);
 }
+
+/* Table-cell tone for <EmptyStateRow> (Phase 2D). The host <td> resets
+   its padding so the inner block fully controls spacing — keeps the
+   visual rhythm consistent with normal row padding without compounding. */
+.s-empty-row > .s-empty-row-cell {
+  padding: 0;
+}
+.s-empty-state-table {
+  padding: var(--ak-space-5) var(--ak-space-4);
+  gap: var(--ak-space-2);
+}
+.s-empty-state-table .s-empty-state-icon {
+  font-size: 1.8rem;
+}
+.s-empty-state-table .s-empty-state-title {
+  font: var(--ak-t-h4);
+}

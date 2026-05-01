@@ -6,6 +6,7 @@ import AdminMetricCard from '../components/AdminMetricCard';
 import AdminTimeRangePicker from '../components/AdminTimeRangePicker';
 import AdminEventTable from '../components/AdminEventTable';
 import EmptyState from '../components/EmptyState';
+import EmptyStateRow from '../components/EmptyStateRow';
 
 const TABS = [
   { id: 'overview',  label: 'نظرة عامة' },
@@ -530,11 +531,10 @@ export default function AdminDashboard() {
                     {accountsLoading && accounts.accounts.length === 0 ? (
                       <tr><td colSpan="7"><div className="shimmer" style={{ height: '6rem' }} aria-hidden="true" /></td></tr>
                     ) : accounts.accounts.length === 0 ? (
-                      <tr>
-                        <td colSpan="7" style={{ textAlign: 'center', color: 'var(--ak-text-muted)', padding: 'var(--ak-space-4)' }}>
-                          {accountsView === 'pending' ? 'ما فيش حسابات بانتظار الموافقة.' : 'ما فيش حسابات مطابقة.'}
-                        </td>
-                      </tr>
+                      <EmptyStateRow
+                        colSpan={7}
+                        title={accountsView === 'pending' ? 'ما فيش حسابات بانتظار الموافقة' : 'ما فيش حسابات مطابقة'}
+                      />
                     ) : accounts.accounts.map(a => (
                       <tr key={a.id}>
                         <td>{a.id}</td>
@@ -889,11 +889,7 @@ export default function AdminDashboard() {
                       </tr>
                     ))
                   ) : (
-                    <tr>
-                      <td colSpan="5" style={{ textAlign: 'center', color: 'var(--ak-text-muted)', padding: 'var(--ak-space-4)' }}>
-                        ما فيش محاولات ذكاء في النطاق ده.
-                      </td>
-                    </tr>
+                    <EmptyStateRow colSpan={5} title="ما فيش محاولات ذكاء في النطاق ده" />
                   )}
                 </tbody>
               </table>
