@@ -3254,3 +3254,142 @@ html {
   border-color: var(--ak-gold);
   box-shadow: var(--ak-glow-focus-ring);
 }
+
+/* ===========================================================================
+ * EXPLAIN PAGE — قوانين الساحة (Phase 2B)
+ * Static onboarding/help surface. Mirrors the s-profile / s-report cadence:
+ * topbar → hero → section cards → closing cinematic quote. Page-scoped only.
+ * =========================================================================== */
+.s-explain {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--ak-space-5) var(--ak-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ak-space-5);
+}
+.s-explain-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ak-space-3);
+}
+.s-explain-hero {
+  text-align: center;
+  padding: var(--ak-space-4) 0 var(--ak-space-4);
+  border-bottom: 1px solid var(--ak-border-soft);
+}
+.s-explain-hero .ak-overline {
+  display: inline-block;
+  margin-bottom: var(--ak-space-3);
+}
+.s-explain-title {
+  font: var(--ak-t-h1);
+  letter-spacing: var(--ak-tracking-tight);
+  color: var(--ak-text-strong);
+  margin: 0 0 var(--ak-space-3);
+}
+.s-explain-sub {
+  font: var(--ak-t-body-lg);
+  color: var(--ak-text-muted);
+  max-width: 40ch;
+  margin: 0 auto;
+}
+.s-explain-section {
+  background: var(--ak-surface-1);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-lg);
+  padding: var(--ak-space-5);
+  box-shadow: var(--ak-shadow-panel);
+}
+.s-explain-section .ak-overline {
+  display: block;
+  margin-bottom: var(--ak-space-2);
+}
+.s-explain-section-title {
+  font: var(--ak-t-h3);
+  color: var(--ak-text-strong);
+  margin: 0 0 var(--ak-space-4);
+}
+.s-explain-body {
+  font: var(--ak-t-body);
+  color: var(--ak-text-main);
+  line-height: 1.85;
+  margin: 0;
+}
+.s-explain-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ak-space-3);
+}
+.s-explain-list li {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--ak-border-soft);
+  border-inline-start: 3px solid var(--ak-gold);
+  border-radius: var(--ak-radius-sm);
+  padding: var(--ak-space-3) var(--ak-space-4);
+  font: var(--ak-t-body);
+  line-height: 1.7;
+  color: var(--ak-text-main);
+}
+.s-explain-list li strong {
+  color: var(--ak-gold);
+  font-weight: 700;
+  margin-inline-end: var(--ak-space-1);
+}
+.s-explain-steps {
+  list-style: none;
+  counter-reset: explain-step;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ak-space-3);
+}
+.s-explain-steps li {
+  counter-increment: explain-step;
+  position: relative;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--ak-border-soft);
+  border-radius: var(--ak-radius-sm);
+  padding: var(--ak-space-3) var(--ak-space-4);
+  padding-inline-start: calc(28px + var(--ak-space-5));
+  font: var(--ak-t-body);
+  line-height: 1.7;
+  color: var(--ak-text-main);
+}
+.s-explain-steps li::before {
+  content: counter(explain-step);
+  position: absolute;
+  inset-inline-start: var(--ak-space-3);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--ak-gold-tint);
+  border: 1px solid var(--ak-border-gold-strong);
+  color: var(--ak-gold);
+  font: 700 0.85rem/1 var(--ak-font-mono);
+  display: grid;
+  place-items: center;
+}
+.s-explain-quote {
+  text-align: center;
+  font: var(--ak-t-h4);
+  font-style: italic;
+  color: var(--ak-crimson-stage);
+  text-shadow: var(--ak-glow-red-urgent);
+  margin: var(--ak-space-3) 0 var(--ak-space-3);
+}
+@media (max-width: 480px) {
+  .s-explain {
+    padding: var(--ak-space-4) var(--ak-space-3);
+  }
+  .s-explain-section {
+    padding: var(--ak-space-4);
+  }
+}
